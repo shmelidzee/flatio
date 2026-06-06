@@ -162,6 +162,22 @@
 - Все пункты чеклистов выше пройдены
 - Код делает именно то что написано в Issue
 
+**Как выставить статус через GitHub MCP:**
+
+GitHub не позволяет апрувить собственный PR (422 при `event: APPROVE`). До появления второго collaborator использовать `event: COMMENT` с явным вердиктом в начале тела ревью:
+
+```
+**Verdict: ✅ APPROVED — Technical Reviewer**
+```
+
+или при Request Changes:
+
+```
+**Verdict: ❌ REQUEST CHANGES — Technical Reviewer**
+```
+
+Полный review с checklist и inline-комментариями отправляется одним вызовом `create_pull_request_review`.
+
 ### Шаг 12 — Повторная проверка после правок
 После того как Software Engineer ответил `Fixed in <hash>` на все комментарии:
 - Проверить каждое исправление — не формально, а реально

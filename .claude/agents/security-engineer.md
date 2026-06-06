@@ -149,6 +149,22 @@
 Принято с условием: завести Issue на [описание проблемы] до следующего milestone.
 ```
 
+**Как выставить статус через GitHub MCP:**
+
+GitHub не позволяет апрувить собственный PR (422 при `event: APPROVE`). До появления второго collaborator использовать `event: COMMENT` с явным вердиктом в начале тела ревью:
+
+```
+**Verdict: ✅ APPROVED — Security Engineer**
+```
+
+или при Request Changes:
+
+```
+**Verdict: ❌ REQUEST CHANGES — Security Engineer**
+```
+
+Полный review с checklist и inline-комментариями отправляется одним вызовом `create_pull_request_review`.
+
 ### Шаг 12 — Повторная проверка
 После правок Software Engineer:
 - Проверить каждое исправление реально, не формально

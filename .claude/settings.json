@@ -113,8 +113,7 @@
       "Edit(.env)",
       "Edit(.env.*)",
       "Edit(.claude/settings.local.json)",
-      "Edit(docker/docker-compose.prod.yml)",
-      "Edit(src/main/resources/application.yml)"
+      "Edit(docker/docker-compose.prod.yml)"
     ],
 
     "ask": [
@@ -133,6 +132,8 @@
       "Edit(Dockerfile)",
       "Edit(docker/docker-compose.yml)",
 
+      "Write(src/main/resources/application.yml)",
+      "Edit(src/main/resources/application.yml)",
       "Write(src/main/resources/db/migration/*)",
       "Edit(src/main/resources/db/migration/*)",
 
