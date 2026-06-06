@@ -29,6 +29,7 @@ val mapstructVersion = "1.5.5.Final"
 val resilience4jVersion = "2.2.0"
 val testcontainersVersion = "1.19.7"
 val springdocVersion = "2.4.0"
+val logstashEncoderVersion = "7.4"
 
 dependencies {
   implementation("org.springframework.boot:spring-boot-starter-web")
@@ -45,6 +46,7 @@ dependencies {
   implementation("io.github.resilience4j:resilience4j-ratelimiter:$resilience4jVersion")
 
   implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:$springdocVersion")
+  implementation("net.logstash.logback:logstash-logback-encoder:$logstashEncoderVersion")
 
   implementation("org.mapstruct:mapstruct:$mapstructVersion")
   annotationProcessor("org.mapstruct:mapstruct-processor:$mapstructVersion")
