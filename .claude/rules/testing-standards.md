@@ -37,7 +37,7 @@
 | Слой | Покрытие | Уровень |
 |------|----------|---------|
 | Service | **100%** | Unit |
-| Parser | **100%** | Unit |
+| Connector | **100%** | Unit |
 | Repository | **100%** | Интеграционный |
 | Controller | 80%+ | Unit (MockMvc) |
 | Mapper | не требуется | MapStruct генерирует |
@@ -80,7 +80,7 @@ void should_return_listing_when_valid_id_provided() {
 ### Классы тестов
 ```
 ListingServiceTest         — unit тест сервиса
-RealtParserTest            — unit тест парсера
+RealtConnectorTest         — unit тест коннектора
 ListingControllerTest      — unit тест контроллера
 ListingServiceIT           — интеграционный тест сервиса
 ListingRepositoryIT        — интеграционный тест репозитория
@@ -93,8 +93,8 @@ should_return_listing_when_valid_id_provided()
 should_throw_exception_when_listing_not_found()
 should_skip_duplicate_when_listing_already_exists()
 should_return_empty_list_when_no_listings_match_criteria()
-should_apply_rate_limit_when_parser_exceeds_threshold()
-should_handle_broken_html_when_source_returns_invalid_markup()
+should_apply_rate_limit_when_connector_exceeds_threshold()
+should_handle_broken_response_when_source_returns_invalid_markup()
 ```
 
 ---
@@ -153,28 +153,28 @@ class ListingServiceTest {
 
 ---
 
-## Unit тесты — парсеры
+## Unit тесты — коннекторы
 
-Парсеры — приоритет тестирования. Внешние источники ненадёжны, тесты должны это покрывать.
+Коннекторы — приоритет тестирования. Внешние источники ненадёжны, тесты должны это покрывать.
 
 ```java
 @ExtendWith(MockitoExtension.class)
-class RealtParserTest {
+class RealtConnectorTest {
 
   @Mock
   private OkHttpClient httpClient;
 
   @InjectMocks
-  private RealtParser realtParser;
+  private RealtConnector realtConnector;
 
   @Test
-  void should_parse_listing_when_valid_html_provided() {
+  void should_fetch_listings_when_valid_response_provided() {
     // Given
     var html = loadTestResource("realt/valid-listing-page.html");
     mockHttpResponse(httpClient, html, 200);
 
     // When
-    var result = realtParser.parse();
+    var result = realtConnector.fetch();
 
     // Then
     assertThat(result).hasSize(20);
@@ -185,24 +185,24 @@ class RealtParserTest {
 
   @Test
   void should_skip_listing_when_price_is_missing() {
-    // Given — HTML без цены у одного объявления
+    // Given — ответ без цены у одного объявления
     var html = loadTestResource("realt/listing-without-price.html");
     mockHttpResponse(httpClient, html, 200);
 
     // When
-    var result = realtParser.parse();
+    var result = realtConnector.fetch();
 
-    // Then — объявление без цены пропускается, остальные парсятся
+    // Then — объявление без цены пропускается, остальные обрабатываются
     assertThat(result).hasSize(19);
   }
 
   @Test
-  void should_return_empty_list_when_html_is_broken() {
+  void should_return_empty_list_when_response_is_broken() {
     // Given
     mockHttpResponse(httpClient, "<html>broken</html>", 200);
 
     // When
-    var result = realtParser.parse();
+    var result = realtConnector.fetch();
 
     // Then — не бросает исключение, возвращает пустой список
     assertThat(result).isEmpty();
@@ -215,7 +215,7 @@ class RealtParserTest {
     mockHttpResponse(httpClient, loadTestResource("realt/valid-listing-page.html"), 200);
 
     // When
-    var result = realtParser.parse();
+    var result = realtConnector.fetch();
 
     // Then
     assertThat(result).isNotEmpty();
@@ -224,28 +224,28 @@ class RealtParserTest {
 
   @Test
   void should_not_propagate_exception_when_single_listing_fails() {
-    // Given — страница с одним битым объявлением среди нормальных
+    // Given — ответ с одним битым объявлением среди нормальных
     var html = loadTestResource("realt/page-with-broken-listing.html");
     mockHttpResponse(httpClient, html, 200);
 
     // When / Then — не бросает исключение
-    assertThatNoException().isThrownBy(() -> realtParser.parse());
+    assertThatNoException().isThrownBy(() -> realtConnector.fetch());
   }
 }
 ```
 
-### Обязательные тест-кейсы для каждого парсера
-- [ ] Валидная страница → корректный список объявлений
-- [ ] Битый HTML → пустой список, без исключения
+### Обязательные тест-кейсы для каждого коннектора
+- [ ] Валидный ответ → корректный список объявлений
+- [ ] Битый/невалидный ответ → пустой список, без исключения
 - [ ] Пустой ответ от источника → пустой список
 - [ ] Отсутствует обязательное поле (цена, заголовок) → объявление пропускается
 - [ ] HTTP 429 (rate limit) → retry с backoff
 - [ ] HTTP 503 → retry, затем circuit breaker
-- [ ] Изменилась структура HTML → graceful degradation, не крэш
+- [ ] Изменилась структура ответа → graceful degradation, не крэш
 - [ ] Дедупликация: одно объявление не попадает дважды
 
 ### Тестовые ресурсы
-HTML-фикстуры хранятся в:
+Фикстуры ответов источников хранятся в:
 ```
 src/test/resources/fixtures/
 ├── realt/
@@ -253,11 +253,14 @@ src/test/resources/fixtures/
 │   ├── listing-without-price.html
 │   ├── page-with-broken-listing.html
 │   └── empty-page.html
+├── onliner/
+│   ├── valid-response.json
+│   └── empty-response.json
 └── {source}/
     └── ...
 ```
 
-Фикстуры — реальные снапшоты страниц источников, сохранённые вручную.
+Фикстуры — реальные снапшоты ответов источников, сохранённые вручную.
 Обновлять при изменении структуры источника.
 
 ---
@@ -501,7 +504,7 @@ Unit + интеграционные тесты + отчёт о покрытии.
 | Слой | Цель | Факт | Статус |
 |------|------|------|--------|
 | Service | 100% | 100% | ✅ |
-| Parser | 100% | 97% | ❌ |
+| Connector | 100% | 97% | ❌ |
 
 ## Результаты тестов
 - Unit тесты: 142 passed, 0 failed

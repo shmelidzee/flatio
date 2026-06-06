@@ -138,25 +138,25 @@ README обновляется если изменились:
 
 **Структура:**
 ```markdown
-# Парсеры источников данных
+# Коннекторы источников данных
 
 ## Архитектура
-[описание интерфейса SourceParser, базовых классов]
+[описание интерфейса ListingConnector, базовых классов]
 
-## Существующие парсеры
+## Существующие коннекторы
 | Источник | Регион | Статус | Класс |
 |----------|--------|--------|-------|
-| realt.by | BY | Active | RealtParser |
+| realt.by | BY | Active | RealtConnector |
 
-## Как добавить новый парсер
-1. Создать класс в `com.flatio.parser.{source}/`
-2. Реализовать интерфейс `SourceParser`
+## Как добавить новый коннектор
+1. Создать класс в `com.flatio.connector.{source}/`
+2. Реализовать интерфейс `ListingConnector`
 3. Настроить rate limiting в `application.yml`
-4. Добавить HTML фикстуры в `src/test/resources/fixtures/{source}/`
+4. Добавить фикстуры ответов в `src/test/resources/fixtures/{source}/`
 5. QA Engineer пишет тесты
 
 ## Конфигурация rate limiting
-[примеры настройки Resilience4j для парсеров]
+[примеры настройки Resilience4j для коннекторов]
 ```
 
 ### Шаг 6 — Обновить docs/architecture.md

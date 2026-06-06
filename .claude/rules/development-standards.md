@@ -34,8 +34,8 @@ com.flatio.service
 com.flatio.web.controller
 com.flatio.web.dto
 com.flatio.web.mapper
-com.flatio.parser.core
-com.flatio.parser.realt       # пример конкретного источника
+com.flatio.connector.core
+com.flatio.connector.realt    # пример конкретного источника
 ```
 
 ### Классы
@@ -48,7 +48,7 @@ com.flatio.parser.realt       # пример конкретного источн
 | Service (реализация) | `ServiceImpl` | `ListingServiceImpl` |
 | Repository | `Repository` | `ListingRepository` |
 | Mapper (MapStruct) | `Mapper` | `ListingMapper` |
-| Парсер | `Parser` | `RealtParser` |
+| Коннектор | `Connector` | `RealtConnector` |
 | Exception | `Exception` | `ListingNotFoundException` |
 | Конфиг | `Config` | `SecurityConfig`, `JwtConfig` |
 
@@ -279,31 +279,34 @@ List<Listing> findByRegionAndPriceRange(
 
 ---
 
-## Парсеры
+## Коннекторы источников
 
-Каждый парсер реализует интерфейс:
+Каждый коннектор реализует интерфейс:
 
 ```java
-public interface SourceParser {
-    String getSourceId();           // уникальный идентификатор источника
-    RegionCode getSupportedRegion(); // регион этого парсера
-    List<RawListing> parse();        // основной метод
+public interface ListingConnector {
+    String getSourceId();            // уникальный идентификатор источника
+    RegionCode getSupportedRegion(); // регион этого коннектора
+    List<RawListing> fetch();        // основной метод получения объявлений
 }
 ```
+
+Именование реализаций: `OnlinerConnector`, `RealtConnector`, `KufarConnector`.
+Пакет: `com.flatio.connector.core` (интерфейс), `com.flatio.connector.{source}` (реализации).
 
 ### Обязательные требования
 ```java
 // Rate limiting через Resilience4j
-@RateLimiter(name = "parser-realt")
-@Retry(name = "parser-realt")
-public List<RawListing> parse() {
+@RateLimiter(name = "connector-realt")
+@Retry(name = "connector-realt")
+public List<RawListing> fetch() {
     // ...
 }
 ```
 
-- **Rate limiting** — обязателен для каждого парсера. Конфиг в `application.yml`.
+- **Rate limiting** — обязателен для каждого коннектора. Конфиг в `application.yml`.
 - **Retry с exponential backoff** — 3 попытки, задержка 2s → 4s → 8s
-- **Изоляция ошибок** — ошибка одного объявления не останавливает парсер
+- **Изоляция ошибок** — ошибка одного объявления не останавливает весь fetch
 - **Никогда не хранить сырой HTML** — только распарсенные структурированные данные
 - **Регион через параметр** — `getSupportedRegion()` возвращает код региона, не хардкод
 - **User-Agent** — всегда выставлять реалистичный, не дефолтный OkHttp
