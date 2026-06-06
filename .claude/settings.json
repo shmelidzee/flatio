@@ -31,7 +31,7 @@
       "Bash(git checkout feature/*)",
       "Bash(git checkout fix/*)",
       "Bash(git checkout docs/*)",
-      "Bash(git checkout main)",
+      "Bash(git checkout master)",
       "Bash(git checkout develop)",
       "Bash(git add:*)",
       "Bash(git commit -m:*)",
@@ -63,24 +63,34 @@
       "Bash(docker compose logs:*)",
       "Bash(docker ps)",
 
-      "mcp__notion__notion-fetch",
-      "mcp__notion__notion-search",
+      "mcp__notion__API-post-search",
+      "mcp__notion__API-retrieve-a-page",
+      "mcp__notion__API-retrieve-a-database",
+      "mcp__notion__API-get-block-children",
+      "mcp__notion__API-retrieve-a-block",
       "mcp__github__list_issues",
       "mcp__github__get_issue",
       "mcp__github__search_issues",
       "mcp__github__list_pull_requests",
-      "mcp__github__get_pull_request"
+      "mcp__github__get_pull_request",
+      "mcp__github__get_pull_request_files",
+      "mcp__github__get_pull_request_comments",
+      "mcp__github__get_pull_request_reviews"
     ],
 
     "deny": [
+      "Bash(git push origin master)",
+      "Bash(git push origin master:*)",
       "Bash(git push origin main)",
       "Bash(git push origin main:*)",
       "Bash(git push origin develop)",
       "Bash(git push origin develop:*)",
       "Bash(git push --force:*)",
       "Bash(git push -f:*)",
+      "Bash(git push --force-with-lease origin master:*)",
       "Bash(git push --force-with-lease origin main:*)",
       "Bash(git push --force-with-lease origin develop:*)",
+      "Bash(git checkout -b master)",
       "Bash(git checkout -b main)",
       "Bash(git checkout -b develop)",
 
@@ -126,11 +136,14 @@
       "Write(src/main/resources/db/migration/*)",
       "Edit(src/main/resources/db/migration/*)",
 
-      "mcp__notion__notion-create-pages",
-      "mcp__notion__notion-update-page",
+      "mcp__notion__API-post-page",
+      "mcp__notion__API-patch-page",
+      "mcp__notion__API-patch-block-children",
       "mcp__github__create_issue",
       "mcp__github__update_issue",
-      "mcp__github__create_pull_request"
+      "mcp__github__create_pull_request",
+      "mcp__github__create_pull_request_review",
+      "mcp__github__add_issue_comment"
     ]
   }
 }

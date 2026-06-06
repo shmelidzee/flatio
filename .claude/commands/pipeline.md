@@ -28,13 +28,9 @@ Issue (ready, не blocked)
   ├── ❌ красный → software-engineer фиксит → qa снова (макс 3 итерации)
   └── ✅ зелёный →
         ↓
-[technical-reviewer] code review
-  ├── Request Changes → software-engineer правит → review снова (макс 3 итерации)
-  └── Approved →
-        ↓
-[security-engineer] security review
-  ├── CRITICAL/HIGH → software-engineer правит → security снова (макс 3 итерации)
-  └── Approved →
+[technical-reviewer] + [security-engineer] — параллельно
+  ├── Request Changes / CRITICAL/HIGH → software-engineer правит → оба снова (макс 3 итерации)
+  └── Оба Approved →
         ↓
 PR создан → СТОП: ждать merge от PO
 ```

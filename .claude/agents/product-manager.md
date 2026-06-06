@@ -82,7 +82,7 @@ Milestone содержит: название, описание, дату дед�
 - [ ] Критерий 2
 
 ## Definition of Done
-- [ ] Код написан и соответствует rules/dev-standards.md
+- [ ] Код написан и соответствует rules/development-standards.md
 - [ ] Тесты написаны и проходят
 - [ ] Technical Reviewer поставил Approved
 - [ ] Документация обновлена если изменился публичный интерфейс

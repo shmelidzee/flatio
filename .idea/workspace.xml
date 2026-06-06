@@ -4,22 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="cfe68fd0-bc89-418c-ad50-95d2daae2397" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/.claude/commands/analyst.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.claude/commands/deploy.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.claude/commands/dev.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.claude/commands/docs.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.claude/commands/pm.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.claude/commands/qa-full.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.claude/commands/qa.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.claude/commands/review.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.claude/commands/security.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.claude/commands/status.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.claude/commands/task.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.claude/settings.json" beforeDir="false" afterPath="$PROJECT_DIR$/.claude/settings.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+    <list default="true" id="cfe68fd0-bc89-418c-ad50-95d2daae2397" name="Changes" comment="initialize agents">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/CLAUDE.md" beforeDir="false" afterPath="$PROJECT_DIR$/CLAUDE.md" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -87,12 +73,25 @@
       <workItem from="1780729252809" duration="448000" />
       <workItem from="1780729714217" duration="3082000" />
       <workItem from="1780742623773" duration="310000" />
-      <workItem from="1780742989297" duration="4470000" />
+      <workItem from="1780742989297" duration="5098000" />
     </task>
+    <task id="LOCAL-00001" summary="initialize agents">
+      <option name="closed" value="true" />
+      <created>1780748291648</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1780748291648</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="initialize agents" />
+    <option name="LAST_COMMIT_MESSAGE" value="initialize agents" />
   </component>
   <component name="XSLT-Support.FileAssociations.UIState">
     <expand />
