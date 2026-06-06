@@ -1,0 +1,12 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/flatio
+    username: flatio
+    password: flatio_local
+  jpa:
+    show-sql: true
+
+logging:
+  level:
+    com.flatio: DEBUG
+    org.hibernate.SQL: DEBUG
