@@ -314,6 +314,53 @@ public List<RawListing> parse() {
 
 ---
 
+## Документация API — Swagger/OpenAPI
+
+Используется `springdoc-openapi`. Аннотации обязательны для всех публичных Controller-методов и DTO.
+
+### Controller
+
+```java
+@Operation(
+    summary = "Get listing by ID",
+    description = "Returns a single listing by its identifier"
+)
+@ApiResponse(responseCode = "200", description = "Listing found")
+@ApiResponse(responseCode = "404", description = "Listing not found")
+@ApiResponse(responseCode = "401", description = "Unauthorized")
+@GetMapping("/{id}")
+public ListingResponse findById(@PathVariable Long id) { ... }
+```
+
+Правила:
+- `summary` — одна строка, глагол ("Get", "Create", "Search"), не копировать имя метода
+- `description` — только если `summary` недостаточно
+- `@ApiResponse` — все возможные коды ответа включая ошибки
+
+### DTO Record
+
+```java
+@Schema(description = "Listing search request")
+public record SearchRequest(
+    @Schema(description = "Region code", example = "BY-MIN", requiredMode = REQUIRED)
+    @NotNull RegionCode regionCode,
+
+    @Schema(description = "Minimum price in BYN", example = "30000")
+    BigDecimal priceMin
+) {}
+```
+
+Правила:
+- `@Schema` — на каждом поле DTO с `description` и `example`
+- `requiredMode = REQUIRED` — явно на обязательных полях
+
+### Что запрещено
+- ❌ Controller-метод без `@Operation`
+- ❌ DTO-поле без `@Schema`
+- ❌ `summary` копирует название метода дословно
+
+---
+
 ## Безопасность (базовые правила)
 
 Детальные правила — у `security-engineer`. Здесь минимум который знают все:

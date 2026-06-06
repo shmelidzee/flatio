@@ -13,14 +13,14 @@
 
 | Агент | Файл | Зона ответственности |
 |---|---|---|
-| Product Analyst | `agents/product-analyst.md` | Исследование рынка, ТЗ, Notion |
-| Product Manager | `agents/product-manager.md` | Бэклог, GitHub Issues, роадмап |
-| Software Engineer | `agents/software-engineer.md` | Код, ветки, PR |
-| Security Engineer | `agents/security-engineer.md` | Безопасность кода и инфраструктуры |
-| DevOps Engineer | `agents/devops-engineer.md` | CI/CD, деплой, мониторинг |
-| QA Engineer | `agents/quality-assurance-engineer.md` | Тесты (быстрый и полный режим) |
-| Technical Reviewer | `agents/technical-reviewer.md` | Code review, архитектура |
-| Technical Writer | `agents/technical-writer.md` | Документация в репо |
+| Product Analyst | `.claude/agents/product-analyst.md` | Исследование рынка, ТЗ, Notion |
+| Product Manager | `.claude/agents/product-manager.md` | Бэклог, GitHub Issues, роадмап |
+| Software Engineer | `.claude/agents/software-engineer.md` | Код, ветки, PR |
+| Security Engineer | `.claude/agents/security-engineer.md` | Безопасность кода и инфраструктуры |
+| DevOps Engineer | `.claude/agents/devops-engineer.md` | CI/CD, деплой, мониторинг |
+| QA Engineer | `.claude/agents/quality-assurance-engineer.md` | Тесты (быстрый и полный режим) |
+| Technical Reviewer | `.claude/agents/technical-reviewer.md` | Code review, архитектура |
+| Technical Writer | `.claude/agents/technical-writer.md` | Документация в репо |
 
 ---
 
@@ -86,16 +86,20 @@ flatio/
 │   └── db/migration/           # Flyway миграции
 ├── docker/
 │   ├── docker-compose.yml
-│   └── docker-compose.prod.yml
+│   └── docker-compose.prod.yml # в .gitignore
 ├── docs/
 │   ├── architecture.md
 │   ├── parsers.md
 │   ├── api.md
-│   └── drafts/                 # черновики ТЗ (product-analyst)
+│   ├── local-setup.md
+│   ├── drafts/                 # черновики ТЗ (product-analyst)
+│   └── qa-reports/             # QA отчёты по milestone'ам (qa-engineer)
 ├── .github/
 │   └── workflows/
-├── agents/                     # файлы агентов
-├── rules/                      # стандарты
+├── .claude/
+│   ├── agents/                 # файлы агентов
+│   ├── commands/               # slash-команды
+│   └── rules/                  # стандарты
 ├── CLAUDE.md
 ├── CHANGELOG.md
 └── build.gradle.kts
@@ -111,7 +115,8 @@ flatio/
 | `develop` | интеграционная ветка |
 | `feature/issue-N-slug` | фича по конкретному issue |
 | `fix/issue-N-slug` | баг по конкретному issue |
-| `docs/issue-N` | только документация |
+| `docs/issue-N` | документация по конкретному issue |
+| `docs/post-pr-N` | документация после merge PR N (technical-writer) |
 
 **Правило именования:** `feature/issue-42-listing-search`, `fix/issue-17-duplicate-parser`
 

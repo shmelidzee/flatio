@@ -15,7 +15,7 @@
 ```
 
 ## Что делает
-Читает агента из `agents/devops-engineer.md`:
+Читает агента из `.claude/agents/devops-engineer.md`:
 
 **check** — предеплойная проверка:
 - Тесты зелёные в CI

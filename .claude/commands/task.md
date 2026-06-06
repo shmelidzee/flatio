@@ -16,7 +16,7 @@
 ```
 
 ## Что делает
-Читает агента из `agents/product-manager.md` (сценарий прямой задачи от PO):
+Читает агента из `.claude/agents/product-manager.md` (сценарий прямой задачи от PO):
 1. Product Manager оформляет Issue по шаблону
 2. Определяет тип (chore/feature/docs), приоритет, milestone
 3. Показывает черновик Issue

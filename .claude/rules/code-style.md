@@ -319,3 +319,5 @@ Thread.sleep(PARSER_DELAY_MS);
 - [ ] Нет magic numbers без константы
 - [ ] Нет `null` в возвращаемых значениях
 - [ ] Lombok аннотации на Entity только разрешённые
+- [ ] `@Operation` и `@ApiResponse` на каждом публичном методе Controller
+- [ ] `@Schema` с `description` и `example` на каждом поле DTO

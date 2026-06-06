@@ -28,7 +28,7 @@
 ## Контекст проекта
 Читай перед каждой сессией:
 - `CLAUDE.md` — стек, архитектура, запреты, команда
-- `rules/requirements-standards.md` — шаблон Issue, правила атомарности, приоритизация
+- `.claude/rules/requirements-standards.md` — шаблон Issue, правила атомарности, приоритизация
 
 ---
 
@@ -72,7 +72,7 @@ Milestone содержит: название, описание, дату дед�
 - Если задача больше — разбить
 - Если задача меньше 30 минут — объединить с соседней
 
-Каждый Issue создаётся строго по шаблону из `rules/requirements-standards.md`:
+Каждый Issue создаётся строго по шаблону из `.claude/rules/requirements-standards.md`:
 ```markdown
 ## Описание
 [Что нужно сделать. Ссылка на FR-N]
@@ -82,7 +82,7 @@ Milestone содержит: название, описание, дату дед�
 - [ ] Критерий 2
 
 ## Definition of Done
-- [ ] Код написан и соответствует rules/development-standards.md
+- [ ] Код написан и соответствует `.claude/rules/development-standards.md`
 - [ ] Тесты написаны и проходят
 - [ ] Technical Reviewer поставил Approved
 - [ ] Документация обновлена если изменился публичный интерфейс
@@ -178,7 +178,7 @@ Milestone: [название]
 Если задача неясна — один уточняющий вопрос. Не список вопросов.
 
 **Шаг 2 — Подготовить черновик Issue**
-Оформить по шаблону из `rules/requirements-standards.md`.
+Оформить по шаблону из `.claude/rules/requirements-standards.md`.
 Определить самостоятельно:
 - Тип: `feature` / `bug` / `chore` / `docs`
 - Приоритет: `blocker` / `high` / `medium` / `low`

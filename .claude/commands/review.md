@@ -14,7 +14,7 @@
 ```
 
 ## Что делает
-Читает агента из `agents/technical-reviewer.md`:
+Читает агента из `.claude/agents/technical-reviewer.md`:
 1. Читает PR и связанные Issues
 2. Проверяет соответствие Acceptance Criteria
 3. Проверяет архитектуру, безопасность, производительность, мультирегиональность

@@ -14,7 +14,7 @@
 ```
 
 ## Что делает
-Читает агента из `agents/software-engineer.md`:
+Читает агента из `.claude/agents/software-engineer.md`:
 1. Читает указанный Issue (или берёт следующий по приоритету из текущего milestone)
 2. Создаёт ветку `feature/issue-N-slug`
 3. Реализует задачу строго по Acceptance Criteria

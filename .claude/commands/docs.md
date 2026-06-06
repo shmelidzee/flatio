@@ -14,7 +14,7 @@
 ```
 
 ## Что делает
-Читает агента из `agents/technical-writer.md`:
+Читает агента из `.claude/agents/technical-writer.md`:
 1. Читает diff PR
 2. Определяет какие файлы документации затронуты
 3. Обновляет README.md, docs/api.md, docs/parsers.md, docs/architecture.md, docs/local-setup.md

@@ -14,8 +14,8 @@
 ## Контекст проекта
 Читай перед каждой сессией:
 - `CLAUDE.md` — стек, архитектура, запреты, команда
-- `rules/development-standards.md` — архитектура слоёв, паттерны, запреты
-- `rules/code-style.md` — форматирование, Javadoc, структура методов
+- `.claude/rules/development-standards.md` — архитектура слоёв, паттерны, запреты
+- `.claude/rules/code-style.md` — форматирование, Javadoc, структура методов
 
 ---
 

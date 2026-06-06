@@ -8,7 +8,7 @@
 ```
 
 ## Что делает
-Читает агента из `agents/quality-assurance-engineer.md` в быстром режиме:
+Читает агента из `.claude/agents/quality-assurance-engineer.md` в быстром режиме:
 1. Читает diff последнего коммита
 2. Читает Acceptance Criteria из связанного Issue
 3. Пишет unit тесты на реальные сценарии

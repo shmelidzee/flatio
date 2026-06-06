@@ -72,7 +72,7 @@ on:
   push:
     branches: [ 'feature/**', 'fix/**', 'develop' ]
   pull_request:
-    branches: [ develop, main ]
+    branches: [ develop, master ]
 
 jobs:
   build:
@@ -103,12 +103,12 @@ jobs:
           SPRING_DATASOURCE_PASSWORD: test
 ```
 
-**Deploy workflow** (`deploy.yml`) — на merge в main:
+**Deploy workflow** (`deploy.yml`) — на merge в master:
 ```yaml
 name: Deploy to Railway
 on:
   push:
-    branches: [ main ]
+    branches: [ master ]
 
 jobs:
   deploy:

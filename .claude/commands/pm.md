@@ -16,7 +16,7 @@
 ```
 
 ## Что делает
-Читает агента из `agents/product-manager.md` и выполняет нужный сценарий:
+Читает агента из `.claude/agents/product-manager.md` и выполняет нужный сценарий:
 
 **decompose** — читает Notion, сверяет с GitHub Issues, создаёт новые Issues для нереализованных FR.
 

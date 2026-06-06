@@ -14,7 +14,7 @@
 ```
 
 ## Что делает
-Читает агента из `agents/quality-assurance-engineer.md` в полном режиме:
+Читает агента из `.claude/agents/quality-assurance-engineer.md` в полном режиме:
 1. Запускает unit тесты + интеграционные тесты через Testcontainers
 2. Генерирует Jacoco отчёт о покрытии
 3. Проверяет покрытие: Service 100%, Parser 100%, Repository 100%, Controller 80%+
