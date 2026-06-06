@@ -45,6 +45,17 @@ See `application-local.yml.example` for all available overrides and their descri
 ./gradlew integrationTest
 ```
 
+## Logging
+
+Log format depends on the active Spring profile:
+
+| Profile | Format |
+|---------|--------|
+| `prod` | Structured JSON via Logstash encoder (`@timestamp`, `level`, `logger_name`, `thread_name`, `message`) |
+| any other (e.g. `local`) | Human-readable: `yyyy-MM-dd HH:mm:ss.SSS [thread] LEVEL logger - message` |
+
+No additional configuration is required — the format switches automatically via `logback-spring.xml`.
+
 ## API Documentation
 
 Swagger UI is available at `http://localhost:8080/swagger-ui.html` when running locally.
