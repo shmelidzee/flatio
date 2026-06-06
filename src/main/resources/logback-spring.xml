@@ -6,10 +6,6 @@
     <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
       <encoder class="net.logstash.logback.encoder.LogstashEncoder">
         <includeContext>false</includeContext>
-        <fieldNames>
-          <timestamp>timestamp</timestamp>
-          <version>[ignore]</version>
-        </fieldNames>
         <timeZone>UTC</timeZone>
       </encoder>
     </appender>
