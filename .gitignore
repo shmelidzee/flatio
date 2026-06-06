@@ -1,16 +1,7 @@
-# Compiled class files
+# ============================================================
+# Compiled & Build
+# ============================================================
 *.class
-
-# Log files
-*.log
-
-# BlueJ files
-*.ctxt
-
-# Mobile Tools for Java (J2ME)
-.mtj.tmp/
-
-# Package Files
 *.jar
 *.war
 *.nar
@@ -18,22 +9,8 @@
 *.zip
 *.tar.gz
 *.rar
-
-# virtual machine crash logs
 hs_err_pid*
 replay_pid*
-
-# Maven
-target/
-pom.xml.tag
-pom.xml.releaseBackup
-pom.xml.versionsBackup
-pom.xml.next
-release.properties
-dependency-reduced-pom.xml
-buildNumber.properties
-.mvn/timing.properties
-.mvn/wrapper/maven-wrapper.jar
 
 # Gradle
 .gradle/
@@ -41,6 +18,10 @@ build/
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
 !**/src/test/**/build/
+
+# ============================================================
+# IDE
+# ============================================================
 
 # IntelliJ IDEA
 .idea/
@@ -73,15 +54,60 @@ bin/
 /nbdist/
 /.nb-gradle/
 
+# ============================================================
 # OS
+# ============================================================
 .DS_Store
 Thumbs.db
+*.log
 
-# Environment
+# ============================================================
+# Spring Boot / Application
+# ============================================================
+
+# Локальный конфиг с секретами — никогда не коммитить
+src/main/resources/application-local.yml
+src/main/resources/application-local.properties
+
+# Загруженные файлы если будут
+uploads/
+
+# ============================================================
+# Environment & Secrets
+# ============================================================
 .env
 .env.local
 .env.*.local
 
+# ============================================================
+# Docker
+# ============================================================
+# Продакшн compose с реальными портами и секретами
+docker/docker-compose.prod.yml
+
+# ============================================================
 # Claude Code
-.claude/memory/
+# ============================================================
+
+# Личные настройки — токены, локальные пути
+.claude/settings.local.json
+
+# MCP конфиг с токенами
 .mcp.json
+
+# Память агентов между сессиями
+.claude/memory/
+
+# Черновики ТЗ — хранятся локально, не в git
+docs/drafts/
+
+# QA отчёты — генерируются локально
+docs/qa-reports/
+
+# ============================================================
+# Logs & Reports
+# ============================================================
+*.log
+logs/
+test-results/
+jacoco/

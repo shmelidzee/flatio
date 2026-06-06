@@ -2,22 +2,37 @@
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
     "allow": [
-      "Bash(./mvnw test)",
-      "Bash(./mvnw test:*)",
-      "Bash(./mvnw verify)",
-      "Bash(./mvnw verify:*)",
-      "Bash(./mvnw clean)",
-      "Bash(./mvnw compile)",
-      "Bash(./mvnw dependency:tree)",
-      "Bash(./mvnw help:effective-pom)",
+      "Bash(./gradlew test)",
+      "Bash(./gradlew test:*)",
+      "Bash(./gradlew check)",
+      "Bash(./gradlew check:*)",
+      "Bash(./gradlew clean)",
+      "Bash(./gradlew build)",
+      "Bash(./gradlew build:*)",
+      "Bash(./gradlew compileJava)",
+      "Bash(./gradlew compileTestJava)",
+      "Bash(./gradlew dependencies)",
+      "Bash(./gradlew dependencyInsight:*)",
+      "Bash(./gradlew tasks)",
+      "Bash(./gradlew bootRun:*)",
+      "Bash(./gradlew integrationTest)",
+      "Bash(./gradlew integrationTest:*)",
+      "Bash(./gradlew flywayInfo)",
+      "Bash(./gradlew flywayValidate)",
+
       "Bash(git status)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
       "Bash(git show:*)",
       "Bash(git branch:*)",
       "Bash(git checkout -b feature/*)",
+      "Bash(git checkout -b fix/*)",
+      "Bash(git checkout -b docs/*)",
       "Bash(git checkout feature/*)",
+      "Bash(git checkout fix/*)",
+      "Bash(git checkout docs/*)",
       "Bash(git checkout main)",
+      "Bash(git checkout develop)",
       "Bash(git add:*)",
       "Bash(git commit -m:*)",
       "Bash(git commit --amend:*)",
@@ -27,6 +42,11 @@
       "Bash(git worktree remove:*)",
       "Bash(git push -u origin feature/*)",
       "Bash(git push origin feature/*)",
+      "Bash(git push -u origin fix/*)",
+      "Bash(git push origin fix/*)",
+      "Bash(git push -u origin docs/*)",
+      "Bash(git push origin docs/*)",
+
       "Bash(gh issue view:*)",
       "Bash(gh issue list:*)",
       "Bash(gh issue comment:*)",
@@ -38,9 +58,11 @@
       "Bash(gh pr comment:*)",
       "Bash(gh pr review --comment:*)",
       "Bash(gh pr review --request-changes:*)",
+
       "Bash(docker compose ps)",
       "Bash(docker compose logs:*)",
       "Bash(docker ps)",
+
       "mcp__notion__notion-fetch",
       "mcp__notion__notion-search",
       "mcp__github__list_issues",
@@ -49,39 +71,66 @@
       "mcp__github__list_pull_requests",
       "mcp__github__get_pull_request"
     ],
+
     "deny": [
       "Bash(git push origin main)",
       "Bash(git push origin main:*)",
+      "Bash(git push origin develop)",
+      "Bash(git push origin develop:*)",
       "Bash(git push --force:*)",
       "Bash(git push -f:*)",
       "Bash(git push --force-with-lease origin main:*)",
+      "Bash(git push --force-with-lease origin develop:*)",
+      "Bash(git checkout -b main)",
+      "Bash(git checkout -b develop)",
+
       "Bash(gh pr merge:*)",
       "Bash(gh pr review --approve:*)",
       "Bash(gh issue close:*)",
+
       "Bash(rm -rf:*)",
       "Bash(rm -fr:*)",
       "Bash(sudo:*)",
+
       "Bash(docker compose down -v:*)",
-      "Bash(mvn deploy:*)",
-      "Bash(./mvnw deploy:*)",
-      "Bash(./mvnw release:*)",
+      "Bash(docker compose down --volumes:*)",
+
+      "Bash(./gradlew publish:*)",
+      "Bash(./gradlew release:*)",
+      "Bash(./gradlew flywayRepair)",
+      "Bash(./gradlew flywayBaseline)",
+
       "Edit(.env)",
       "Edit(.env.*)",
-      "Edit(Dockerfile)",
-      "Edit(docker-compose.yml)",
-      "Edit(railway.toml)",
-      "Edit(src/main/resources/db/migration/V1__*)",
-      "Edit(src/main/resources/db/migration/V2__*)"
+      "Edit(.claude/settings.local.json)",
+      "Edit(docker/docker-compose.prod.yml)",
+      "Edit(src/main/resources/application.yml)"
     ],
+
     "ask": [
       "Bash(git push:*)",
       "Bash(gh pr review:*)",
       "Bash(gh issue create:*)",
       "Bash(gh issue edit:*)",
-      "Edit(pom.xml)",
+      "Bash(./gradlew flywayMigrate)",
+      "Bash(docker compose up:*)",
+      "Bash(docker compose down)",
+      "Bash(docker compose restart:*)",
+
+      "Edit(build.gradle.kts)",
+      "Edit(settings.gradle.kts)",
+      "Edit(gradle/libs.versions.toml)",
+      "Edit(Dockerfile)",
+      "Edit(docker/docker-compose.yml)",
+
       "Write(src/main/resources/db/migration/*)",
+      "Edit(src/main/resources/db/migration/*)",
+
       "mcp__notion__notion-create-pages",
-      "mcp__notion__notion-update-page"
+      "mcp__notion__notion-update-page",
+      "mcp__github__create_issue",
+      "mcp__github__update_issue",
+      "mcp__github__create_pull_request"
     ]
   }
 }
