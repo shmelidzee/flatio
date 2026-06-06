@@ -1,3 +1,6 @@
+# Local configuration overrides — copy to application-local.yml and adjust as needed.
+# This file IS committed. application-local.yml is git-ignored.
+
 spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/flatio
@@ -9,4 +12,6 @@ spring:
 logging:
   level:
     com.flatio: DEBUG
+    org.flywaydb: DEBUG
     org.hibernate.SQL: DEBUG
+    org.hibernate.orm.jdbc.bind: TRACE
