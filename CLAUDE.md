@@ -117,6 +117,22 @@ flatio/
 
 ---
 
+## Ограничения GitHub
+
+### Self-review restriction
+GitHub не позволяет автору PR апрувить собственный PR. В single-owner репозитории это означает что `technical-reviewer` и `security-engineer` физически не могут выставить статус `APPROVE` через API — GitHub возвращает 422.
+
+**Workaround:** оба агента используют `event: COMMENT` с явным вердиктом в теле ревью:
+```
+**Verdict: ✅ APPROVED** — Security Engineer
+**Verdict: ✅ APPROVED** — Technical Reviewer
+```
+Это функционально эквивалентно апруву и служит документацией того что оба ревьюера проверили PR.
+
+Когда в проекте появится второй collaborator — workaround убрать, перейти на `event: APPROVE`.
+
+---
+
 ## Жёсткие запреты
 
 Нарушение любого из этих правил — стоппер. Агент останавливается и сообщает владельцу продукта.
