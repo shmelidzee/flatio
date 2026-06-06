@@ -28,6 +28,7 @@ repositories {
 val mapstructVersion = "1.5.5.Final"
 val resilience4jVersion = "2.2.0"
 val testcontainersVersion = "1.19.7"
+val springdocVersion = "2.4.0"
 
 dependencies {
   implementation("org.springframework.boot:spring-boot-starter-web")
@@ -42,6 +43,8 @@ dependencies {
   implementation("io.github.resilience4j:resilience4j-spring-boot3:$resilience4jVersion")
   implementation("io.github.resilience4j:resilience4j-retry:$resilience4jVersion")
   implementation("io.github.resilience4j:resilience4j-ratelimiter:$resilience4jVersion")
+
+  implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:$springdocVersion")
 
   implementation("org.mapstruct:mapstruct:$mapstructVersion")
   annotationProcessor("org.mapstruct:mapstruct-processor:$mapstructVersion")
