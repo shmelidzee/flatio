@@ -35,6 +35,12 @@ management:
       probes:
         enabled: true
 
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    path: /swagger-ui.html
+
 logging:
   level:
     com.flatio: INFO
