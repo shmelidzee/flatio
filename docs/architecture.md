@@ -48,7 +48,8 @@ Root package: `com.flatio`
 com.flatio
 ├── config/              # Spring configuration and beans
 │   ├── OpenApiConfig    # springdoc/Swagger setup
-│   └── ConnectorConfig  # @Bean("onlinerRestClient") with timeouts + @EnableConfigurationProperties
+│   ├── ConnectorConfig  # @Bean("onlinerRestClient") with timeouts + @EnableConfigurationProperties
+│   └── SchedulerConfig  # @EnableScheduling — activates Spring scheduled task execution
 ├── domain/              # JPA entities (domain model)
 │   ├── country/         # Country entity — ISO country reference data
 │   ├── currency/        # Currency entity — currency reference data
@@ -86,7 +87,8 @@ com.flatio
 │   ├── core/            # ListingConnector interface + RawListing record
 │   └── onliner/         # OnlinerConnector + OnlinerProperties + DTO records
 ├── bot/                 # Telegram Bot (to be added)
-├── scheduler/           # Scheduled tasks (to be added)
+├── scheduler/           # Scheduled tasks
+│   └── ListingSyncScheduler  # @Scheduled — iterates all ListingConnector beans, calls ingestBatch per source
 ├── security/            # Auth / JWT (to be added)
 └── util/                # Utilities
 ```
