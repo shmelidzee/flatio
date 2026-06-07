@@ -65,8 +65,26 @@
       "Bash(docker compose logs:*)",
       "Bash(docker ps)",
 
+      "Edit(src/main/java/*)",
+      "Write(src/main/java/*)",
+      "Edit(src/test/java/*)",
+      "Write(src/test/java/*)",
+      "Edit(src/integrationTest/java/*)",
+      "Write(src/integrationTest/java/*)",
       "Edit(src/main/resources/application.yml)",
       "Write(src/main/resources/application.yml)",
+      "Edit(src/main/resources/db/migration/*)",
+      "Write(src/main/resources/db/migration/*)",
+      "Edit(src/test/resources/*)",
+      "Write(src/test/resources/*)",
+
+      "Bash(git pull origin develop)",
+      "Bash(./gradlew clean build)",
+      "Bash(./gradlew jacocoTestReport)",
+
+      "mcp__github__get_pull_request_status",
+      "mcp__github__list_commits",
+      "mcp__github__search_code",
 
       "mcp__notion__API-post-search",
       "mcp__notion__API-retrieve-a-page",
@@ -139,9 +157,6 @@
       "Edit(gradle/libs.versions.toml)",
       "Edit(Dockerfile)",
       "Edit(docker/docker-compose.yml)",
-
-      "Write(src/main/resources/db/migration/*)",
-      "Edit(src/main/resources/db/migration/*)",
 
       "mcp__notion__API-post-page",
       "mcp__notion__API-patch-page",
