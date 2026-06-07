@@ -2,6 +2,7 @@ package com.flatio.repository;
 
 import com.flatio.domain.listing.Listing;
 import com.flatio.domain.listing.ListingStatus;
+import com.flatio.domain.source.Source;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -24,6 +25,18 @@ public interface ListingRepository extends JpaRepository<Listing, Long> {
       @Param("externalId") String externalId,
       @Param("sourceId") Long sourceId
   );
+
+  /**
+   * Finds listings with the given deduplication hash from any source except the specified one.
+   *
+   * <p>Used for cross-source duplicate detection: locates listings from other sources
+   * that share the same computed hash, indicating they may be the same physical property.
+   *
+   * @param dedupHash the SHA-256 hash to search for, must not be null
+   * @param source    the source to exclude from results
+   * @return list of matching listings from other sources, never null, may be empty
+   */
+  List<Listing> findByDedupHashAndSourceNot(String dedupHash, Source source);
 
   /**
    * Finds all listings for a given country code and status.
