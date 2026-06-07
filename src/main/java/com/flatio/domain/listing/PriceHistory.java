@@ -12,6 +12,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.Instant;
+import jakarta.persistence.PrePersist;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -38,4 +39,11 @@ public class PriceHistory {
 
   @Column(name = "recorded_at", nullable = false, updatable = false)
   private Instant recordedAt;
+
+  @PrePersist
+  protected void onInsert() {
+    if (recordedAt == null) {
+      recordedAt = Instant.now();
+    }
+  }
 }
