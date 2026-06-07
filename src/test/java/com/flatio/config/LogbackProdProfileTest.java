@@ -23,7 +23,8 @@ import static org.assertj.core.api.Assertions.assertThat;
             "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration," +
             "org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration," +
             "org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration," +
-            "org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration"
+            "org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration",
+        "spring.main.lazy-initialization=true"
     }
 )
 @ActiveProfiles("prod")
