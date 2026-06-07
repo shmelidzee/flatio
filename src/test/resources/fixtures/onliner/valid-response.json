@@ -1,0 +1,59 @@
+{
+  "apartments": [
+    {
+      "id": 1001,
+      "url": "https://r.onliner.by/ak/apartments/1001",
+      "deal_type": "rent",
+      "photo": "https://content.onliner.by/image/1001.jpg",
+      "price": {
+        "amount": "450.00",
+        "currency": "USD"
+      },
+      "location": {
+        "address": "Минск, пр-т Независимости, 72",
+        "latitude": 53.9272,
+        "longitude": 27.6244
+      },
+      "area": {
+        "total": 55.5,
+        "living": 35.2,
+        "kitchen": 8.3
+      },
+      "rooms_count": 2,
+      "floor": 3,
+      "number_of_floors": 9,
+      "created_at": "2026-05-15T10:00:00Z"
+    },
+    {
+      "id": 1002,
+      "url": "https://r.onliner.by/ak/apartments/1002",
+      "deal_type": "sell",
+      "photo": null,
+      "price": {
+        "amount": "75000.00",
+        "currency": "USD"
+      },
+      "location": {
+        "address": "Минск, ул. Немига, 5",
+        "latitude": 53.9006,
+        "longitude": 27.5590
+      },
+      "area": {
+        "total": 42.0,
+        "living": 28.0,
+        "kitchen": 6.0
+      },
+      "rooms_count": 1,
+      "floor": 7,
+      "number_of_floors": 12,
+      "created_at": "2026-06-01T08:30:00Z"
+    }
+  ],
+  "total": 2,
+  "page": {
+    "limit": 50,
+    "items": 2,
+    "current": 1,
+    "last": 1
+  }
+}

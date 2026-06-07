@@ -1,0 +1,56 @@
+{
+  "apartments": [
+    {
+      "id": 2001,
+      "url": "https://r.onliner.by/ak/apartments/2001",
+      "deal_type": "rent",
+      "photo": "https://content.onliner.by/image/2001.jpg",
+      "price": {
+        "amount": "300.00",
+        "currency": "USD"
+      },
+      "location": {
+        "address": "Минск, ул. Якуба Коласа, 12",
+        "latitude": 53.9080,
+        "longitude": 27.5640
+      },
+      "area": {
+        "total": 38.0,
+        "living": 22.0,
+        "kitchen": 7.0
+      },
+      "rooms_count": 1,
+      "floor": 2,
+      "number_of_floors": 5,
+      "created_at": "2026-06-02T09:00:00Z"
+    },
+    {
+      "id": 2002,
+      "url": "https://r.onliner.by/ak/apartments/2002",
+      "deal_type": "rent",
+      "photo": null,
+      "price": null,
+      "location": {
+        "address": "Минск, пр-т Победителей, 100",
+        "latitude": 53.9350,
+        "longitude": 27.5800
+      },
+      "area": {
+        "total": 60.0,
+        "living": 40.0,
+        "kitchen": 10.0
+      },
+      "rooms_count": 2,
+      "floor": 5,
+      "number_of_floors": 14,
+      "created_at": "2026-06-03T10:00:00Z"
+    }
+  ],
+  "total": 2,
+  "page": {
+    "limit": 50,
+    "items": 2,
+    "current": 1,
+    "last": 1
+  }
+}
