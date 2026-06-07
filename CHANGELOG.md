@@ -8,6 +8,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **PR #77 — M1.3.4 + M1.3.8: ListingSyncScheduler — periodic sync + structured logging (issue #15)**
+  - `com.flatio.config.SchedulerConfig` — activates Spring scheduling via `@EnableScheduling`
+  - `com.flatio.scheduler.ListingSyncScheduler` — iterates all `ListingConnector` beans and syncs each source sequentially:
+    - `@Scheduled(fixedDelayString = "${flatio.sync.interval-ms}", initialDelay = 0)` — runs at startup then after configurable delay
+    - Resolves `Source` entity from `SourceRepository.findByCode(sourceId)` for each connector
+    - Calls `ListingIngestionService.ingestBatch(rawListings, source)` and logs structured sync result
+    - Per-connector error isolation: exception in one connector does not abort others; caught and logged as `log.error`
+    - Structured `key=value` logging: `source`, `fetched`, `added`, `updated`, `errors`, `durationMs` per sync cycle
+  - `application.yml` — `flatio.sync.interval-ms: ${FLATIO_SYNC_INTERVAL_MS:1800000}` (default 30 min)
+  - `LogbackProdProfileTest` — stabilised with `@MockBean SourceRepository` for the new scheduler dependency
+  - Tests: `ListingSyncSchedulerTest` — 7 unit tests (happy path, empty fetch, source not found, connector throws,
+    ingest throws, second-connector isolation); manual construction in `@BeforeEach` to handle `List<ListingConnector>`
+  - 91 tests passed, 0 failed — M1.3.4 + M1.3.8 closed
+
 - **PR #75 — M1.3.3 + M1.3.5: ListingIngestionService — upsert + PriceHistory (issue #14)**
   - `com.flatio.service.ListingIngestionService` — interface with two methods:
     - `ingest(RawListing raw, Source source): IngestOutcome` — transactional upsert for a single listing
