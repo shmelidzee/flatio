@@ -8,6 +8,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **PR #71 — M1.3.1: ListingConnector interface + RawListing record (issue #12, M1.3.1)**
+  - `com.flatio.connector.core.ListingConnector` — интерфейс контракта для всех коннекторов источников данных
+    с тремя методами: `getSourceId()`, `getSupportedRegionCode()` (код из конфига, не хардкод), `fetch()`
+  - `com.flatio.connector.core.RawListing` — Java Record с 18 полями для передачи сырых данных от коннектора
+    к сервису; 4 обязательных поля (externalId, title, price, sourceUrl), остальные nullable
+  - Javadoc на интерфейсе документирует security-требования к реализациям: rate limiting, retry, изоляция
+    ошибок, запрет хранения raw HTML
+  - 6 unit-тестов в `RawListingTest`: конструирование, nullable поля, equals/hashCode, graceful degradation,
+    мультирегиональность (non-BY регион)
+  - 62 теста passed, 0 failed — M1.3.1 закрыт
+
 - **PR #69 — M1.2.6: paginated ListingRepository + IT тесты репозиториев (issue #11, M1.2.6)**
   - `ListingRepository.findPageByCountryCodeAndStatus(String, ListingStatus, Pageable)` — пагинированный метод с явным `countQuery` (без JOIN FETCH, без in-memory пагинации)
   - 4 новых IT-теста пагинации в `ListingRepositoryIT`: первая страница, вторая страница, фильтрация INACTIVE, пустая страница
