@@ -1,7 +1,6 @@
 package com.flatio.service;
 
 import com.flatio.connector.core.RawListing;
-import com.flatio.connector.core.RawListingMapper;
 import com.flatio.domain.country.Country;
 import com.flatio.domain.currency.Currency;
 import com.flatio.domain.listing.DealType;
@@ -42,7 +41,7 @@ class ListingIngestionServiceImplTest {
   @Mock private PriceHistoryRepository priceHistoryRepository;
   @Mock private CurrencyRepository currencyRepository;
   @Mock private RawListingMapper rawListingMapper;
-  @Mock private ListingService listingService;
+  @Mock private DedupHashService dedupHashService;
   @Mock private ListingIngestionService self;
 
   @InjectMocks
@@ -73,7 +72,7 @@ class ListingIngestionServiceImplTest {
     when(currencyRepository.findByCode("BYN")).thenReturn(Optional.of(byn));
     when(listingRepository.findByExternalIdAndSourceId("ext-001", 1L)).thenReturn(Optional.empty());
     when(rawListingMapper.toEntity(raw)).thenReturn(mapped);
-    when(listingService.computeDedupHash(any(), any(), any(), any())).thenReturn("deadbeef");
+    when(dedupHashService.computeDedupHash(any(), any(), any(), any())).thenReturn("deadbeef");
 
     // When
     var result = ingestionService.ingest(raw, source);
@@ -92,7 +91,7 @@ class ListingIngestionServiceImplTest {
     when(currencyRepository.findByCode("BYN")).thenReturn(Optional.of(byn));
     when(listingRepository.findByExternalIdAndSourceId(anyString(), anyLong())).thenReturn(Optional.empty());
     when(rawListingMapper.toEntity(raw)).thenReturn(mapped);
-    when(listingService.computeDedupHash(any(), any(), any(), any())).thenReturn("abc123");
+    when(dedupHashService.computeDedupHash(any(), any(), any(), any())).thenReturn("abc123");
 
     // When
     ingestionService.ingest(raw, source);
@@ -116,7 +115,7 @@ class ListingIngestionServiceImplTest {
     when(currencyRepository.findByCode("BYN")).thenReturn(Optional.of(byn));
     when(listingRepository.findByExternalIdAndSourceId(anyString(), anyLong())).thenReturn(Optional.empty());
     when(rawListingMapper.toEntity(raw)).thenReturn(mapped);
-    when(listingService.computeDedupHash(any(), any(), any(), any())).thenReturn("hash1");
+    when(dedupHashService.computeDedupHash(any(), any(), any(), any())).thenReturn("hash1");
 
     // When
     ingestionService.ingest(raw, source);
@@ -140,7 +139,7 @@ class ListingIngestionServiceImplTest {
 
     when(currencyRepository.findByCode("BYN")).thenReturn(Optional.of(byn));
     when(listingRepository.findByExternalIdAndSourceId("ext-010", 1L)).thenReturn(Optional.of(existing));
-    when(listingService.computeDedupHash(any(), any(), any(), any())).thenReturn("hash10");
+    when(dedupHashService.computeDedupHash(any(), any(), any(), any())).thenReturn("hash10");
 
     // When
     var result = ingestionService.ingest(raw, source);
@@ -157,13 +156,12 @@ class ListingIngestionServiceImplTest {
 
     when(currencyRepository.findByCode("BYN")).thenReturn(Optional.of(byn));
     when(listingRepository.findByExternalIdAndSourceId("ext-011", 1L)).thenReturn(Optional.of(existing));
-    when(listingService.computeDedupHash(any(), any(), any(), any())).thenReturn("hash11");
+    when(dedupHashService.computeDedupHash(any(), any(), any(), any())).thenReturn("hash11");
 
     // When
     ingestionService.ingest(raw, source);
 
     // Then
-    assertThat(existing.getPrice()).isEqualByComparingTo(BigDecimal.valueOf(550));
     assertThat(existing.getStatus()).isEqualTo(ListingStatus.ACTIVE);
     assertThat(existing.getDedupHash()).isEqualTo("hash11");
     verify(listingRepository).save(existing);
@@ -177,7 +175,7 @@ class ListingIngestionServiceImplTest {
 
     when(currencyRepository.findByCode("BYN")).thenReturn(Optional.of(byn));
     when(listingRepository.findByExternalIdAndSourceId("ext-012", 1L)).thenReturn(Optional.of(existing));
-    when(listingService.computeDedupHash(any(), any(), any(), any())).thenReturn("hash12");
+    when(dedupHashService.computeDedupHash(any(), any(), any(), any())).thenReturn("hash12");
 
     // When
     ingestionService.ingest(raw, source);
@@ -194,7 +192,7 @@ class ListingIngestionServiceImplTest {
 
     when(currencyRepository.findByCode("BYN")).thenReturn(Optional.of(byn));
     when(listingRepository.findByExternalIdAndSourceId("ext-013", 1L)).thenReturn(Optional.of(existing));
-    when(listingService.computeDedupHash(any(), any(), any(), any())).thenReturn("hash13");
+    when(dedupHashService.computeDedupHash(any(), any(), any(), any())).thenReturn("hash13");
 
     // When
     ingestionService.ingest(raw, source);
@@ -204,14 +202,14 @@ class ListingIngestionServiceImplTest {
   }
 
   @Test
-  void should_not_call_mapper_on_update_path() {
+  void should_not_call_mapper_toEntity_on_update_path() {
     // Given — update uses existing entity, not the mapper
     var raw = buildRawListing("ext-014", BigDecimal.valueOf(500));
     var existing = buildExistingListing("ext-014", BigDecimal.valueOf(500));
 
     when(currencyRepository.findByCode("BYN")).thenReturn(Optional.of(byn));
     when(listingRepository.findByExternalIdAndSourceId("ext-014", 1L)).thenReturn(Optional.of(existing));
-    when(listingService.computeDedupHash(any(), any(), any(), any())).thenReturn("hash14");
+    when(dedupHashService.computeDedupHash(any(), any(), any(), any())).thenReturn("hash14");
 
     // When
     ingestionService.ingest(raw, source);

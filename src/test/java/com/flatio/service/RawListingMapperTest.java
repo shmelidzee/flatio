@@ -1,5 +1,6 @@
-package com.flatio.connector.core;
+package com.flatio.service;
 
+import com.flatio.connector.core.RawListing;
 import com.flatio.domain.listing.DealType;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -29,9 +30,14 @@ class RawListingMapperTest {
   }
 
   @Test
-  void should_map_deal_type_case_insensitively() {
+  void should_map_deal_type_from_lowercase_string() {
     // When / Then
     assertThat(mapper.toDealType("rent")).isEqualTo(DealType.RENT);
+  }
+
+  @Test
+  void should_map_deal_type_from_mixed_case_string() {
+    // When / Then
     assertThat(mapper.toDealType("Sell")).isEqualTo(DealType.SELL);
   }
 

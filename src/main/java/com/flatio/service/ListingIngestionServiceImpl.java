@@ -1,7 +1,6 @@
 package com.flatio.service;
 
 import com.flatio.connector.core.RawListing;
-import com.flatio.connector.core.RawListingMapper;
 import com.flatio.domain.currency.Currency;
 import com.flatio.domain.listing.Listing;
 import com.flatio.domain.listing.ListingStatus;
@@ -30,7 +29,7 @@ public class ListingIngestionServiceImpl implements ListingIngestionService {
   private final PriceHistoryRepository priceHistoryRepository;
   private final CurrencyRepository currencyRepository;
   private final RawListingMapper rawListingMapper;
-  private final ListingService listingService;
+  private final DedupHashService dedupHashService;
 
   /**
    * Self-reference injected lazily to ensure calls from {@link #ingestBatch} go through
@@ -86,8 +85,8 @@ public class ListingIngestionServiceImpl implements ListingIngestionService {
     listing.setStatus(ListingStatus.ACTIVE);
     listing.setDedupHash(computeDedupHash(listing));
 
-    listingRepository.save(listing);
     recordPriceHistory(listing, currency);
+    listingRepository.save(listing);
 
     log.debug("Created listing: externalId={}, source={}", listing.getExternalId(), source.getCode());
     return IngestOutcome.CREATED;
@@ -96,7 +95,9 @@ public class ListingIngestionServiceImpl implements ListingIngestionService {
   private IngestOutcome updateListing(Listing existing, RawListing raw, Currency currency) {
     boolean priceChanged = existing.getPrice().compareTo(raw.price()) != 0;
 
-    applyFields(existing, raw, currency);
+    rawListingMapper.updateEntity(raw, existing);
+    existing.setCurrency(currency);
+    existing.setStatus(ListingStatus.ACTIVE);
     existing.setDedupHash(computeDedupHash(existing));
 
     if (priceChanged) {
@@ -109,24 +110,6 @@ public class ListingIngestionServiceImpl implements ListingIngestionService {
     return IngestOutcome.UPDATED;
   }
 
-  private void applyFields(Listing listing, RawListing raw, Currency currency) {
-    listing.setTitle(raw.title());
-    listing.setDescription(raw.description());
-    listing.setPrice(raw.price());
-    listing.setCurrency(currency);
-    listing.setRooms(raw.rooms());
-    listing.setFloorNumber(raw.floorNumber());
-    listing.setFloorsTotal(raw.floorsTotal());
-    listing.setAreaTotalM2(raw.areaTotalM2());
-    listing.setAddress(raw.address());
-    listing.setLatitude(raw.latitude());
-    listing.setLongitude(raw.longitude());
-    listing.setCity(raw.city());
-    listing.setSourceUrl(raw.sourceUrl());
-    listing.setPublishedAt(raw.publishedAt());
-    listing.setStatus(ListingStatus.ACTIVE);
-  }
-
   private void recordPriceHistory(Listing listing, Currency currency) {
     PriceHistory history = new PriceHistory();
     history.setListing(listing);
@@ -136,7 +119,7 @@ public class ListingIngestionServiceImpl implements ListingIngestionService {
   }
 
   private String computeDedupHash(Listing listing) {
-    return listingService.computeDedupHash(
+    return dedupHashService.computeDedupHash(
         listing.getAddress(),
         listing.getRooms(),
         listing.getAreaTotalM2(),

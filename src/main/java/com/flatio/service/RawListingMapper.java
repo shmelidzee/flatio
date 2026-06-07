@@ -1,9 +1,11 @@
-package com.flatio.connector.core;
+package com.flatio.service;
 
+import com.flatio.connector.core.RawListing;
 import com.flatio.domain.listing.DealType;
 import com.flatio.domain.listing.Listing;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.mapstruct.MappingTarget;
 
 /**
  * Maps raw connector output to domain {@link Listing} entities.
@@ -35,6 +37,31 @@ public interface RawListingMapper {
   @Mapping(target = "updatedAt", ignore = true)
   @Mapping(source = "dealType", target = "dealType")
   Listing toEntity(RawListing raw);
+
+  /**
+   * Updates mutable fields of an existing {@link Listing} from a {@link RawListing}.
+   *
+   * <p>Identity ({@code id}), ownership ({@code source}, {@code country}),
+   * financial ({@code currency}, {@code priceUsd}), and computed ({@code status},
+   * {@code dedupHash}) fields are not touched — the caller is responsible for them.
+   *
+   * @param raw     updated raw listing data from a connector, must not be null
+   * @param listing the existing listing to update in place, must not be null
+   */
+  @Mapping(target = "id", ignore = true)
+  @Mapping(target = "source", ignore = true)
+  @Mapping(target = "currency", ignore = true)
+  @Mapping(target = "country", ignore = true)
+  @Mapping(target = "status", ignore = true)
+  @Mapping(target = "dedupHash", ignore = true)
+  @Mapping(target = "priceUsd", ignore = true)
+  @Mapping(target = "areaLivingM2", ignore = true)
+  @Mapping(target = "areaKitchenM2", ignore = true)
+  @Mapping(target = "district", ignore = true)
+  @Mapping(target = "createdAt", ignore = true)
+  @Mapping(target = "updatedAt", ignore = true)
+  @Mapping(source = "dealType", target = "dealType")
+  void updateEntity(RawListing raw, @MappingTarget Listing listing);
 
   /**
    * Converts a deal type string from a connector to the {@link DealType} enum.
