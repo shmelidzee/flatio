@@ -8,6 +8,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **PR #73 — M1.3.2: OnlinerConnector — API request and response parsing (issue #13)**
+  - `com.flatio.connector.onliner.OnlinerConnector` — implements `ListingConnector` for the Onliner API:
+    - `@RateLimiter(name = "connector-onliner")` — 1 request/second, 5s timeout on permit acquire
+    - `@Retry(name = "connector-onliner", fallbackMethod = "fetchFallback")` — 3 attempts with
+      exponential backoff (2s → 4s → 8s); exceptions propagate to trigger retry (no inner try-catch)
+    - `fetchFallback(Exception e)` — invoked after exhausted retries; returns empty list (never throws)
+    - Per-listing error isolation in `parseListings()` — broken entry is skipped, rest are returned
+    - Realistic Chrome/125 `User-Agent` header on every request
+    - `sourceId` and `regionCode` from `OnlinerProperties` — never hard-coded
+  - `com.flatio.connector.onliner.OnlinerProperties` — `@ConfigurationProperties(prefix = "connector.onliner")`:
+    `baseUrl`, `sourceId`, `regionCode`, `apartmentsPath`, `pageSize`
+  - DTO package `com.flatio.connector.onliner.dto` — 6 Java Records with Jackson `@JsonProperty`:
+    `OnlinerSearchResponse`, `OnlinerApartment`, `OnlinerPrice`, `OnlinerLocation`, `OnlinerArea`, `OnlinerPage`
+  - `com.flatio.config.ConnectorConfig` — registers `@Bean("onlinerRestClient")` with:
+    - Connect timeout: 5s, Read timeout: 10s (via `ClientHttpRequestFactorySettings`)
+    - Base URL and User-Agent header pre-configured
+    - `@EnableConfigurationProperties(OnlinerProperties.class)`
+  - `application.yml` — Resilience4j config for `connector-onliner` rate limiter and retry;
+    connector config with env-variable overrides (`ONLINER_BASE_URL`, `ONLINER_SOURCE_ID`, `ONLINER_REGION_CODE`)
+  - `OnlinerConnectorTest` — 10 unit tests (Mockito, no Spring context):
+    valid response → 2 listings, field mapping, empty/null response, fallback behavior,
+    broken price amount isolation, fallback title, null photo
+  - Fixtures: `src/test/resources/fixtures/onliner/` — 3 JSON snapshots
+  - 72 tests passed, 0 failed — M1.3.2 closed
+
 - **PR #71 — M1.3.1: ListingConnector interface + RawListing record (issue #12, M1.3.1)**
   - `com.flatio.connector.core.ListingConnector` — интерфейс контракта для всех коннекторов источников данных
     с тремя методами: `getSourceId()`, `getSupportedRegionCode()` (код из конфига, не хардкод), `fetch()`

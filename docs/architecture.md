@@ -47,7 +47,8 @@ Root package: `com.flatio`
 ```
 com.flatio
 ├── config/              # Spring configuration and beans
-│   └── OpenApiConfig    # springdoc/Swagger setup
+│   ├── OpenApiConfig    # springdoc/Swagger setup
+│   └── ConnectorConfig  # @Bean("onlinerRestClient") with timeouts + @EnableConfigurationProperties
 ├── domain/              # JPA entities (domain model)
 │   ├── country/         # Country entity — ISO country reference data
 │   ├── currency/        # Currency entity — currency reference data
@@ -78,7 +79,7 @@ com.flatio
 │   └── mapper/
 ├── connector/           # Source data connectors
 │   ├── core/            # ListingConnector interface + RawListing record
-│   └── {source}/        # Per-source implementations (to be added)
+│   └── onliner/         # OnlinerConnector + OnlinerProperties + DTO records
 ├── bot/                 # Telegram Bot (to be added)
 ├── scheduler/           # Scheduled tasks (to be added)
 ├── security/            # Auth / JWT (to be added)
@@ -189,10 +190,19 @@ Optional fields are nullable; the service layer is responsible for validation an
 
 Requirements for all connector implementations:
 - Rate limiting via Resilience4j (`@RateLimiter`)
-- Retry with exponential backoff (`@Retry`, 3 attempts: 2s → 4s → 8s)
+- Retry with exponential backoff (`@Retry(fallbackMethod = "...Fallback")`, 3 attempts: 2s → 4s → 8s);
+  the annotated method must **not** catch exceptions internally — they must propagate for retry to trigger
+- Fallback method returns empty list — graceful degradation after exhausted retries
+- HTTP timeouts configured in `ConnectorConfig` (connect: 5s, read: 10s) to prevent thread blocking
 - Per-listing error isolation — a broken listing must not abort the full fetch
 - No raw HTML stored — return only structured `RawListing` data
-- Realistic `User-Agent` header — not the default OkHttp value
+- Realistic `User-Agent` header — not the default OkHttp/RestClient value
+
+### Implemented connectors
+
+| Connector | Source | Region | Package |
+|-----------|--------|--------|---------|
+| `OnlinerConnector` | Onliner API (JSON) | BY | `com.flatio.connector.onliner` |
 
 ---
 
