@@ -86,6 +86,13 @@
       "Write(src/main/resources/logback-spring.xml)",
       "Edit(src/main/resources/logback-spring.xml)",
 
+      "Write(src/main/java/**)",
+      "Edit(src/main/java/**)",
+      "Write(src/test/java/**)",
+      "Edit(src/test/java/**)",
+      "Write(src/test/resources/**)",
+      "Edit(src/test/resources/**)",
+
       "mcp__notion__API-post-search",
       "mcp__notion__API-retrieve-a-page",
       "mcp__notion__API-retrieve-a-page-property",
@@ -165,7 +172,6 @@
       "Edit(.env.*)",
       "Edit(.claude/settings.local.json)",
       "Edit(docker/docker-compose.prod.yml)",
-      "Edit(src/main/resources/db/migration/*)",
 
       "mcp__github__merge_pull_request",
       "mcp__github__fork_repository",
