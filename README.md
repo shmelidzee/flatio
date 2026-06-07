@@ -56,6 +56,17 @@ Log format depends on the active Spring profile:
 
 No additional configuration is required — the format switches automatically via `logback-spring.xml`.
 
+## Environment Variables
+
+| Variable | Description | Local default |
+|----------|-------------|---------------|
+| `DB_FLATIO_URL` | JDBC URL for PostgreSQL | `jdbc:postgresql://localhost:5432/flatio` |
+| `DB_FLATIO_USER` | PostgreSQL username | `flatio` |
+| `DB_FLATIO_PASSWORD` | PostgreSQL password | `flatio_local` |
+
+Local defaults are used automatically when the variables are not set.
+For Railway deployment, set these in Railway Dashboard → Variables using the PostgreSQL connection details.
+
 ## API Documentation
 
 Swagger UI is available at `http://localhost:8080/swagger-ui.html` when running locally.
