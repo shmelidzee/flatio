@@ -112,6 +112,9 @@ public class Listing {
   @Column(name = "source_url", nullable = false, length = 1000)
   private String sourceUrl;
 
+  @Column(name = "dedup_hash", length = 64)
+  private String dedupHash;
+
   @Column(name = "published_at")
   private Instant publishedAt;
 
