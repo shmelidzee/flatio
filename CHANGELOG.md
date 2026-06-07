@@ -8,6 +8,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **PR #69 — M1.2.6: paginated ListingRepository + IT тесты репозиториев (issue #11, M1.2.6)**
+  - `ListingRepository.findPageByCountryCodeAndStatus(String, ListingStatus, Pageable)` — пагинированный метод с явным `countQuery` (без JOIN FETCH, без in-memory пагинации)
+  - 4 новых IT-теста пагинации в `ListingRepositoryIT`: первая страница, вторая страница, фильтрация INACTIVE, пустая страница
+  - 56 тестов passed, 0 failed — M1.2 полностью закрыт
+
 - **PR #67 — dedup_hash в Listing + SHA-256 вычисление в ListingService (issue #10, M1.2.5)**
   - Поле `dedup_hash VARCHAR(64)` в таблице `listings` с индексом (Flyway V10)
   - Поле `dedupHash` в Entity `Listing`

@@ -65,7 +65,7 @@ com.flatio
 │   ├── CountryRepository
 │   ├── CurrencyRepository
 │   ├── SourceRepository
-│   ├── ListingRepository      # findByExternalIdAndSourceId, findByDedupHashAndSourceNot, findByCountryCodeAndStatus
+│   ├── ListingRepository      # findByExternalIdAndSourceId, findByDedupHashAndSourceNot, findByCountryCodeAndStatus, findPageByCountryCodeAndStatus
 │   ├── PriceHistoryRepository # findByListingOrderByRecordedAtDesc
 │   ├── UserRepository         # findByTelegramId, findByProviderAndExternalId
 │   └── UserAuthProviderRepository
