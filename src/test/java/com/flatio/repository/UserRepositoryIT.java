@@ -66,7 +66,7 @@ class UserRepositoryIT {
   }
 
   // -------------------------------------------------------------------------
-  // findByTelegramId
+  // findByTelegramId (convenience method)
   // -------------------------------------------------------------------------
 
   @Test
@@ -97,15 +97,17 @@ class UserRepositoryIT {
   }
 
   @Test
-  void should_return_empty_when_provider_is_not_telegram() {
-    // Given — user has GOOGLE provider, not TELEGRAM
-    var user = userRepository.save(buildUser("Pavel"));
-    userAuthProviderRepository.save(buildAuthProvider(user, AuthProvider.GOOGLE, "google-sub-abc"));
+  void should_return_empty_when_user_is_inactive() {
+    // Given — user is inactive
+    var user = buildUser("Pavel");
+    user.setActive(false);
+    var saved = userRepository.save(user);
+    userAuthProviderRepository.save(buildAuthProvider(saved, AuthProvider.TELEGRAM, "tg-inactive"));
 
-    // When — searching by the same externalId but via TELEGRAM lookup
-    var result = userRepository.findByTelegramId("google-sub-abc");
+    // When
+    var result = userRepository.findByTelegramId("tg-inactive");
 
-    // Then
+    // Then — inactive users are excluded
     assertThat(result).isEmpty();
   }
 
@@ -115,6 +117,37 @@ class UserRepositoryIT {
 
     // When
     var result = userRepository.findByTelegramId("tg-123");
+
+    // Then
+    assertThat(result).isEmpty();
+  }
+
+  // -------------------------------------------------------------------------
+  // findByProviderAndExternalId (generic query)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_find_user_by_google_provider() {
+    // Given
+    var user = userRepository.save(buildUser("Pavel"));
+    userAuthProviderRepository.save(buildAuthProvider(user, AuthProvider.GOOGLE, "google-sub-abc"));
+
+    // When
+    var result = userRepository.findByProviderAndExternalId(AuthProvider.GOOGLE, "google-sub-abc");
+
+    // Then
+    assertThat(result).isPresent();
+    assertThat(result.get().getId()).isEqualTo(user.getId());
+  }
+
+  @Test
+  void should_return_empty_when_provider_does_not_match() {
+    // Given — user has GOOGLE provider only
+    var user = userRepository.save(buildUser("Pavel"));
+    userAuthProviderRepository.save(buildAuthProvider(user, AuthProvider.GOOGLE, "shared-id"));
+
+    // When — searching the same externalId but for TELEGRAM
+    var result = userRepository.findByProviderAndExternalId(AuthProvider.TELEGRAM, "shared-id");
 
     // Then
     assertThat(result).isEmpty();
@@ -141,7 +174,7 @@ class UserRepositoryIT {
 
   @Test
   void should_allow_same_external_id_for_different_providers() {
-    // Given — same externalId string but different providers is allowed
+    // Given — same externalId string but different providers is allowed by schema
     var user = userRepository.save(buildUser("Pavel"));
     userAuthProviderRepository.saveAndFlush(
         buildAuthProvider(user, AuthProvider.TELEGRAM, "shared-id")
