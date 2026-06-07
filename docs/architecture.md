@@ -71,8 +71,13 @@ com.flatio
 │   ├── UserRepository         # findByTelegramId, findByProviderAndExternalId
 │   └── UserAuthProviderRepository
 ├── service/             # Business logic
-│   ├── ListingService         # interface
-│   └── ListingServiceImpl     # computeDedupHash: SHA-256 of (address|rooms|areaTotalM2|dealType)
+│   ├── DedupHashService           # interface — SHA-256 dedup hash computation
+│   ├── DedupHashServiceImpl       # SHA-256 with normalisation (lowercase, trim, collapse whitespace)
+│   ├── ListingIngestionService    # interface — ingest(RawListing, Source) + ingestBatch(...)
+│   ├── ListingIngestionServiceImpl # upsert: CREATE or UPDATE path + PriceHistory; per-item @Transactional
+│   ├── RawListingMapper           # MapStruct — toEntity(RawListing) + updateEntity(@MappingTarget Listing)
+│   ├── ListingService             # interface (listing queries and management — M1.4)
+│   └── ListingServiceImpl         # placeholder (M1.4)
 ├── web/                 # REST controllers, DTOs, mappers (to be added)
 │   ├── controller/
 │   ├── dto/
@@ -170,6 +175,39 @@ Records are inserted only, never updated or deleted. Used to track price history
 
 Migration files are located in `src/main/resources/db/migration/`.
 Never edit an existing migration file — always create a new one.
+
+---
+
+## Ingestion Pipeline
+
+The ingestion pipeline converts `RawListing` objects (produced by connectors) into persisted `Listing`
+entities. The flow is orchestrated by `ListingIngestionService`:
+
+```
+ListingConnector.fetch()
+  → List<RawListing>
+  → ListingIngestionService.ingestBatch(raws, source)
+      for each raw:
+        ListingIngestionService.ingest(raw, source)   ← @Transactional per item
+          ├── findByExternalIdAndSourceId → not found → CREATE path
+          │     RawListingMapper.toEntity(raw)
+          │     set source, currency, country, status=ACTIVE, dedupHash
+          │     PriceHistoryRepository.save(initial record)
+          │     ListingRepository.save(listing)
+          └── found → UPDATE path
+                RawListingMapper.updateEntity(raw, existing)
+                refresh status, dedupHash
+                if price changed → PriceHistoryRepository.save(new record)
+                ListingRepository.save(existing)
+```
+
+Key design decisions:
+- `ingestBatch` runs with `@Propagation.NOT_SUPPORTED` — each item gets its own transaction via `self.ingest()`.
+  A failure in one item rolls back only that item, the batch continues.
+- Self-proxy via `@Lazy @Autowired ListingIngestionService self` — required for Spring AOP to apply
+  `@Transactional` on `ingest()` when called from within the same bean.
+- `DedupHashService` is injected into `ListingIngestionServiceImpl` (not `ListingService`) to avoid
+  cross-service coupling at the wrong layer.
 
 ---
 

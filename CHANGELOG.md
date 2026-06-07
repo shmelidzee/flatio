@@ -8,6 +8,37 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **PR #75 — M1.3.3 + M1.3.5: ListingIngestionService — upsert + PriceHistory (issue #14)**
+  - `com.flatio.service.ListingIngestionService` — interface with two methods:
+    - `ingest(RawListing raw, Source source): IngestOutcome` — transactional upsert for a single listing
+    - `ingestBatch(List<RawListing> raws, Source source): BatchIngestResult` — batch orchestrator with per-item isolation
+  - `com.flatio.service.ListingIngestionServiceImpl`:
+    - **CREATE path**: maps via `RawListingMapper.toEntity()`, sets `source`, `currency`, `country`, `status=ACTIVE`,
+      `dedupHash`; records initial `PriceHistory` before `listingRepository.save()`
+    - **UPDATE path**: updates fields via `RawListingMapper.updateEntity(@MappingTarget)`, refreshes `status` and
+      `dedupHash`; records `PriceHistory` only if price changed
+    - `@Transactional` per item with `@Propagation.NOT_SUPPORTED` on `ingestBatch` — broken items roll back
+      independently without aborting the batch
+    - Self-proxy via `@Lazy @Autowired ListingIngestionService self` — ensures `@Transactional` AOP is applied
+      on `ingest()` calls from within the same bean
+  - `com.flatio.service.IngestOutcome` — enum: `CREATED` | `UPDATED`
+  - `com.flatio.service.BatchIngestResult` — Java Record: `added`, `updated`, `errors` counters
+  - `com.flatio.service.DedupHashService` — interface extracted from `ListingService` to decouple ingestion
+    from listing management; single method `computeDedupHash(address, rooms, areaTotalM2, dealType): String`
+  - `com.flatio.service.DedupHashServiceImpl` — SHA-256 hash with field normalisation
+    (lowercase, trim, collapse whitespace, `stripTrailingZeros` for `BigDecimal`); separator `|` between fields
+    to prevent adjacent-null collisions
+  - `com.flatio.service.RawListingMapper` — MapStruct `@Mapper(componentModel = "spring")` moved from
+    `connector.core` to `service` package; added `void updateEntity(RawListing raw, @MappingTarget Listing listing)`
+    for the update path; `default DealType toDealType(String)` — case-insensitive, graceful null/unknown fallback
+  - `com.flatio.service.ListingService` — interface retained; `computeDedupHash` moved to `DedupHashService`;
+    listing query methods deferred to M1.4
+  - Tests: `ListingIngestionServiceImplTest` (12 unit tests), `RawListingMapperTest` (10 tests, moved to
+    `service` package), `DedupHashServiceImplTest` (12 unit tests, renamed from `ListingServiceImplTest`)
+  - `LogbackProdProfileTest` — stabilised with `@MockBean ListingIngestionService` to satisfy
+    `ListingIngestionServiceImpl` constructor dependencies when JPA autoconfiguration is excluded
+  - 84 tests passed, 0 failed — M1.3.3 + M1.3.5 closed
+
 - **PR #73 — M1.3.2: OnlinerConnector — API request and response parsing (issue #13)**
   - `com.flatio.connector.onliner.OnlinerConnector` — implements `ListingConnector` for the Onliner API:
     - `@RateLimiter(name = "connector-onliner")` — 1 request/second, 5s timeout on permit acquire
