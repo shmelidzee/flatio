@@ -5,6 +5,8 @@ import com.flatio.domain.listing.ListingStatus;
 import com.flatio.domain.source.Source;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -50,5 +52,26 @@ public interface ListingRepository extends JpaRepository<Listing, Long> {
   List<Listing> findByCountryCodeAndStatus(
       @Param("countryCode") String countryCode,
       @Param("status") ListingStatus status
+  );
+
+  /**
+   * Finds a page of listings for a given country code and status.
+   *
+   * <p>Used for paginated listing feeds. Associations are loaded lazily;
+   * use {@link #findByCountryCodeAndStatus(String, ListingStatus)} when eager loading is required.
+   *
+   * @param countryCode ISO country code (e.g., "BY")
+   * @param status      listing status filter
+   * @param pageable    pagination and sorting configuration
+   * @return page of matching listings, never null
+   */
+  @Query(
+      value = "SELECT l FROM Listing l WHERE l.country.code = :countryCode AND l.status = :status",
+      countQuery = "SELECT COUNT(l) FROM Listing l WHERE l.country.code = :countryCode AND l.status = :status"
+  )
+  Page<Listing> findPageByCountryCodeAndStatus(
+      @Param("countryCode") String countryCode,
+      @Param("status") ListingStatus status,
+      Pageable pageable
   );
 }
