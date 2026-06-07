@@ -76,9 +76,9 @@ com.flatio
 │   ├── controller/
 │   ├── dto/
 │   └── mapper/
-├── connector/           # Source data connectors (to be added)
-│   ├── core/            # ListingConnector interface + RawListing
-│   └── {source}/        # Per-source implementations
+├── connector/           # Source data connectors
+│   ├── core/            # ListingConnector interface + RawListing record
+│   └── {source}/        # Per-source implementations (to be added)
 ├── bot/                 # Telegram Bot (to be added)
 ├── scheduler/           # Scheduled tasks (to be added)
 ├── security/            # Auth / JWT (to be added)
@@ -174,18 +174,25 @@ Never edit an existing migration file — always create a new one.
 
 ## Connector Contract
 
-Each data-source connector must implement:
+Each data-source connector must implement `com.flatio.connector.core.ListingConnector`:
 
 ```java
 public interface ListingConnector {
-    String getSourceId();            // unique source identifier
-    RegionCode getSupportedRegion(); // region this connector covers
+    String getSourceId();            // unique source identifier (e.g. "ONLINER", "REALT")
+    String getSupportedRegionCode(); // ISO region code injected from config — never hard-coded
     List<RawListing> fetch();        // main fetch method
 }
 ```
 
-Requirements: rate limiting (Resilience4j), retry with exponential backoff,
-per-listing error isolation, no raw HTML stored, realistic User-Agent header.
+Raw listing data is transferred via `com.flatio.connector.core.RawListing` (Java Record, 18 fields).
+Optional fields are nullable; the service layer is responsible for validation and mapping to domain types.
+
+Requirements for all connector implementations:
+- Rate limiting via Resilience4j (`@RateLimiter`)
+- Retry with exponential backoff (`@Retry`, 3 attempts: 2s → 4s → 8s)
+- Per-listing error isolation — a broken listing must not abort the full fetch
+- No raw HTML stored — return only structured `RawListing` data
+- Realistic `User-Agent` header — not the default OkHttp value
 
 ---
 
