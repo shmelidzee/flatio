@@ -32,7 +32,7 @@ public interface ListingRepository extends JpaRepository<Listing, Long> {
    * @param status      listing status filter
    * @return list of matching listings, never null
    */
-  @Query("SELECT l FROM Listing l JOIN FETCH l.source JOIN FETCH l.currency " +
+  @Query("SELECT l FROM Listing l JOIN FETCH l.source JOIN FETCH l.currency JOIN FETCH l.country " +
       "WHERE l.country.code = :countryCode AND l.status = :status")
   List<Listing> findByCountryCodeAndStatus(
       @Param("countryCode") String countryCode,
