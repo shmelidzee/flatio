@@ -1,74 +1,81 @@
 # Flatio
 
-Real estate aggregation platform. Collects listings from multiple sources, provides search and analytics.
+Платформа агрегации недвижимости. Собирает объявления из различных источников, предоставляет поиск и аналитику.
 
-## Requirements
+## Требования
 
 - **Java 21** (JDK)
-- **Docker** and **Docker Compose**
-- **Gradle 8.x** (or use the included wrapper `./gradlew`)
+- **Docker** и **Docker Compose**
+- **Gradle 8.x** (или используйте обёртку `./gradlew`)
 
-## Quick Start
+## Быстрый старт
 
 ```bash
-# 1. Start PostgreSQL
+# 1. Запустить PostgreSQL
 docker compose -f docker/docker-compose.yml up -d
 
-# 2. Copy local config
+# 2. Скопировать конфиг для локальной разработки
 cp src/main/resources/application-local.yml.example src/main/resources/application-local.yml
 
-# 3. Start the application
+# 3. Запустить приложение
 ./gradlew bootRun --args='--spring.profiles.active=local'
 ```
 
-The application will be available at `http://localhost:8080`.
+Приложение будет доступно по адресу `http://localhost:8080`.
 
-## Configuration
+## Конфигурация
 
-Local configuration lives in `src/main/resources/application-local.yml` — it is git-ignored and must not be committed.
+Локальный конфиг хранится в `src/main/resources/application-local.yml` — файл добавлен в `.gitignore` и не коммитится.
 
-Copy the example and adjust values as needed:
+Скопируйте пример и при необходимости скорректируйте значения:
 
 ```bash
 cp src/main/resources/application-local.yml.example src/main/resources/application-local.yml
 ```
 
-See `application-local.yml.example` for all available overrides and their descriptions.
+Все доступные настройки и их описания — в `application-local.yml.example`.
 
-## Running Tests
+## Запуск тестов
 
 ```bash
-# Unit tests (fast, no database required)
+# Unit-тесты (быстрые, без базы данных)
 ./gradlew test
 
-# Integration tests (requires Docker — starts PostgreSQL via Testcontainers)
+# Интеграционные тесты (требуется Docker — PostgreSQL поднимается через Testcontainers)
 ./gradlew integrationTest
 ```
 
-## Logging
+## Логирование
 
-Log format depends on the active Spring profile:
+Формат логов зависит от активного Spring-профиля:
 
-| Profile | Format |
+| Профиль | Формат |
 |---------|--------|
-| `prod` | Structured JSON via Logstash encoder (`@timestamp`, `level`, `logger_name`, `thread_name`, `message`) |
-| any other (e.g. `local`) | Human-readable: `yyyy-MM-dd HH:mm:ss.SSS [thread] LEVEL logger - message` |
+| `prod` | Структурированный JSON через Logstash encoder (`@timestamp`, `level`, `logger_name`, `thread_name`, `message`) |
+| любой другой (например `local`) | Human-readable: `yyyy-MM-dd HH:mm:ss.SSS [thread] LEVEL logger - message` |
 
-No additional configuration is required — the format switches automatically via `logback-spring.xml`.
+Дополнительная конфигурация не требуется — формат переключается автоматически через `logback-spring.xml`.
 
-## Environment Variables
+## Переменные окружения
 
-| Variable | Description | Local default |
-|----------|-------------|---------------|
-| `DB_FLATIO_URL` | JDBC URL for PostgreSQL | `jdbc:postgresql://localhost:5432/flatio` |
-| `DB_FLATIO_USER` | PostgreSQL username | `flatio` |
-| `DB_FLATIO_PASSWORD` | PostgreSQL password | `flatio_local` |
+| Переменная | Описание | Локальное значение по умолчанию |
+|------------|----------|---------------------------------|
+| `DB_FLATIO_URL` | JDBC URL для PostgreSQL | `jdbc:postgresql://localhost:5432/flatio` |
+| `DB_FLATIO_USER` | Имя пользователя PostgreSQL | `flatio` |
+| `DB_FLATIO_PASSWORD` | Пароль PostgreSQL | `flatio_local` |
 
-Local defaults are used automatically when the variables are not set.
-For Railway deployment, set these in Railway Dashboard → Variables using the PostgreSQL connection details.
+При локальной разработке значения по умолчанию применяются автоматически, если переменные не заданы.
+Для деплоя на Railway задайте эти переменные в Railway Dashboard → Variables, используя данные подключения к PostgreSQL.
 
-## API Documentation
+## Документация API
 
-Swagger UI is available at `http://localhost:8080/swagger-ui.html` when running locally.
+Swagger UI доступен по адресу `http://localhost:8080/swagger-ui.html` при локальном запуске.
 
-OpenAPI spec: `http://localhost:8080/v3/api-docs`
+OpenAPI-спецификация: `http://localhost:8080/v3/api-docs`
+
+## Документация проекта
+
+| Файл | Содержание |
+|------|------------|
+| `docs/architecture.md` | Архитектура, стек, структура пакетов, доменная модель, миграции |
+| `CHANGELOG.md` | История изменений |
