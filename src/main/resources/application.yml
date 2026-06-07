@@ -46,3 +46,26 @@ logging:
     com.flatio: INFO
     org.flywaydb: INFO
     org.hibernate.SQL: WARN
+
+connector:
+  onliner:
+    base-url: ${ONLINER_BASE_URL:https://ak.api.onliner.by}
+    source-id: ${ONLINER_SOURCE_ID:ONLINER}
+    region-code: ${ONLINER_REGION_CODE:BY}
+    apartments-path: /search/apartments
+    page-size: 50
+
+resilience4j:
+  ratelimiter:
+    instances:
+      connector-onliner:
+        limit-for-period: 1
+        limit-refresh-period: 1s
+        timeout-duration: 5s
+  retry:
+    instances:
+      connector-onliner:
+        max-attempts: 3
+        wait-duration: 2s
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
