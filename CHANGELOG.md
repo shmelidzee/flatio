@@ -8,6 +8,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **PR #58 — User and UserAuthProvider entities (issue #9)**
+  - Entity `User`: `id`, `displayName`, `email` (nullable), `active`, `createdAt`, `updatedAt`
+  - Entity `UserAuthProvider`: `id`, `user` (FK LAZY), `provider` (enum), `externalId`, `createdAt`;
+    unique constraint `(provider, external_id)`
+  - Enum `AuthProvider`: `TELEGRAM`, `GOOGLE`, `EMAIL`
+  - Flyway V7 — DDL for `users` and `user_auth_provider` tables
+  - Flyway V8 — index on `user_auth_provider.user_id`
+  - `UserRepository` with JPQL `findByProviderAndExternalId` (active users only) and
+    convenience `findByTelegramId` default method
+  - `UserAuthProviderRepository` — standard CRUD
+  - Integration tests for `UserRepository` (10 test cases)
+- **Commit a03a0e1 — Railway deployment infrastructure**
+  - Multi-stage `Dockerfile`: builder stage (JDK 21, compiles JAR), runtime stage (JRE 21)
+  - `railway.json`: DOCKERFILE builder, `/actuator/health` healthcheck, ON_FAILURE restart policy
+  - `.github/workflows/ci.yml`: build + test on every push to `feature/**`, `fix/**`, `develop`
+    and on PRs to `develop`/`master`; Gradle cache via `actions/setup-java`
+
+### Changed
+- **PR #60 — Standardized environment variable names (issue #59)**
+  - `SPRING_DATASOURCE_URL` → `DB_FLATIO_URL`
+  - `SPRING_DATASOURCE_USERNAME` → `DB_FLATIO_USER`
+  - `SPRING_DATASOURCE_PASSWORD` → `DB_FLATIO_PASSWORD`
+
+### Fixed
+- **PR #61 — LogbackProdProfileTest context pollution (issue #55)**
+  - Added `@DirtiesContext(BEFORE_CLASS)` so Spring re-creates context and re-initializes
+    Logback with the `prod` profile after preceding Testcontainers IT tests reset `LoggerContext`
+
+### Added
 - **PR #56 — Entity Listing + Flyway migrations V5/V6 (issue #7, M1.2.2)**
   - Entity `Listing` with 23 fields: `externalId`, `source`, `title`, `description`, `dealType`,
     `propertyType`, `price`, `currency`, `priceUsd`, `rooms`, `floorNumber`, `floorsTotal`,

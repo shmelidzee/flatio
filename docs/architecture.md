@@ -52,15 +52,21 @@ com.flatio
 │   ├── country/         # Country entity — ISO country reference data
 │   ├── currency/        # Currency entity — currency reference data
 │   ├── source/          # Source entity — listing source (site) registry
-│   └── listing/         # Core listing domain
-│       ├── Listing      # Main JPA entity (23 fields)
-│       ├── DealType     # Enum: RENT | SELL
-│       └── ListingStatus # Enum: ACTIVE | INACTIVE
+│   ├── listing/         # Core listing domain
+│   │   ├── Listing      # Main JPA entity (23 fields)
+│   │   ├── DealType     # Enum: RENT | SELL
+│   │   └── ListingStatus # Enum: ACTIVE | INACTIVE
+│   └── user/            # User authentication domain
+│       ├── User         # User entity: displayName, email, active
+│       ├── UserAuthProvider # Auth provider link: provider enum + externalId
+│       └── AuthProvider # Enum: TELEGRAM | GOOGLE | EMAIL
 ├── repository/          # Spring Data JPA repositories
 │   ├── CountryRepository
 │   ├── CurrencyRepository
 │   ├── SourceRepository
-│   └── ListingRepository
+│   ├── ListingRepository
+│   ├── UserRepository         # findByTelegramId, findByProviderAndExternalId
+│   └── UserAuthProviderRepository
 ├── service/             # Business logic (to be added)
 ├── web/                 # REST controllers, DTOs, mappers (to be added)
 │   ├── controller/
@@ -136,6 +142,8 @@ Indexes: `source_id`, `status`, `deal_type`, `price`, `published_at`.
 | V4 | `V4__add_reference_tables_indexes.sql` | Indexes on reference tables |
 | V5 | `V5__create_listings.sql` | DDL for `listings` table |
 | V6 | `V6__add_listings_indexes.sql` | 5 indexes on `listings` |
+| V7 | `V7__create_users.sql` | DDL for `users` and `user_auth_provider` tables |
+| V8 | `V8__add_user_auth_provider_indexes.sql` | Index on `user_auth_provider.user_id` |
 
 Migration files are located in `src/main/resources/db/migration/`.
 Never edit an existing migration file — always create a new one.
