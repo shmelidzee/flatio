@@ -2,9 +2,9 @@ spring:
   application:
     name: flatio
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/flatio}
-    username: ${SPRING_DATASOURCE_USERNAME:flatio}
-    password: ${SPRING_DATASOURCE_PASSWORD:flatio_local}
+    url: ${DB_FLATIO_URL:jdbc:postgresql://localhost:5432/flatio}
+    username: ${DB_FLATIO_USER:flatio}
+    password: ${DB_FLATIO_PASSWORD:flatio_local}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
