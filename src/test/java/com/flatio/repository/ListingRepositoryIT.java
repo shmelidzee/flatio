@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -161,5 +162,72 @@ class ListingRepositoryIT {
     // Then — only the ACTIVE listing is returned
     assertThat(result).hasSize(1);
     assertThat(result.get(0).getExternalId()).isEqualTo("ext-active-ok");
+  }
+
+  // -------------------------------------------------------------------------
+  // findPageByCountryCodeAndStatus (paginated)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_return_first_page_of_listings() {
+    // Given — 5 active listings
+    for (int i = 1; i <= 5; i++) {
+      listingRepository.save(buildListing("ext-paged-" + i, ListingStatus.ACTIVE));
+    }
+    listingRepository.flush();
+
+    // When — request first page of 3
+    var page = listingRepository.findPageByCountryCodeAndStatus("BY", ListingStatus.ACTIVE, PageRequest.of(0, 3));
+
+    // Then
+    assertThat(page.getTotalElements()).isEqualTo(5);
+    assertThat(page.getTotalPages()).isEqualTo(2);
+    assertThat(page.getContent()).hasSize(3);
+    assertThat(page.getNumber()).isEqualTo(0);
+  }
+
+  @Test
+  void should_return_second_page_with_remaining_listings() {
+    // Given — 5 active listings
+    for (int i = 1; i <= 5; i++) {
+      listingRepository.save(buildListing("ext-page2-" + i, ListingStatus.ACTIVE));
+    }
+    listingRepository.flush();
+
+    // When — request second page of 3
+    var page = listingRepository.findPageByCountryCodeAndStatus("BY", ListingStatus.ACTIVE, PageRequest.of(1, 3));
+
+    // Then — only 2 remaining listings on the second page
+    assertThat(page.getTotalElements()).isEqualTo(5);
+    assertThat(page.getContent()).hasSize(2);
+    assertThat(page.isLast()).isTrue();
+  }
+
+  @Test
+  void should_exclude_inactive_listings_from_paginated_results() {
+    // Given — mix of active and inactive listings
+    listingRepository.save(buildListing("ext-pg-active-1", ListingStatus.ACTIVE));
+    listingRepository.save(buildListing("ext-pg-active-2", ListingStatus.ACTIVE));
+    listingRepository.save(buildListing("ext-pg-inactive-1", ListingStatus.INACTIVE));
+    listingRepository.flush();
+
+    // When
+    var page = listingRepository.findPageByCountryCodeAndStatus("BY", ListingStatus.ACTIVE, PageRequest.of(0, 10));
+
+    // Then — only active listings in result
+    assertThat(page.getTotalElements()).isEqualTo(2);
+    assertThat(page.getContent()).allMatch(l -> l.getStatus() == ListingStatus.ACTIVE);
+  }
+
+  @Test
+  void should_return_empty_page_when_no_listings_exist() {
+    // Given — no listings persisted
+
+    // When
+    var page = listingRepository.findPageByCountryCodeAndStatus("BY", ListingStatus.ACTIVE, PageRequest.of(0, 10));
+
+    // Then
+    assertThat(page.getTotalElements()).isEqualTo(0);
+    assertThat(page.getContent()).isEmpty();
   }
 }
