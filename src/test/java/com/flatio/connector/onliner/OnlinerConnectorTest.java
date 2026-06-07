@@ -121,25 +121,24 @@ class OnlinerConnectorTest {
   // -------------------------------------------------------------------------
 
   @Test
-  void should_return_empty_list_when_http_call_throws_exception() {
-    // Given
-    when(restClient.get()).thenThrow(new RestClientException("Connection refused"));
+  void should_return_empty_list_when_fallback_is_invoked_after_exhausted_retries() {
+    // Given — simulates Resilience4j calling fallback after all retries failed
+    var exception = new RestClientException("503 Service Unavailable");
 
     // When
-    List<RawListing> result = connector.fetch();
+    List<RawListing> result = connector.fetchFallback(exception);
 
-    // Then — no exception propagated, empty list returned
+    // Then — graceful degradation: empty list, no exception
     assertThat(result).isEmpty();
   }
 
   @Test
-  @SuppressWarnings("unchecked")
-  void should_not_throw_when_fetch_encounters_http_error() {
+  void should_not_throw_from_fallback_method() {
     // Given
-    when(restClient.get()).thenThrow(new RestClientException("503 Service Unavailable"));
+    var exception = new RestClientException("Connection refused");
 
-    // When / Then — exception is caught, no propagation
-    assertThatNoException().isThrownBy(() -> connector.fetch());
+    // When / Then — fallback is always safe, never throws
+    assertThatNoException().isThrownBy(() -> connector.fetchFallback(exception));
   }
 
   @Test

@@ -7,6 +7,7 @@ import com.flatio.connector.onliner.dto.OnlinerSearchResponse;
 import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
 import io.github.resilience4j.retry.annotation.Retry;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
@@ -26,19 +27,13 @@ import java.util.List;
 @Slf4j
 public class OnlinerConnector implements ListingConnector {
 
-  private static final String USER_AGENT =
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-          + " (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
-
   private final RestClient restClient;
   private final OnlinerProperties properties;
 
-  public OnlinerConnector(RestClient.Builder restClientBuilder, OnlinerProperties properties) {
+  public OnlinerConnector(@Qualifier("onlinerRestClient") RestClient restClient,
+      OnlinerProperties properties) {
+    this.restClient = restClient;
     this.properties = properties;
-    this.restClient = restClientBuilder
-        .baseUrl(properties.baseUrl())
-        .defaultHeader("User-Agent", USER_AGENT)
-        .build();
   }
 
   @Override
@@ -55,36 +50,43 @@ public class OnlinerConnector implements ListingConnector {
    * Fetches apartment listings from the Onliner API.
    *
    * <p>Rate-limited to 1 request/second. Retries up to 3 times with exponential backoff
-   * on transient failures. Returns an empty list if the source is unavailable.
+   * on transient failures. After all retries are exhausted, {@link #fetchFallback} is
+   * invoked and returns an empty list.
    *
-   * @return list of raw listings, never null, may be empty on source error
+   * @return list of raw listings, never null
    */
   @Override
   @RateLimiter(name = "connector-onliner")
-  @Retry(name = "connector-onliner")
+  @Retry(name = "connector-onliner", fallbackMethod = "fetchFallback")
   public List<RawListing> fetch() {
     log.info("Fetching listings from Onliner: source={}, region={}", properties.sourceId(), properties.regionCode());
-    try {
-      OnlinerSearchResponse response = restClient.get()
-          .uri(uriBuilder -> uriBuilder
-              .path(properties.apartmentsPath())
-              .queryParam("page", 1)
-              .queryParam("limit", properties.pageSize())
-              .build())
-          .retrieve()
-          .body(OnlinerSearchResponse.class);
+    OnlinerSearchResponse response = restClient.get()
+        .uri(uriBuilder -> uriBuilder
+            .path(properties.apartmentsPath())
+            .queryParam("page", 1)
+            .queryParam("limit", properties.pageSize())
+            .build())
+        .retrieve()
+        .body(OnlinerSearchResponse.class);
 
-      if (response == null || response.apartments() == null) {
-        log.warn("Empty or null response from Onliner API: source={}", properties.sourceId());
-        return List.of();
-      }
-
-      log.info("Received {} apartments from Onliner", response.apartments().size());
-      return parseListings(response.apartments());
-    } catch (Exception e) {
-      log.error("Failed to fetch listings from Onliner: source={}", properties.sourceId(), e);
+    if (response == null || response.apartments() == null) {
+      log.warn("Empty or null response from Onliner API: source={}", properties.sourceId());
       return List.of();
     }
+
+    log.info("Received {} apartments from Onliner", response.apartments().size());
+    return parseListings(response.apartments());
+  }
+
+  /**
+   * Fallback invoked by Resilience4j after all retry attempts are exhausted.
+   *
+   * @param e the exception that caused all retries to fail
+   * @return empty list — never null, per {@link com.flatio.connector.core.ListingConnector} contract
+   */
+  List<RawListing> fetchFallback(Exception e) {
+    log.error("All retry attempts exhausted for Onliner: source={}", properties.sourceId(), e);
+    return List.of();
   }
 
   private List<RawListing> parseListings(List<OnlinerApartment> apartments) {
