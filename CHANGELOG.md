@@ -7,6 +7,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- **PR #64 — README переведён на русский язык (issue #63, M1.1)**
+  - README.md полностью переведён на русский язык
+  - Все разделы актуализированы: Быстрый старт, Конфигурация, Запуск тестов, Логирование, Документация API
+  - Секция переменных окружения с `DB_FLATIO_URL`, `DB_FLATIO_USER`, `DB_FLATIO_PASSWORD`
+  - Таблица ссылок на `docs/architecture.md` и `CHANGELOG.md`
+
 ### Added
 - **PR #58 — User and UserAuthProvider entities (issue #9)**
   - Entity `User`: `id`, `displayName`, `email` (nullable), `active`, `createdAt`, `updatedAt`
