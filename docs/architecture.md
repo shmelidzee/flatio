@@ -53,7 +53,8 @@ com.flatio
 │   ├── currency/        # Currency entity — currency reference data
 │   ├── source/          # Source entity — listing source (site) registry
 │   ├── listing/         # Core listing domain
-│   │   ├── Listing      # Main JPA entity (23 fields)
+│   │   ├── Listing      # Main JPA entity (24 fields, incl. dedup_hash)
+│   │   ├── PriceHistory # Append-only price history entity
 │   │   ├── DealType     # Enum: RENT | SELL
 │   │   └── ListingStatus # Enum: ACTIVE | INACTIVE
 │   └── user/            # User authentication domain
@@ -64,10 +65,13 @@ com.flatio
 │   ├── CountryRepository
 │   ├── CurrencyRepository
 │   ├── SourceRepository
-│   ├── ListingRepository
+│   ├── ListingRepository      # findByExternalIdAndSourceId, findByDedupHashAndSourceNot, findByCountryCodeAndStatus
+│   ├── PriceHistoryRepository # findByListingOrderByRecordedAtDesc
 │   ├── UserRepository         # findByTelegramId, findByProviderAndExternalId
 │   └── UserAuthProviderRepository
-├── service/             # Business logic (to be added)
+├── service/             # Business logic
+│   ├── ListingService         # interface
+│   └── ListingServiceImpl     # computeDedupHash: SHA-256 of (address|rooms|areaTotalM2|dealType)
 ├── web/                 # REST controllers, DTOs, mappers (to be added)
 │   ├── controller/
 │   ├── dto/
@@ -115,13 +119,29 @@ Table: `listings`
 | `district` | `VARCHAR(100)` | nullable | |
 | `status` | `VARCHAR(10)` | NOT NULL | Default `ACTIVE` |
 | `source_url` | `VARCHAR(1000)` | NOT NULL | |
+| `dedup_hash` | `VARCHAR(64)` | nullable | SHA-256 of normalised (address, rooms, areaTotalM2, dealType) |
 | `published_at` | `TIMESTAMPTZ` | nullable | |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL | Auto-set on insert |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL | Auto-set on update |
 
 Unique constraint: `(external_id, source_id)` — used for deduplication during parsing.
 
-Indexes: `source_id`, `status`, `deal_type`, `price`, `published_at`.
+Indexes: `source_id`, `status`, `deal_type`, `price`, `published_at`, `dedup_hash`.
+
+### PriceHistory (append-only)
+
+Table: `price_history`
+
+| Field | Type | Nullable | Notes |
+|-------|------|----------|-------|
+| `id` | `BIGSERIAL` | NOT NULL | Primary key |
+| `listing_id` | `BIGINT` FK | NOT NULL | Reference to `listings` |
+| `price` | `NUMERIC(15,2)` | NOT NULL | Price at the recorded moment |
+| `currency_id` | `BIGINT` FK | NOT NULL | Reference to `currency` |
+| `recorded_at` | `TIMESTAMPTZ` | NOT NULL | Auto-set on insert, never updated |
+
+Index: `(listing_id, recorded_at DESC)` — optimised for latest-price-first queries.
+Records are inserted only, never updated or deleted. Used to track price history over time.
 
 ### Reference entities
 
@@ -144,6 +164,8 @@ Indexes: `source_id`, `status`, `deal_type`, `price`, `published_at`.
 | V6 | `V6__add_listings_indexes.sql` | 5 indexes on `listings` |
 | V7 | `V7__create_users.sql` | DDL for `users` and `user_auth_provider` tables |
 | V8 | `V8__add_user_auth_provider_indexes.sql` | Index on `user_auth_provider.user_id` |
+| V9 | `V9__create_price_history.sql` | DDL for `price_history` table + composite index |
+| V10 | `V10__add_listing_dedup_hash.sql` | `dedup_hash VARCHAR(64)` column + index on `listings` |
 
 Migration files are located in `src/main/resources/db/migration/`.
 Never edit an existing migration file — always create a new one.
