@@ -23,6 +23,6 @@ public interface SourceRepository extends JpaRepository<Source, Long> {
    * @param countryCode the ISO country code (e.g., "BY")
    * @return list of active sources for the given country, never null
    */
-  @Query("SELECT s FROM Source s WHERE s.country.code = :countryCode AND s.active = TRUE")
+  @Query("SELECT s FROM Source s JOIN FETCH s.country WHERE s.country.code = :countryCode AND s.active = true")
   List<Source> findActiveByCountryCode(@Param("countryCode") String countryCode);
 }

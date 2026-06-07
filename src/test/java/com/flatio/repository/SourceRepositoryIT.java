@@ -21,9 +21,7 @@ class SourceRepositoryIT {
 
   @Container
   static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine")
-      .withDatabaseName("flatio_test")
-      .withUsername("flatio")
-      .withPassword("flatio_test");
+      .withDatabaseName("flatio_test");
 
   @DynamicPropertySource
   static void configureProperties(DynamicPropertyRegistry registry) {
