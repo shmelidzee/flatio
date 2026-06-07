@@ -55,6 +55,7 @@ Issue (ready, не blocked)
   └── оба Approved
         ↓
 PR готов → вывести ссылку в терминал → СТОП
+(Railway автоматически задеплоит develop → development после merge)
 ```
 
 ## Эскалация
