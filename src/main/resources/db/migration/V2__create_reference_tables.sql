@@ -1,0 +1,26 @@
+CREATE TABLE country (
+  id         BIGSERIAL    PRIMARY KEY,
+  code       VARCHAR(10)  NOT NULL UNIQUE,
+  name       VARCHAR(100) NOT NULL,
+  created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE currency (
+  id         BIGSERIAL    PRIMARY KEY,
+  code       VARCHAR(10)  NOT NULL UNIQUE,
+  symbol     VARCHAR(10)  NOT NULL,
+  created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE source (
+  id         BIGSERIAL    PRIMARY KEY,
+  code       VARCHAR(50)  NOT NULL UNIQUE,
+  name       VARCHAR(100) NOT NULL,
+  url        VARCHAR(255) NOT NULL,
+  active     BOOLEAN      NOT NULL DEFAULT TRUE,
+  country_id BIGINT       NOT NULL REFERENCES country (id),
+  created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
