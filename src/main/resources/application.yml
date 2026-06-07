@@ -55,6 +55,10 @@ connector:
     apartments-path: /search/apartments
     page-size: 50
 
+flatio:
+  sync:
+    interval-ms: ${FLATIO_SYNC_INTERVAL_MS:1800000}
+
 resilience4j:
   ratelimiter:
     instances:
