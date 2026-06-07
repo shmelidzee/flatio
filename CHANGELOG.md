@@ -7,6 +7,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **PR #67 — dedup_hash в Listing + SHA-256 вычисление в ListingService (issue #10, M1.2.5)**
+  - Поле `dedup_hash VARCHAR(64)` в таблице `listings` с индексом (Flyway V10)
+  - Поле `dedupHash` в Entity `Listing`
+  - Интерфейс `ListingService` с методом `computeDedupHash(address, rooms, areaTotalM2, dealType)`
+  - `ListingServiceImpl` — SHA-256 через `java.security.MessageDigest`, нормализация:
+    lowercase, trim, collapse whitespace; разделитель `|` для устранения коллизий смежных null-полей
+  - `ListingRepository.findByDedupHashAndSourceNot(String, Source)` для cross-source поиска
+  - 11 unit-тестов нормализации и хэширования + 5 IT-тестов репозитория
+
+- **PR #66 — Entity PriceHistory + Flyway миграция (issue #8, M1.2.3)**
+  - Entity `PriceHistory`: append-only история цен объявлений
+  - Поля: `id`, `listing` (FK LAZY), `price`, `currency` (FK LAZY), `recordedAt` (NOT NULL, auto-set via `@PrePersist`)
+  - Flyway V9 — DDL таблицы `price_history`, составной индекс `(listing_id, recorded_at DESC)`
+  - `PriceHistoryRepository.findByListingOrderByRecordedAtDesc` с JOIN FETCH currency
+  - 5 IT-тестов: ordering, empty list, isolation between listings, eager currency, persist check
+
 ### Changed
 - **PR #64 — README переведён на русский язык (issue #63, M1.1)**
   - README.md полностью переведён на русский язык

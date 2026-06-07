@@ -26,6 +26,7 @@
 - Статус закрытых Issues → Done
 - Если все Issues milestone закрыты → статус milestone → Done
 - Роадмап в Notion актуализируется
+- Актуализируются Issue в GitHub
 
 ```
 merge PR #N
