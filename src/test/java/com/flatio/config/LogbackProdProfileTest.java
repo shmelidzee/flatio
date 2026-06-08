@@ -4,6 +4,8 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.core.ConsoleAppender;
 import com.flatio.repository.SourceRepository;
+import com.flatio.repository.UserAuthProviderRepository;
+import com.flatio.repository.UserRepository;
 import com.flatio.service.ListingIngestionService;
 import net.logstash.logback.encoder.LogstashEncoder;
 import org.junit.jupiter.api.Test;
@@ -42,6 +44,12 @@ class LogbackProdProfileTest {
 
   @MockBean
   SourceRepository sourceRepository;
+
+  @MockBean
+  UserRepository userRepository;
+
+  @MockBean
+  UserAuthProviderRepository userAuthProviderRepository;
 
   @Test
   void should_configure_logstash_encoder_on_root_logger_when_prod_profile_active() {

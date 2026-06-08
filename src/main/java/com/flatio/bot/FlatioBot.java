@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.objects.Update;
+import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
 /**
  * Main Telegram bot bean for Flatio.
@@ -19,6 +20,7 @@ import org.telegram.telegrambots.meta.api.objects.Update;
 public class FlatioBot extends TelegramLongPollingBot {
 
   private final BotConfig botConfig;
+  private final StartCommandHandler startCommandHandler;
 
   /**
    * Returns the bot username configured via {@code TELEGRAM_BOT_USERNAME}.
@@ -50,5 +52,16 @@ public class FlatioBot extends TelegramLongPollingBot {
   @Override
   public void onUpdateReceived(Update update) {
     log.debug("Update received: updateId={}", update.getUpdateId());
+    if (!update.hasMessage() || !update.getMessage().hasText()) {
+      return;
+    }
+    String text = update.getMessage().getText();
+    if (text.startsWith("/start")) {
+      try {
+        execute(startCommandHandler.handle(update));
+      } catch (TelegramApiException e) {
+        log.error("Failed to send /start reply: chatId={}", update.getMessage().getChatId(), e);
+      }
+    }
   }
 }

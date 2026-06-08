@@ -5,6 +5,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 class FlatiBotTest {
 
@@ -13,7 +14,7 @@ class FlatiBotTest {
   @BeforeEach
   void setUp() {
     var config = new BotConfig("test_token:123", "test_bot");
-    flatioBot = new FlatioBot(config);
+    flatioBot = new FlatioBot(config, mock(StartCommandHandler.class));
   }
 
   @Test
