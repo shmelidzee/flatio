@@ -55,6 +55,11 @@ connector:
     apartments-path: /search/apartments
     page-size: 50
 
+telegram:
+  bot:
+    token: ${TELEGRAM_BOT_TOKEN}
+    username: ${TELEGRAM_BOT_USERNAME}
+
 flatio:
   sync:
     interval-ms: ${FLATIO_SYNC_INTERVAL_MS:1800000}
