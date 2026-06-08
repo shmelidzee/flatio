@@ -8,6 +8,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **PR #80 — M1.5.1: Telegram Bot dependency + base configuration (issue #26)**
+  - `org.telegram:telegrambots-spring-boot-starter:6.9.0` added to `build.gradle.kts`;
+    transitive `jackson-module-jaxb-annotations` excluded (incompatible with Java 21 — `javax.xml.bind` absent from JDK 21)
+  - `BotConfig` — `@ConfigurationProperties(prefix = "telegram.bot")` Record; compact constructor
+    throws `IllegalStateException` on startup if `TELEGRAM_BOT_TOKEN` or `TELEGRAM_BOT_USERNAME` not set
+  - `BotConfiguration` — `@Configuration` + `@EnableConfigurationProperties(BotConfig.class)`
+  - `FlatioBot extends TelegramLongPollingBot` — `@Component` Spring bean; delegates token/username to `BotConfig`;
+    token never logged
+  - `application.yml` — `telegram.bot.token=${TELEGRAM_BOT_TOKEN}`, `telegram.bot.username=${TELEGRAM_BOT_USERNAME}`
+    (no default values — application fails to start without both env vars)
+  - Note: `telegrambots-spring-boot-starter:6.9.0` uses legacy `spring.factories` autoconfiguration format
+    incompatible with Spring Boot 3.2; long-polling registration requires explicit config in M1.5.2
+  - Tests: `BotConfigTest` (5 unit tests), `FlatiBotTest` (2 unit tests)
+  - 98 tests passed, 0 failed — M1.5.1 closed
+
+- **PR #79 — M1.4.1: DTO + MapStruct mapping Listing ↔ ListingResponse (issue #20)**
+  - `com.flatio.web.dto.ListingResponse` — Java Record with 19 fields, each annotated with `@Schema`;
+    `sourceId` mapped from `source.code`, `currency` mapped from `currency.code`
+  - `com.flatio.web.dto.ListingSummaryResponse` — compact 11-field summary Record for list displays;
+    `photoUrl` field present but ignored in mapper (no photo storage in entity — placeholder for M1.4.x)
+  - `com.flatio.web.mapper.ListingMapper` — MapStruct `@Mapper(componentModel = "spring")`:
+    `toResponse(Listing)`, `toSummaryResponse(Listing)`, `toSummaryResponseList(List<Listing>)`
+  - 91 tests passed, 0 failed — M1.4.1 closed
+
 - **PR #77 — M1.3.4 + M1.3.8: ListingSyncScheduler — periodic sync + structured logging (issue #15)**
   - `com.flatio.config.SchedulerConfig` — activates Spring scheduling via `@EnableScheduling`
   - `com.flatio.scheduler.ListingSyncScheduler` — iterates all `ListingConnector` beans and syncs each source sequentially:
