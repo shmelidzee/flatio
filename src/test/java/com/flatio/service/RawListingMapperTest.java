@@ -5,6 +5,9 @@ import com.flatio.domain.listing.DealType;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+
+import com.flatio.service.mapper.RawListingMapper;
+import com.flatio.service.mapper.RawListingMapperImpl;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;

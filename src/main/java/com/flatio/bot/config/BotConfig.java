@@ -1,4 +1,4 @@
-package com.flatio.config;
+package com.flatio.bot.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 

@@ -1,4 +1,4 @@
-package com.flatio.service;
+package com.flatio.service.domain;
 
 /**
  * Summary result of a batch ingestion run.

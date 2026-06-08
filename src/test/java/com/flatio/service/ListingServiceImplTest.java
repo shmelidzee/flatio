@@ -2,6 +2,8 @@ package com.flatio.service;
 
 import com.flatio.domain.listing.DealType;
 import java.math.BigDecimal;
+
+import com.flatio.service.impl.DedupHashServiceImpl;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;

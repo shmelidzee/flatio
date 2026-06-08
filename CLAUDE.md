@@ -55,64 +55,118 @@
 
 ## Структура пакетов
 
+Пакеты необходимо держать в порядке и создавать файлы в правильных местах.
+
 Корневой пакет: `com.flatio`
 
-```
+```text
 com.flatio
-├── config/          # конфигурация Spring, бины
-├── domain/          # доменные модели (JPA entities)
-│   ├── listing/     # объявления
-│   ├── user/        # пользователи
-│   ├── subscription/ # подписки
-│   └── region/      # регионы и рынки
-├── repository/      # Spring Data JPA репозитории
-├── service/         # бизнес-логика
-├── web/             # REST контроллеры, DTO, маппинг
-│   ├── controller/
-│   ├── dto/
-│   └── mapper/
-├── connector/       # коннекторы к источникам данных (ListingConnector)
-│   ├── core/        # интерфейс ListingConnector, RawListing
-│   └── {source}/    # реализация конкретного источника (OnlinerConnector и т.д.)
-├── bot/             # Telegram Bot (команды, хэндлеры, форматирование)
-├── scheduler/       # scheduled tasks
-├── security/        # аутентификация, авторизация
-└── util/            # утилиты
+
+├── domain/                    # доменные модели
+│   ├── listing/               # объявления
+│   ├── user/                  # пользователи
+│   ├── subscription/          # подписки
+│   ├── notification/          # уведомления
+│   └── region/                # регионы и рынки
+
+├── repository/                # Spring Data JPA репозитории
+
+├── service/                   # интерфейсы бизнес-сервисов
+├── service/impl/              # реализации бизнес-сервисов
+
+├── web/
+│   ├── controller/            # REST контроллеры
+│   ├── dto/                   # request/response DTO
+│   └── mapper/                # DTO ↔ Domain маппинг
+
+├── telegram/
+│   ├── сonfig/                # config файлы для настройки исключительно при работе с телеграм (бот, клиент)
+│   ├── handler/               # обработчики Telegram Update
+│   ├── command/               # Telegram команды
+│   ├── callback/              # callback query обработчики
+│   ├── keyboard/              # inline/reply клавиатуры
+│   ├── state/                 # FSM и пользовательские сценарии
+│   └── client/                # Telegram Bot API клиент
+
+├── integration/
+│   ├── core/                  # базовые интерфейсы интеграций
+│   ├── realt/                 # интеграция с Realt
+│   ├── kufar/                 # интеграция с Kufar
+│   └── onliner/               # интеграция с Onliner
+
+├── scheduler/                 # scheduled задачи
+
+├── security/                  # Spring Security, Keycloak, JWT
+
+├── config/                    # @Configuration и настройки приложения
+
+├── common/
+│   ├── exception/             # кастомные исключения
+│   ├── util/                  # утилиты
+│   └── constants/             # константы
+
+└── event/                     # доменные события и event-модели
 ```
+
+### Архитектурные правила
+
+* Контроллеры не содержат бизнес-логику.
+* Telegram Handler не работает с Repository напрямую.
+* Repository используются только сервисами.
+* Вся бизнес-логика находится в сервисном слое.
+* Интеграции с внешними системами изолированы в пакете `integration`.
+* Domain слой не зависит от Web, Telegram и Integration слоев.
+* Telegram и REST API используют одни и те же сервисы.
+* Не размещать бизнес-логику в Controller, Mapper, Handler и Repository.
+* При наличии интерфейса сервиса реализация должна размещаться в `service.impl`.
+
+````
 
 ---
 
 ## Структура репозитория
 
-```
+```text
 flatio/
+
 ├── src/
 │   ├── main/java/com/flatio/
 │   └── test/java/com/flatio/
+
 ├── src/main/resources/
 │   ├── application.yml
-│   ├── application-local.yml   # локальный оверрайд, в .gitignore
-│   └── db/migration/           # Flyway миграции
+│   ├── application-local.yml      # локальный оверрайд, в .gitignore
+│   └── db/migration/              # Flyway миграции
+
 ├── docker/
 │   ├── docker-compose.yml
-│   └── docker-compose.prod.yml # в .gitignore
+│   └── docker-compose.prod.yml    # в .gitignore
+
 ├── docs/
 │   ├── architecture.md
-│   ├── parsers.md
 │   ├── api.md
+│   ├── integrations.md
 │   ├── local-setup.md
-│   ├── drafts/                 # черновики ТЗ (product-analyst)
-│   └── qa-reports/             # QA отчёты по milestone'ам (qa-engineer)
+│   ├── product/
+│   │   ├── requirements.md
+│   │   └── roadmap.md
+│   ├── drafts/                    # черновики
+│   └── qa-reports/                # QA отчёты
+
 ├── .github/
 │   └── workflows/
+
 ├── .claude/
-│   ├── agents/                 # файлы агентов
-│   ├── commands/               # slash-команды
-│   └── rules/                  # стандарты
+│   ├── agents/
+│   ├── commands/
+│   └── rules/
+
 ├── CLAUDE.md
 ├── CHANGELOG.md
+├── README.md
 └── build.gradle.kts
-```
+````
+
 
 ---
 

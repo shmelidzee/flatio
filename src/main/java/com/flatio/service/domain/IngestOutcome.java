@@ -1,4 +1,4 @@
-package com.flatio.service;
+package com.flatio.service.domain;
 
 /** Outcome of a single listing ingestion attempt. */
 public enum IngestOutcome {

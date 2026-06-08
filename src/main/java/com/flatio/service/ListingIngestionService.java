@@ -2,6 +2,9 @@ package com.flatio.service;
 
 import com.flatio.connector.core.RawListing;
 import com.flatio.domain.source.Source;
+import com.flatio.service.domain.BatchIngestResult;
+import com.flatio.service.domain.IngestOutcome;
+
 import java.util.List;
 
 /**

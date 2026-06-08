@@ -7,6 +7,8 @@ import com.flatio.repository.UserAuthProviderRepository;
 import com.flatio.repository.UserRepository;
 import java.time.Instant;
 import java.util.Optional;
+
+import com.flatio.service.impl.UserServiceImpl;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;

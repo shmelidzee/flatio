@@ -1,4 +1,4 @@
-package com.flatio.service;
+package com.flatio.service.mapper;
 
 import com.flatio.connector.core.RawListing;
 import com.flatio.domain.listing.DealType;
