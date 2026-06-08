@@ -71,12 +71,12 @@ public interface RawListingMapper {
    */
   default DealType toDealType(String dealType) {
     if (dealType == null) {
-      return null;
+      throw new IllegalArgumentException("deal_type is null");
     }
     try {
       return DealType.valueOf(dealType.toUpperCase());
     } catch (IllegalArgumentException e) {
-      return null;
+      throw new IllegalArgumentException("Unknown deal_type: " + dealType);
     }
   }
 }

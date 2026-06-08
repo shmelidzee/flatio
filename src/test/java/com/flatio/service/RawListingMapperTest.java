@@ -8,6 +8,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class RawListingMapperTest {
 
@@ -42,16 +43,20 @@ class RawListingMapperTest {
   }
 
   @Test
-  void should_return_null_when_deal_type_string_is_null() {
+  void should_throw_when_deal_type_string_is_null() {
     // When / Then
-    assertThat(mapper.toDealType(null)).isNull();
+    assertThatThrownBy(() -> mapper.toDealType(null))
+        .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
-  void should_return_null_when_deal_type_string_is_unrecognised() {
+  void should_throw_when_deal_type_string_is_unrecognised() {
     // When / Then
-    assertThat(mapper.toDealType("EXCHANGE")).isNull();
-    assertThat(mapper.toDealType("")).isNull();
+    assertThatThrownBy(() -> mapper.toDealType("EXCHANGE"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("EXCHANGE");
+    assertThatThrownBy(() -> mapper.toDealType("daily_rent"))
+        .isInstanceOf(IllegalArgumentException.class);
   }
 
   // -------------------------------------------------------------------------
@@ -129,15 +134,14 @@ class RawListingMapperTest {
   }
 
   @Test
-  void should_map_unrecognised_deal_type_to_null_on_entity() {
-    // Given — connector returns unknown deal type string
+  void should_throw_when_entity_mapped_with_unrecognised_deal_type() {
+    // Given — connector returns unknown deal type string (e.g. "daily_rent" from Onliner)
     var raw = buildFullRawListing("ext-003", "AUCTION");
 
-    // When
-    var listing = mapper.toEntity(raw);
-
-    // Then — null deal type will be caught at persist time (DB constraint)
-    assertThat(listing.getDealType()).isNull();
+    // When / Then — exception propagates; ingestBatch catches and skips the listing
+    assertThatThrownBy(() -> mapper.toEntity(raw))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("AUCTION");
   }
 
   // -------------------------------------------------------------------------
