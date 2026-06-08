@@ -1,52 +1,37 @@
 package com.flatio.bot;
 
 import com.flatio.config.BotConfig;
+import java.util.List;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import org.telegram.telegrambots.bots.TelegramLongPollingBot;
+import org.telegram.telegrambots.longpolling.interfaces.LongPollingUpdateConsumer;
+import org.telegram.telegrambots.longpolling.starter.SpringLongPollingBot;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
+import org.telegram.telegrambots.meta.generics.TelegramClient;
 
 /**
  * Main Telegram bot bean for Flatio.
  *
- * <p>Registered as a Spring component and auto-discovered by
- * {@code telegrambots-spring-boot-starter} for long-polling registration.
+ * <p>Implements {@link SpringLongPollingBot} so the
+ * {@code telegrambots-springboot-longpolling-starter} auto-configuration discovers and registers
+ * it automatically. Implements {@link LongPollingUpdateConsumer} to process incoming updates
+ * in the same class.
  */
 @Component
 @Slf4j
-public class FlatioBot extends TelegramLongPollingBot {
+@RequiredArgsConstructor
+public class FlatioBot implements SpringLongPollingBot, LongPollingUpdateConsumer {
 
   private final BotConfig botConfig;
+  private final TelegramClient telegramClient;
   private final StartCommandHandler startCommandHandler;
 
   /**
-   * Constructs the bot, passing the token to the parent so the internal HTTP client
-   * is initialized with a valid token for both polling and outbound requests.
+   * Returns the bot API token used for long-polling authentication.
    *
-   * @param botConfig           bot credentials from environment variables
-   * @param startCommandHandler handler for the /start command
-   */
-  public FlatioBot(BotConfig botConfig, StartCommandHandler startCommandHandler) {
-    super(botConfig.token());
-    this.botConfig = botConfig;
-    this.startCommandHandler = startCommandHandler;
-  }
-
-  /**
-   * Returns the bot username configured via {@code TELEGRAM_BOT_USERNAME}.
-   *
-   * @return bot username, never null or blank
-   */
-  @Override
-  public String getBotUsername() {
-    return botConfig.username();
-  }
-
-  /**
-   * Returns the bot API token configured via {@code TELEGRAM_BOT_TOKEN}.
-   *
-   * @return bot token, never null or blank
+   * @return bot token from {@code TELEGRAM_BOT_TOKEN}, never null
    */
   @Override
   public String getBotToken() {
@@ -54,14 +39,26 @@ public class FlatioBot extends TelegramLongPollingBot {
   }
 
   /**
-   * Handles incoming Telegram updates.
+   * Returns this instance as the update consumer; all updates are handled in-place.
    *
-   * <p>Command handlers are added in subsequent issues (M1.5.2+).
-   *
-   * @param update incoming Telegram update, never null
+   * @return this bot instance, never null
    */
   @Override
-  public void onUpdateReceived(Update update) {
+  public LongPollingUpdateConsumer getUpdatesConsumer() {
+    return this;
+  }
+
+  /**
+   * Processes a batch of incoming Telegram updates.
+   *
+   * @param updates list of updates received from Telegram, never null
+   */
+  @Override
+  public void consume(List<Update> updates) {
+    updates.forEach(this::handleUpdate);
+  }
+
+  private void handleUpdate(Update update) {
     log.debug("Update received: updateId={}", update.getUpdateId());
     if (!update.hasMessage() || !update.getMessage().hasText()) {
       return;
@@ -69,7 +66,7 @@ public class FlatioBot extends TelegramLongPollingBot {
     String text = update.getMessage().getText();
     if (text.startsWith("/start")) {
       try {
-        execute(startCommandHandler.handle(update));
+        telegramClient.execute(startCommandHandler.handle(update));
       } catch (TelegramApiException e) {
         log.error("Failed to send /start reply: chatId={}", update.getMessage().getChatId(), e);
       } catch (Exception e) {
