@@ -1,5 +1,6 @@
 package com.flatio.connector.onliner;
 
+import com.flatio.connector.core.ConnectorTransientException;
 import com.flatio.connector.core.RawListing;
 import com.flatio.connector.onliner.dto.OnlinerSearchResponse;
 import org.junit.jupiter.api.BeforeEach;
@@ -7,6 +8,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
@@ -15,6 +20,7 @@ import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
@@ -216,6 +222,68 @@ class OnlinerConnectorTest {
   }
 
   // -------------------------------------------------------------------------
+  // HTTP error handling
+  // -------------------------------------------------------------------------
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_throw_connector_transient_exception_when_429_received() {
+    // Given — Retry-After: 0 so test does not sleep
+    var retryHeaders = new HttpHeaders();
+    retryHeaders.set(HttpHeaders.RETRY_AFTER, "0");
+    var exception = HttpClientErrorException.create(
+        HttpStatus.TOO_MANY_REQUESTS, "Too Many Requests", retryHeaders, null, null);
+    mockRestClientThrowing(exception);
+
+    // When / Then — 429 becomes ConnectorTransientException for Resilience4j retry
+    assertThatThrownBy(() -> connector.fetch())
+        .isInstanceOf(ConnectorTransientException.class)
+        .hasCauseInstanceOf(HttpClientErrorException.TooManyRequests.class);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_use_retry_after_header_when_present_in_429_response() {
+    // Given — Retry-After header present; use 0 to keep test fast
+    var headers = new HttpHeaders();
+    headers.set(HttpHeaders.RETRY_AFTER, "0");
+    var exception = HttpClientErrorException.create(
+        HttpStatus.TOO_MANY_REQUESTS, "Too Many Requests", headers, null, null);
+    mockRestClientThrowing(exception);
+
+    // When / Then — transient exception thrown (header was read, not default 5s path)
+    assertThatThrownBy(() -> connector.fetch())
+        .isInstanceOf(ConnectorTransientException.class);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_return_empty_list_when_non_retryable_4xx_received() {
+    // Given — HTTP 404 Not Found: non-retryable, should not propagate
+    var exception = HttpClientErrorException.create(
+        HttpStatus.NOT_FOUND, "Not Found", HttpHeaders.EMPTY, null, null);
+    mockRestClientThrowing(exception);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then — returns empty list without propagating exception
+    assertThat(result).isEmpty();
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_propagate_server_exception_when_5xx_received() {
+    // Given — HTTP 503: Resilience4j retry handles this, connector must not swallow it
+    var exception = new HttpServerErrorException(HttpStatus.SERVICE_UNAVAILABLE);
+    mockRestClientThrowing(exception);
+
+    // When / Then — HttpServerErrorException propagates for retry and circuit-breaker tracking
+    assertThatThrownBy(() -> connector.fetch())
+        .isInstanceOf(HttpServerErrorException.class);
+  }
+
+  // -------------------------------------------------------------------------
   // Helpers — mock setup
   // -------------------------------------------------------------------------
 
@@ -225,6 +293,14 @@ class OnlinerConnectorTest {
     when(requestHeadersUriSpec.uri(any(Function.class))).thenReturn(requestHeadersSpec);
     when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
     when(responseSpec.body(OnlinerSearchResponse.class)).thenReturn(response);
+  }
+
+  @SuppressWarnings({"unchecked", "rawtypes"})
+  private void mockRestClientThrowing(RuntimeException exception) {
+    when(restClient.get()).thenReturn(requestHeadersUriSpec);
+    when(requestHeadersUriSpec.uri(any(Function.class))).thenReturn(requestHeadersSpec);
+    when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
+    when(responseSpec.body(OnlinerSearchResponse.class)).thenThrow(exception);
   }
 
   // -------------------------------------------------------------------------

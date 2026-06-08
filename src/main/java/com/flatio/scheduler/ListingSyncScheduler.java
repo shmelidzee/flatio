@@ -6,6 +6,7 @@ import com.flatio.domain.source.Source;
 import com.flatio.repository.SourceRepository;
 import com.flatio.service.BatchIngestResult;
 import com.flatio.service.ListingIngestionService;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -59,6 +60,8 @@ public class ListingSyncScheduler {
 
       log.info("Sync completed: source={}, fetched={}, added={}, updated={}, errors={}, durationMs={}",
           sourceId, fetchedCount, result.added(), result.updated(), result.errors(), durationMs);
+    } catch (CallNotPermittedException e) {
+      log.warn("Circuit OPEN, skipping: source={}", sourceId);
     } catch (Exception e) {
       log.error("Sync failed: source={}, error={}", sourceId, e.getMessage(), e);
     }
