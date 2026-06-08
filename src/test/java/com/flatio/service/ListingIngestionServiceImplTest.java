@@ -219,6 +219,92 @@ class ListingIngestionServiceImplTest {
   }
 
   // -------------------------------------------------------------------------
+  // ingest — unknown deal_type skip
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_return_skipped_when_deal_type_is_unknown() {
+    // Given — connector sends a deal_type value not in the DealType enum
+    var raw = new RawListing(
+        "ext-skip1", "Test", null, "AUCTION", "APARTMENT",
+        BigDecimal.valueOf(500), "BYN",
+        2, 3, 9, BigDecimal.valueOf(55.5),
+        "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
+        "Минск", "https://onliner.by/skip1",
+        Instant.parse("2026-06-01T10:00:00Z"), List.of()
+    );
+
+    // When
+    var result = ingestionService.ingest(raw, source);
+
+    // Then — no error, listing is skipped silently with WARN log
+    assertThat(result).isEqualTo(IngestOutcome.SKIPPED);
+  }
+
+  @Test
+  void should_return_skipped_when_deal_type_is_null() {
+    // Given — connector sends null deal_type
+    var raw = new RawListing(
+        "ext-skip2", "Test", null, null, "APARTMENT",
+        BigDecimal.valueOf(500), "BYN",
+        2, 3, 9, BigDecimal.valueOf(55.5),
+        "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
+        "Минск", "https://onliner.by/skip2",
+        Instant.parse("2026-06-01T10:00:00Z"), List.of()
+    );
+
+    // When
+    var result = ingestionService.ingest(raw, source);
+
+    // Then
+    assertThat(result).isEqualTo(IngestOutcome.SKIPPED);
+  }
+
+  @Test
+  void should_not_call_repository_when_deal_type_is_unknown() {
+    // Given
+    var raw = new RawListing(
+        "ext-skip3", "Test", null, "EXCHANGE", "APARTMENT",
+        BigDecimal.valueOf(500), "BYN",
+        2, 3, 9, BigDecimal.valueOf(55.5),
+        "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
+        "Минск", "https://onliner.by/skip3",
+        Instant.parse("2026-06-01T10:00:00Z"), List.of()
+    );
+
+    // When
+    ingestionService.ingest(raw, source);
+
+    // Then — no DB access attempted for unknown deal_type
+    verify(listingRepository, never()).findByExternalIdAndSourceId(anyString(), anyLong());
+    verify(listingRepository, never()).save(any());
+  }
+
+  @Test
+  void should_not_count_as_error_when_batch_contains_unknown_deal_type() {
+    // Given — one unknown deal_type, one valid listing
+    var rawUnknown = new RawListing(
+        "ext-batch-skip", "Test", null, "AUCTION", "APARTMENT",
+        BigDecimal.valueOf(500), "BYN",
+        2, 3, 9, BigDecimal.valueOf(55.5),
+        "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
+        "Минск", "https://onliner.by/batch-skip",
+        Instant.parse("2026-06-01T10:00:00Z"), List.of()
+    );
+    var rawValid = buildRawListing("ext-batch-valid", BigDecimal.valueOf(500));
+
+    when(self.ingest(rawUnknown, source)).thenReturn(IngestOutcome.SKIPPED);
+    when(self.ingest(rawValid, source)).thenReturn(IngestOutcome.CREATED);
+
+    // When
+    var result = ingestionService.ingestBatch(List.of(rawUnknown, rawValid), source);
+
+    // Then — skipped listing does not increment errors
+    assertThat(result.errors()).isEqualTo(0);
+    assertThat(result.added()).isEqualTo(1);
+  }
+
+  // -------------------------------------------------------------------------
   // ingest — error handling
   // -------------------------------------------------------------------------
 
