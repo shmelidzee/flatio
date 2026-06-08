@@ -31,11 +31,23 @@ Controller → Service → Repository → Database
 ```
 com.flatio.domain.listing
 com.flatio.service
+com.flatio.service.impl
 com.flatio.web.controller
 com.flatio.web.dto
 com.flatio.web.mapper
 com.flatio.connector.core
 com.flatio.connector.realt    # пример конкретного источника
+
+- `com.plantcare.bot.domain` — entity, value objects
+- `com.plantcare.bot.repository` — Spring Data репозитории
+- `com.plantcare.bot.service` — бизнес-логика
+- `com.plantcare.bot.telegram` — хендлеры Telegram, апдейты, клавиатуры
+- `com.plantcare.bot.scheduler` — крон-задачи, отправка напоминаний
+- `com.plantcare.bot.config` — `@Configuration` и `@ConfigurationProperties`
+- `com.plantcare.bot.web` — actuator-расширения, healthcheck-эндпоинты
+
+**Telegram-слой не смешивать с бизнес-логикой.** Хендлер парсит апдейт → дёргает сервис → формирует ответ. Никаких репозиториев в хендлерах.
+
 ```
 
 ### Классы
