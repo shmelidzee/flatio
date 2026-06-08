@@ -126,10 +126,11 @@ public class OnlinerConnector implements ListingConnector {
   }
 
   private RawListing toRawListing(OnlinerApartment apartment) {
-    BigDecimal price = apartment.price() != null
-        ? new BigDecimal(apartment.price().amount())
-        : null;
-    String currency = apartment.price() != null ? apartment.price().currency() : null;
+    if (apartment.price() == null) {
+      throw new IllegalArgumentException("Missing price for apartment id=" + apartment.id());
+    }
+    BigDecimal price = new BigDecimal(apartment.price().amount());
+    String currency = apartment.price().currency();
     BigDecimal lat = apartment.location() != null ? apartment.location().latitude() : null;
     BigDecimal lon = apartment.location() != null ? apartment.location().longitude() : null;
     String address = apartment.location() != null ? apartment.location().address() : null;

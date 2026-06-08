@@ -15,6 +15,9 @@ import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.List;
 import java.util.function.Function;
 
@@ -222,6 +225,63 @@ class OnlinerConnectorTest {
   }
 
   // -------------------------------------------------------------------------
+  // Fixture-based deserialization (JSON → RawListing full chain)
+  // -------------------------------------------------------------------------
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_correctly_deserialize_valid_response_fixture_including_json_property_mappings() throws IOException {
+    // Given — loads actual Onliner API snapshot; verifies @JsonProperty (deal_type, rooms_count, etc.)
+    var response = loadFixture("fixtures/onliner/valid-response.json");
+    mockRestClientReturning(response);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then — all snake_case JSON fields correctly mapped to camelCase Java fields
+    assertThat(result).hasSize(2);
+    assertThat(result.get(0).externalId()).isEqualTo("1001");
+    assertThat(result.get(0).dealType()).isEqualTo("rent");
+    assertThat(result.get(0).price()).isEqualByComparingTo("450.00");
+    assertThat(result.get(0).currency()).isEqualTo("USD");
+    assertThat(result.get(0).rooms()).isEqualTo(2);
+    assertThat(result.get(0).floorNumber()).isEqualTo(3);
+    assertThat(result.get(0).floorsTotal()).isEqualTo(9);
+    assertThat(result.get(1).externalId()).isEqualTo("1002");
+    assertThat(result.get(1).dealType()).isEqualTo("sell");
+    assertThat(result.get(1).photoUrls()).isEmpty();
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_return_empty_list_from_empty_response_fixture() throws IOException {
+    // Given — empty response fixture file
+    var response = loadFixture("fixtures/onliner/empty-response.json");
+    mockRestClientReturning(response);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then
+    assertThat(result).isEmpty();
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_skip_listing_with_null_price_when_loaded_from_fixture() throws IOException {
+    // Given — fixture has apt 2001 (valid) and apt 2002 (price: null)
+    var response = loadFixture("fixtures/onliner/response-without-price.json");
+    mockRestClientReturning(response);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then — null-price listing is skipped; valid one returned
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).externalId()).isEqualTo("2001");
+  }
+
+  // -------------------------------------------------------------------------
   // HTTP error handling
   // -------------------------------------------------------------------------
 
@@ -301,6 +361,12 @@ class OnlinerConnectorTest {
     when(requestHeadersUriSpec.uri(any(Function.class))).thenReturn(requestHeadersSpec);
     when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
     when(responseSpec.body(OnlinerSearchResponse.class)).thenThrow(exception);
+  }
+
+  private OnlinerSearchResponse loadFixture(String path) throws IOException {
+    InputStream stream = getClass().getClassLoader().getResourceAsStream(path);
+    assertThat(stream).as("fixture file not found on classpath: %s", path).isNotNull();
+    return new ObjectMapper().readValue(stream, OnlinerSearchResponse.class);
   }
 
   // -------------------------------------------------------------------------
