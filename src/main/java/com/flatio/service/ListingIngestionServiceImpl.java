@@ -85,8 +85,8 @@ public class ListingIngestionServiceImpl implements ListingIngestionService {
     listing.setStatus(ListingStatus.ACTIVE);
     listing.setDedupHash(computeDedupHash(listing));
 
-    recordPriceHistory(listing, currency);
     listingRepository.save(listing);
+    recordPriceHistory(listing, currency);
 
     log.debug("Created listing: externalId={}, source={}", listing.getExternalId(), source.getCode());
     return IngestOutcome.CREATED;
