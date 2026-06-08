@@ -1,5 +1,6 @@
 package com.flatio.config;
 
+import com.flatio.bot.config.BotConfig;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;

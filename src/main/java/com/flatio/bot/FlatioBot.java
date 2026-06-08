@@ -1,6 +1,6 @@
 package com.flatio.bot;
 
-import com.flatio.config.BotConfig;
+import com.flatio.bot.config.BotConfig;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

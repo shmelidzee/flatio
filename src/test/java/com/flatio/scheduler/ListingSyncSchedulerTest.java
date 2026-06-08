@@ -4,7 +4,7 @@ import com.flatio.connector.core.ListingConnector;
 import com.flatio.connector.core.RawListing;
 import com.flatio.domain.source.Source;
 import com.flatio.repository.SourceRepository;
-import com.flatio.service.BatchIngestResult;
+import com.flatio.service.domain.BatchIngestResult;
 import com.flatio.service.ListingIngestionService;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;

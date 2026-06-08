@@ -28,27 +28,41 @@ Controller → Service → Repository → Database
 ## Именование
 
 ### Пакеты
-```
-com.flatio.domain.listing
-com.flatio.service
-com.flatio.service.impl
-com.flatio.web.controller
-com.flatio.web.dto
-com.flatio.web.mapper
-com.flatio.connector.core
-com.flatio.connector.realt    # пример конкретного источника
 
-- `com.plantcare.bot.domain` — entity, value objects
-- `com.plantcare.bot.repository` — Spring Data репозитории
-- `com.plantcare.bot.service` — бизнес-логика
-- `com.plantcare.bot.telegram` — хендлеры Telegram, апдейты, клавиатуры
-- `com.plantcare.bot.scheduler` — крон-задачи, отправка напоминаний
-- `com.plantcare.bot.config` — `@Configuration` и `@ConfigurationProperties`
-- `com.plantcare.bot.web` — actuator-расширения, healthcheck-эндпоинты
+* `com.flatio.domain` — доменные сущности, value objects, enum'ы и бизнес-модели
+* `com.flatio.repository` — Spring Data репозитории для работы с БД
+* `com.flatio.service` — интерфейсы бизнес-сервисов
+* `com.flatio.service.impl` — реализации бизнес-сервисов
+* `com.flatio.web.controller` — REST контроллеры
+* `com.flatio.web.dto` — DTO для REST API (request/response модели)
+* `com.flatio.web.mapper` — маппинг между DTO и доменными объектами
+* `com.flatio.telegram.handler` — обработчики Telegram Update и входящих сообщений
+* `com.flatio.telegram.command` — команды Telegram (`/start`, `/search`, `/subscribe` и т.д.)
+* `com.flatio.telegram.callback` — обработчики callback-запросов от inline-кнопок
+* `com.flatio.telegram.keyboard` — фабрики и билдеры Telegram-клавиатур
+* `com.flatio.telegram.state` — состояние пользовательских сценариев (FSM, пошаговые диалоги)
+* `com.flatio.telegram.client` — клиент для работы с Telegram Bot API
+* `com.flatio.integration.core` — базовые интерфейсы и модели интеграций
+* `com.flatio.integration.realt` — интеграция с Realt
+* `com.flatio.integration.kufar` — интеграция с Kufar
+* `com.flatio.integration.onliner` — интеграция с Onliner
+* `com.flatio.scheduler` — фоновые задачи и периодические процессы
+* `com.flatio.security` — безопасность, JWT, Keycloak, авторизация
+* `com.flatio.config` — конфигурация приложения и Spring Beans
+* `com.flatio.common.exception` — кастомные исключения
+* `com.flatio.common.util` — утилитарные классы
+* `com.flatio.common.constants` — константы приложения
 
-**Telegram-слой не смешивать с бизнес-логикой.** Хендлер парсит апдейт → дёргает сервис → формирует ответ. Никаких репозиториев в хендлерах.
+### Архитектурные правила
 
-```
+* Контроллеры не содержат бизнес-логику.
+* Telegram-хендлеры не работают с Repository напрямую.
+* Repository используются только сервисами.
+* Вся бизнес-логика находится в сервисном слое.
+* Интеграции с внешними системами изолированы в пакете `integration`.
+* Domain слой не зависит от Web, Telegram и Integration слоев.
+* Telegram и REST API используют одни и те же сервисы.
+* Не создавать бизнес-логику в mapper, controller, handler и repository.
 
 ### Классы
 | Тип | Суффикс | Пример |
@@ -304,7 +318,7 @@ public interface ListingConnector {
 ```
 
 Именование реализаций: `OnlinerConnector`, `RealtConnector`, `KufarConnector`.
-Пакет: `com.flatio.connector.core` (интерфейс), `com.flatio.connector.{source}` (реализации).
+Пакет: `com.flatio.integration.core` (интерфейс), `com.flatio.integration.{source}` (реализации).
 
 ### Обязательные требования
 ```java

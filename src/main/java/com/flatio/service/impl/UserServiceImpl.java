@@ -1,4 +1,4 @@
-package com.flatio.service;
+package com.flatio.service.impl;
 
 import com.flatio.domain.user.AuthProvider;
 import com.flatio.domain.user.User;
@@ -6,6 +6,8 @@ import com.flatio.domain.user.UserAuthProvider;
 import com.flatio.repository.UserAuthProviderRepository;
 import com.flatio.repository.UserRepository;
 import java.time.Instant;
+
+import com.flatio.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

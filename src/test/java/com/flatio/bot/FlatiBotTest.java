@@ -1,6 +1,6 @@
 package com.flatio.bot;
 
-import com.flatio.config.BotConfig;
+import com.flatio.bot.config.BotConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.telegram.telegrambots.meta.generics.TelegramClient;

@@ -1,4 +1,4 @@
-package com.flatio.service;
+package com.flatio.service.impl;
 
 import com.flatio.domain.listing.DealType;
 import java.math.BigDecimal;
@@ -6,6 +6,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+
+import com.flatio.service.DedupHashService;
 import org.springframework.stereotype.Service;
 
 @Service

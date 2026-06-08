@@ -15,6 +15,10 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+
+import com.flatio.service.domain.IngestOutcome;
+import com.flatio.service.impl.ListingIngestionServiceImpl;
+import com.flatio.service.mapper.RawListingMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

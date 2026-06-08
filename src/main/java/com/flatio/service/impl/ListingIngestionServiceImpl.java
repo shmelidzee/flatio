@@ -1,4 +1,4 @@
-package com.flatio.service;
+package com.flatio.service.impl;
 
 import com.flatio.connector.core.RawListing;
 import com.flatio.domain.currency.Currency;
@@ -12,6 +12,11 @@ import com.flatio.repository.ListingRepository;
 import com.flatio.repository.PriceHistoryRepository;
 import java.util.List;
 import java.util.Optional;
+
+import com.flatio.service.*;
+import com.flatio.service.domain.BatchIngestResult;
+import com.flatio.service.domain.IngestOutcome;
+import com.flatio.service.mapper.RawListingMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
