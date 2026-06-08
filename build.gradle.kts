@@ -30,7 +30,7 @@ val resilience4jVersion = "2.2.0"
 val testcontainersVersion = "1.19.7"
 val springdocVersion = "2.4.0"
 val logstashEncoderVersion = "7.4"
-val telegramBotsVersion = "6.9.0"
+val telegramBotsVersion = "9.5.0"
 
 dependencies {
   implementation("org.springframework.boot:spring-boot-starter-web")
@@ -49,10 +49,8 @@ dependencies {
   implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:$springdocVersion")
   implementation("net.logstash.logback:logstash-logback-encoder:$logstashEncoderVersion")
 
-  implementation("org.telegram:telegrambots-spring-boot-starter:$telegramBotsVersion") {
-    // jackson-module-jaxb-annotations uses javax.xml.bind which is not available in Java 21
-    exclude(group = "com.fasterxml.jackson.module", module = "jackson-module-jaxb-annotations")
-  }
+  implementation("org.telegram:telegrambots-springboot-longpolling-starter:$telegramBotsVersion")
+  implementation("org.telegram:telegrambots-client:$telegramBotsVersion")
 
   implementation("org.mapstruct:mapstruct:$mapstructVersion")
   annotationProcessor("org.mapstruct:mapstruct-processor:$mapstructVersion")

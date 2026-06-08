@@ -3,6 +3,7 @@ package com.flatio.bot;
 import com.flatio.config.BotConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.telegram.telegrambots.meta.generics.TelegramClient;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -14,16 +15,7 @@ class FlatiBotTest {
   @BeforeEach
   void setUp() {
     var config = new BotConfig("test_token:123", "test_bot");
-    flatioBot = new FlatioBot(config, mock(StartCommandHandler.class));
-  }
-
-  @Test
-  void should_return_username_from_config() {
-    // When
-    var result = flatioBot.getBotUsername();
-
-    // Then
-    assertThat(result).isEqualTo("test_bot");
+    flatioBot = new FlatioBot(config, mock(TelegramClient.class), mock(StartCommandHandler.class));
   }
 
   @Test
@@ -33,5 +25,14 @@ class FlatiBotTest {
 
     // Then
     assertThat(result).isEqualTo("test_token:123");
+  }
+
+  @Test
+  void should_return_self_as_updates_consumer() {
+    // When
+    var consumer = flatioBot.getUpdatesConsumer();
+
+    // Then
+    assertThat(consumer).isSameAs(flatioBot);
   }
 }

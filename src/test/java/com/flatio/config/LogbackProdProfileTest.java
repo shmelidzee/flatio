@@ -28,7 +28,8 @@ import static org.assertj.core.api.Assertions.assertThat;
             "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration," +
             "org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration," +
             "org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration," +
-            "org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration",
+            "org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration," +
+            "org.telegram.telegrambots.longpolling.starter.TelegramBotStarterConfiguration",
         "telegram.bot.token=dummy-test-token",
         "telegram.bot.username=dummy_test_bot"
     }

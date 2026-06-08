@@ -9,6 +9,7 @@ import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardRow;
 
 /**
  * Handles the {@code /start} Telegram command.
@@ -61,7 +62,7 @@ public class StartCommandHandler {
         .build();
 
     var keyboard = InlineKeyboardMarkup.builder()
-        .keyboardRow(List.of(searchButton, helpButton))
+        .keyboardRow(new InlineKeyboardRow(searchButton, helpButton))
         .build();
 
     return SendMessage.builder()
