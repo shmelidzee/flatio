@@ -8,6 +8,41 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **PR #83 — M1.3.9: OnlinerConnector unit tests — fixture-based deserialization (issue #19)**
+  - 3 new fixture-based tests in `OnlinerConnectorTest` that load real Onliner API JSON snapshots
+    from classpath via `ObjectMapper`, verifying the complete `@JsonProperty` deserialization chain
+    (`deal_type`, `rooms_count`, `number_of_floors`)
+  - Tests: `should_correctly_deserialize_valid_response_fixture_including_json_property_mappings`,
+    `should_return_empty_list_from_empty_response_fixture`,
+    `should_skip_listing_with_null_price_when_loaded_from_fixture`
+
+### Fixed
+- **PR #83 — null price handling in `OnlinerConnector.toRawListing()`**
+  - Previously a listing with `"price": null` in the API response was added to results with `null` price
+    instead of being skipped; now throws `IllegalArgumentException` which is caught by `parseListings()`
+    and logged at WARN level — listing is correctly skipped while others continue processing
+
+### Added
+- **PR #82 — M1.3.7: Resilience4j retry backoff + circuit breaker for connectors (issue #17)**
+  - `com.flatio.connector.core.ConnectorTransientException` — new exception in `connector.core` for
+    signalling retryable transient errors (HTTP 429); placed in core for reuse by all future connectors
+  - `OnlinerConnector.fetch()` — added `@CircuitBreaker(name = "connector-onliner")` alongside existing
+    `@RateLimiter` and `@Retry`; aspect order: RateLimiter (outermost) → Retry → CircuitBreaker (inner)
+  - HTTP 429 handling: reads `Retry-After` header (default 5s), sleeps via `sleepQuietly()`, then throws
+    `ConnectorTransientException` to trigger Resilience4j retry
+  - HTTP 4xx (non-429): logged at ERROR, returns `List.of()` without retry
+  - HTTP 5xx: propagates `HttpServerErrorException` for retry and circuit-breaker tracking
+  - `application.yml` — Resilience4j retry updated with `retry-exceptions` and `ignore-exceptions`:
+    retries on `HttpServerErrorException`, `ResourceAccessException`, `ConnectorTransientException`;
+    ignores `CallNotPermittedException` (circuit breaker OPEN state — bypasses retry, goes to fallback)
+  - `application.yml` — circuit breaker added: COUNT_BASED, window=5, failure-rate=100%,
+    wait-duration-in-open-state=60s, auto-transition to HALF_OPEN, 1 probe call
+  - `ListingSyncScheduler` — added explicit `catch (CallNotPermittedException)` before generic `catch (Exception)`:
+    logs `log.warn("Circuit OPEN, skipping: source={}")` and continues to next connector
+  - Tests: 4 new tests in `OnlinerConnectorTest` (HTTP 429, Retry-After header, 4xx non-retryable, 5xx propagation),
+    1 new test in `ListingSyncSchedulerTest` (circuit OPEN — no propagation, ingest skipped)
+  - 117 tests passed, 0 failed — M1.3.7 closed
+
 - **PR #80 — M1.5.1: Telegram Bot dependency + base configuration (issue #26)**
   - `org.telegram:telegrambots-spring-boot-starter:6.9.0` added to `build.gradle.kts`;
     transitive `jackson-module-jaxb-annotations` excluded (incompatible with Java 21 — `javax.xml.bind` absent from JDK 21)
