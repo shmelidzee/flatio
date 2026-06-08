@@ -49,7 +49,8 @@ com.flatio
 ├── config/              # Spring configuration and beans
 │   ├── OpenApiConfig    # springdoc/Swagger setup
 │   ├── ConnectorConfig  # @Bean("onlinerRestClient") with timeouts + @EnableConfigurationProperties
-│   └── SchedulerConfig  # @EnableScheduling — activates Spring scheduled task execution
+│   ├── SchedulerConfig  # @EnableScheduling — activates Spring scheduled task execution
+│   └── BotConfiguration # @EnableConfigurationProperties(BotConfig.class) — Telegram bot config
 ├── domain/              # JPA entities (domain model)
 │   ├── country/         # Country entity — ISO country reference data
 │   ├── currency/        # Currency entity — currency reference data
@@ -79,14 +80,16 @@ com.flatio
 │   ├── RawListingMapper           # MapStruct — toEntity(RawListing) + updateEntity(@MappingTarget Listing)
 │   ├── ListingService             # interface (listing queries and management — M1.4)
 │   └── ListingServiceImpl         # placeholder (M1.4)
-├── web/                 # REST controllers, DTOs, mappers (to be added)
-│   ├── controller/
-│   ├── dto/
-│   └── mapper/
+├── web/                 # REST controllers, DTOs, mappers
+│   ├── controller/      # (M1.4 — to be added)
+│   ├── dto/             # ListingResponse (19 fields + @Schema), ListingSummaryResponse (11 fields)
+│   └── mapper/          # ListingMapper — MapStruct Listing ↔ ListingResponse / ListingSummaryResponse
 ├── connector/           # Source data connectors
 │   ├── core/            # ListingConnector interface + RawListing record
 │   └── onliner/         # OnlinerConnector + OnlinerProperties + DTO records
-├── bot/                 # Telegram Bot (to be added)
+├── bot/                 # Telegram Bot
+│   ├── FlatioBot        # TelegramLongPollingBot Spring bean — delegates token/username to BotConfig
+│   └── BotConfig        # @ConfigurationProperties(prefix = "telegram.bot") Record — token + username
 ├── scheduler/           # Scheduled tasks
 │   └── ListingSyncScheduler  # @Scheduled — iterates all ListingConnector beans, calls ingestBatch per source
 ├── security/            # Auth / JWT (to be added)
