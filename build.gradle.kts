@@ -49,7 +49,10 @@ dependencies {
   implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:$springdocVersion")
   implementation("net.logstash.logback:logstash-logback-encoder:$logstashEncoderVersion")
 
-  implementation("org.telegram:telegrambots-spring-boot-starter:$telegramBotsVersion")
+  implementation("org.telegram:telegrambots-spring-boot-starter:$telegramBotsVersion") {
+    // jackson-module-jaxb-annotations uses javax.xml.bind which is not available in Java 21
+    exclude(group = "com.fasterxml.jackson.module", module = "jackson-module-jaxb-annotations")
+  }
 
   implementation("org.mapstruct:mapstruct:$mapstructVersion")
   annotationProcessor("org.mapstruct:mapstruct-processor:$mapstructVersion")
