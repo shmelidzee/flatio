@@ -59,10 +59,30 @@ resilience4j:
         wait-duration: 2s
         enable-exponential-backoff: true
         exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - org.springframework.web.client.HttpServerErrorException
+          - org.springframework.web.client.ResourceAccessException
+          - com.flatio.connector.core.ConnectorTransientException
+        ignore-exceptions:
+          - io.github.resilience4j.circuitbreaker.CallNotPermittedException
+  circuitbreaker:
+    instances:
+      connector-onliner:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 5
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 100
+        wait-duration-in-open-state: 60s
+        automatic-transition-from-open-to-half-open-enabled: true
+        permitted-number-of-calls-in-half-open-state: 1
 ```
 
-Rate: 1 request/second. Retry: 3 attempts, backoff 2s → 4s → 8s.  
-After all retries fail, `fetchFallback(Exception e)` is called and returns an empty list.
+**Aspect order:** `@RateLimiter` (outermost) → `@Retry` → `@CircuitBreaker` (innermost).
+
+- **Rate limiter:** 1 request/second; waits up to 5s for a permit.
+- **Circuit breaker:** opens after 5 consecutive failures; stays open 60s; transitions to HALF_OPEN automatically; 1 probe call allowed.
+- **Retry:** 3 attempts with exponential backoff 2s → 4s → 8s; retries on 5xx, network errors, and HTTP 429 (`ConnectorTransientException`). When the circuit breaker is OPEN, `CallNotPermittedException` is in `ignore-exceptions` — it bypasses retry and goes directly to `fetchFallback`.
+- **Fallback:** `fetchFallback(Exception e)` — returns `List.of()` after exhausted retries.
 
 ### HTTP client (`ConnectorConfig`)
 
@@ -97,9 +117,11 @@ After all retries fail, `fetchFallback(Exception e)` is called and returns an em
 
 ### Error handling
 
-- **Network failure / HTTP error:** exception propagates from `fetch()`, `@Retry` triggers;
-  after 3 failed attempts `fetchFallback` returns `List.of()`
-- **Single broken listing** (e.g., invalid `price.amount`): skipped with `log.warn`, rest are processed
+- **HTTP 5xx / network failure:** exception propagates from `fetch()`, `@Retry` triggers with exponential backoff; after 3 failed attempts circuit breaker records the failure; `fetchFallback` returns `List.of()`
+- **HTTP 429 Too Many Requests:** `Retry-After` header is read (default 5s), thread sleeps, then `ConnectorTransientException` is thrown to trigger retry
+- **HTTP 4xx (non-429):** logged at ERROR, returns `List.of()` without retry
+- **Circuit breaker OPEN:** `CallNotPermittedException` propagates to `ListingSyncScheduler`, which logs `WARN "Circuit OPEN, skipping: source={}"` and moves on to the next connector
+- **Single broken listing** (e.g., `price: null`, invalid `price.amount`): skipped with `log.warn`, rest are processed
 - **Null / empty API response:** `fetch()` returns `List.of()` without retry
 
 ### Test coverage
@@ -115,10 +137,17 @@ Fixtures: `src/test/resources/fixtures/onliner/`
 | `should_return_empty_list_when_api_returns_null_response` | Null body from API |
 | `should_return_empty_list_when_fallback_is_invoked_after_exhausted_retries` | Fallback after retry exhaustion |
 | `should_not_throw_from_fallback_method` | Fallback is always safe |
-| `should_skip_listing_with_null_price_amount_and_return_others` | Per-listing error isolation |
+| `should_skip_listing_with_null_price_amount_and_return_others` | Per-listing error isolation (invalid amount string) |
 | `should_map_all_required_fields_correctly` | Full field mapping check |
 | `should_return_fallback_title_when_all_title_fields_are_null` | Title fallback logic |
 | `should_return_empty_photo_list_when_photo_is_null` | Null photo handling |
+| `should_throw_connector_transient_exception_when_429_received` | HTTP 429 → `ConnectorTransientException` |
+| `should_use_retry_after_header_when_present_in_429_response` | `Retry-After` header is read |
+| `should_return_empty_list_when_non_retryable_4xx_received` | HTTP 4xx (non-429) — swallowed |
+| `should_propagate_server_exception_when_5xx_received` | HTTP 5xx propagates for retry tracking |
+| `should_correctly_deserialize_valid_response_fixture_including_json_property_mappings` | JSON `@JsonProperty` mappings via fixture |
+| `should_return_empty_list_from_empty_response_fixture` | Empty fixture deserialized correctly |
+| `should_skip_listing_with_null_price_when_loaded_from_fixture` | `price: null` in fixture → listing skipped |
 
 ---
 
@@ -128,7 +157,7 @@ Fixtures: `src/test/resources/fixtures/onliner/`
 2. Implement `ListingConnector` — `getSourceId()`, `getSupportedRegionCode()`, `fetch()`
 3. Create `{Source}Properties` record with `@ConfigurationProperties(prefix = "connector.{source}")`
 4. Add `@Bean("{source}RestClient")` in `ConnectorConfig` with timeouts and User-Agent
-5. Add Resilience4j config in `application.yml` under `resilience4j.ratelimiter/retry`
+5. Add Resilience4j config in `application.yml` under `resilience4j.ratelimiter`, `retry`, and `circuitbreaker`
 6. Add connector env-variables section in `application.yml` under `connector.{source}`
 7. Write unit tests covering all mandatory scenarios (see `testing-standards.md`)
 8. Add connector row to the table in `docs/parsers.md`
