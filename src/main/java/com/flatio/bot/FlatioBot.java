@@ -1,7 +1,6 @@
 package com.flatio.bot;
 
 import com.flatio.config.BotConfig;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
@@ -16,11 +15,23 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
  */
 @Component
 @Slf4j
-@RequiredArgsConstructor
 public class FlatioBot extends TelegramLongPollingBot {
 
   private final BotConfig botConfig;
   private final StartCommandHandler startCommandHandler;
+
+  /**
+   * Constructs the bot, passing the token to the parent so the internal HTTP client
+   * is initialized with a valid token for both polling and outbound requests.
+   *
+   * @param botConfig           bot credentials from environment variables
+   * @param startCommandHandler handler for the /start command
+   */
+  public FlatioBot(BotConfig botConfig, StartCommandHandler startCommandHandler) {
+    super(botConfig.token());
+    this.botConfig = botConfig;
+    this.startCommandHandler = startCommandHandler;
+  }
 
   /**
    * Returns the bot username configured via {@code TELEGRAM_BOT_USERNAME}.
