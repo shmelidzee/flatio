@@ -1,14 +1,18 @@
 package com.flatio.connector.onliner;
 
+import com.flatio.connector.core.ConnectorTransientException;
 import com.flatio.connector.core.ListingConnector;
 import com.flatio.connector.core.RawListing;
 import com.flatio.connector.onliner.dto.OnlinerApartment;
 import com.flatio.connector.onliner.dto.OnlinerSearchResponse;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
 import io.github.resilience4j.retry.annotation.Retry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
 import java.math.BigDecimal;
@@ -19,13 +23,18 @@ import java.util.List;
 /**
  * Connector for fetching apartment listings from the Onliner API.
  *
- * <p>Implements rate limiting (1 request/second) and retry with exponential backoff
- * via Resilience4j. Each listing is parsed in isolation — a broken entry does not
- * abort the full fetch. No raw HTML or binary content is stored.
+ * <p>Implements rate limiting (1 req/s), circuit breaker (opens after 5 consecutive
+ * failures, stays open 60 s), and retry with exponential backoff (3 attempts: 2s → 4s → 8s)
+ * via Resilience4j. HTTP 429 is retried after honoring the {@code Retry-After} header
+ * (default 5 s). Other HTTP 4xx errors are logged and treated as non-retryable.
+ * HTTP 5xx propagates for retry and circuit-breaker tracking.
+ * Each listing is parsed in isolation — a broken entry does not abort the full fetch.
  */
 @Service
 @Slf4j
 public class OnlinerConnector implements ListingConnector {
+
+  private static final long DEFAULT_RETRY_AFTER_SECONDS = 5L;
 
   private final RestClient restClient;
   private final OnlinerProperties properties;
@@ -49,40 +58,55 @@ public class OnlinerConnector implements ListingConnector {
   /**
    * Fetches apartment listings from the Onliner API.
    *
-   * <p>Rate-limited to 1 request/second. Retries up to 3 times with exponential backoff
-   * on transient failures. After all retries are exhausted, {@link #fetchFallback} is
-   * invoked and returns an empty list.
+   * <p>Rate-limited to 1 request/second. Circuit breaker opens after 5 consecutive failures
+   * and stays open for 60 seconds — when open, {@link io.github.resilience4j.circuitbreaker.CallNotPermittedException}
+   * propagates to the caller. Retries up to 3 times with exponential backoff on HTTP 5xx
+   * or 429 responses. After all retries are exhausted, {@link #fetchFallback} is invoked
+   * and returns an empty list.
    *
    * @return list of raw listings, never null
    */
   @Override
   @RateLimiter(name = "connector-onliner")
+  @CircuitBreaker(name = "connector-onliner")
   @Retry(name = "connector-onliner", fallbackMethod = "fetchFallback")
   public List<RawListing> fetch() {
     log.info("Fetching listings from Onliner: source={}, region={}", properties.sourceId(), properties.regionCode());
-    OnlinerSearchResponse response = restClient.get()
-        .uri(uriBuilder -> uriBuilder
-            .path(properties.apartmentsPath())
-            .queryParam("page", 1)
-            .queryParam("limit", properties.pageSize())
-            .build())
-        .retrieve()
-        .body(OnlinerSearchResponse.class);
+    try {
+      OnlinerSearchResponse response = restClient.get()
+          .uri(uriBuilder -> uriBuilder
+              .path(properties.apartmentsPath())
+              .queryParam("page", 1)
+              .queryParam("limit", properties.pageSize())
+              .build())
+          .retrieve()
+          .body(OnlinerSearchResponse.class);
 
-    if (response == null || response.apartments() == null) {
-      log.warn("Empty or null response from Onliner API: source={}", properties.sourceId());
+      if (response == null || response.apartments() == null) {
+        log.warn("Empty or null response from Onliner API: source={}", properties.sourceId());
+        return List.of();
+      }
+
+      log.info("Received {} apartments from Onliner", response.apartments().size());
+      return parseListings(response.apartments());
+
+    } catch (HttpClientErrorException.TooManyRequests e) {
+      long retryAfterSeconds = parseRetryAfterSeconds(e.getResponseHeaders());
+      log.warn("Rate limited by Onliner (429): source={}, retryAfterSeconds={}", properties.sourceId(), retryAfterSeconds);
+      sleepQuietly(retryAfterSeconds * 1000L);
+      throw new ConnectorTransientException("Rate limited: source=" + properties.sourceId(), e);
+
+    } catch (HttpClientErrorException e) {
+      log.error("Non-retryable client error from Onliner: status={}, source={}", e.getStatusCode(), properties.sourceId(), e);
       return List.of();
     }
-
-    log.info("Received {} apartments from Onliner", response.apartments().size());
-    return parseListings(response.apartments());
   }
 
   /**
-   * Fallback invoked by Resilience4j after all retry attempts are exhausted.
+   * Fallback invoked by Resilience4j Retry after all retry attempts are exhausted.
    *
-   * @param e the exception that caused all retries to fail
-   * @return empty list — never null, per {@link com.flatio.connector.core.ListingConnector} contract
+   * @param e the exception that triggered fallback
+   * @return empty list — graceful degradation when source is unavailable
    */
   List<RawListing> fetchFallback(Exception e) {
     log.error("All retry attempts exhausted for Onliner: source={}", properties.sourceId(), e);
@@ -165,6 +189,29 @@ public class OnlinerConnector implements ListingConnector {
     } catch (Exception e) {
       log.debug("Cannot parse Onliner datetime '{}': {}", dateTime, e.getMessage());
       return null;
+    }
+  }
+
+  private long parseRetryAfterSeconds(HttpHeaders headers) {
+    if (headers == null) {
+      return DEFAULT_RETRY_AFTER_SECONDS;
+    }
+    String retryAfter = headers.getFirst(HttpHeaders.RETRY_AFTER);
+    if (retryAfter == null) {
+      return DEFAULT_RETRY_AFTER_SECONDS;
+    }
+    try {
+      return Long.parseLong(retryAfter.trim());
+    } catch (NumberFormatException e) {
+      return DEFAULT_RETRY_AFTER_SECONDS;
+    }
+  }
+
+  private void sleepQuietly(long millis) {
+    try {
+      Thread.sleep(millis);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
     }
   }
 }

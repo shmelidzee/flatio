@@ -6,6 +6,8 @@ import com.flatio.domain.source.Source;
 import com.flatio.repository.SourceRepository;
 import com.flatio.service.BatchIngestResult;
 import com.flatio.service.ListingIngestionService;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
@@ -15,6 +17,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -126,6 +129,20 @@ class ListingSyncSchedulerTest {
     // When / Then — exception is swallowed, ingest never called
     scheduler.syncAll();
 
+    verify(listingIngestionService, never()).ingestBatch(any(), any());
+  }
+
+  @Test
+  void should_skip_connector_and_not_propagate_when_circuit_is_open() {
+    // Given — circuit breaker is OPEN; source is found but fetch throws CallNotPermittedException
+    var source = new Source();
+    when(connector.getSourceId()).thenReturn("ONLINER");
+    when(sourceRepository.findByCode("ONLINER")).thenReturn(Optional.of(source));
+    when(connector.fetch()).thenThrow(
+        CallNotPermittedException.createCallNotPermittedException(CircuitBreaker.ofDefaults("test-cb")));
+
+    // When / Then — no exception propagates, ingest is never called
+    assertThatNoException().isThrownBy(() -> scheduler.syncAll());
     verify(listingIngestionService, never()).ingestBatch(any(), any());
   }
 
