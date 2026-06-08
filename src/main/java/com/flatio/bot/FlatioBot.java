@@ -61,6 +61,9 @@ public class FlatioBot extends TelegramLongPollingBot {
         execute(startCommandHandler.handle(update));
       } catch (TelegramApiException e) {
         log.error("Failed to send /start reply: chatId={}", update.getMessage().getChatId(), e);
+      } catch (Exception e) {
+        log.error("Unexpected error handling /start: chatId={}, updateId={}",
+            update.getMessage().getChatId(), update.getUpdateId(), e);
       }
     }
   }
