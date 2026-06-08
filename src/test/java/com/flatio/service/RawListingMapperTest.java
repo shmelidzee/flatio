@@ -8,7 +8,6 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class RawListingMapperTest {
 
@@ -31,6 +30,18 @@ class RawListingMapperTest {
   }
 
   @Test
+  void should_map_rent_daily_deal_type_from_lowercase_string() {
+    // When / Then — Onliner sends "rent_daily", must map to RENT_DAILY
+    assertThat(mapper.toDealType("rent_daily")).isEqualTo(DealType.RENT_DAILY);
+  }
+
+  @Test
+  void should_map_rent_daily_deal_type_from_uppercase_string() {
+    // When / Then
+    assertThat(mapper.toDealType("RENT_DAILY")).isEqualTo(DealType.RENT_DAILY);
+  }
+
+  @Test
   void should_map_deal_type_from_lowercase_string() {
     // When / Then
     assertThat(mapper.toDealType("rent")).isEqualTo(DealType.RENT);
@@ -43,20 +54,17 @@ class RawListingMapperTest {
   }
 
   @Test
-  void should_throw_when_deal_type_string_is_null() {
-    // When / Then
-    assertThatThrownBy(() -> mapper.toDealType(null))
-        .isInstanceOf(IllegalArgumentException.class);
+  void should_return_null_when_deal_type_is_null() {
+    // When / Then — null input → null output, no exception; caller guards against null
+    assertThat(mapper.toDealType(null)).isNull();
   }
 
   @Test
-  void should_throw_when_deal_type_string_is_unrecognised() {
-    // When / Then
-    assertThatThrownBy(() -> mapper.toDealType("EXCHANGE"))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("EXCHANGE");
-    assertThatThrownBy(() -> mapper.toDealType("daily_rent"))
-        .isInstanceOf(IllegalArgumentException.class);
+  void should_return_null_when_deal_type_is_unrecognised() {
+    // When / Then — unknown value → null output, no exception
+    assertThat(mapper.toDealType("EXCHANGE")).isNull();
+    assertThat(mapper.toDealType("daily_rent")).isNull();
+    assertThat(mapper.toDealType("AUCTION")).isNull();
   }
 
   // -------------------------------------------------------------------------
@@ -86,6 +94,18 @@ class RawListingMapperTest {
     assertThat(listing.getCity()).isEqualTo("Минск");
     assertThat(listing.getSourceUrl()).isEqualTo("https://onliner.by/1");
     assertThat(listing.getPublishedAt()).isEqualTo(Instant.parse("2026-06-01T10:00:00Z"));
+  }
+
+  @Test
+  void should_map_rent_daily_entity_deal_type() {
+    // Given
+    var raw = buildFullRawListing("ext-daily", "rent_daily");
+
+    // When
+    var listing = mapper.toEntity(raw);
+
+    // Then
+    assertThat(listing.getDealType()).isEqualTo(DealType.RENT_DAILY);
   }
 
   @Test
@@ -134,14 +154,15 @@ class RawListingMapperTest {
   }
 
   @Test
-  void should_throw_when_entity_mapped_with_unrecognised_deal_type() {
-    // Given — connector returns unknown deal type string (e.g. "daily_rent" from Onliner)
+  void should_set_deal_type_null_on_entity_when_deal_type_is_unrecognised() {
+    // Given — unknown deal_type; ingestion service guards against null before saving
     var raw = buildFullRawListing("ext-003", "AUCTION");
 
-    // When / Then — exception propagates; ingestBatch catches and skips the listing
-    assertThatThrownBy(() -> mapper.toEntity(raw))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("AUCTION");
+    // When
+    var listing = mapper.toEntity(raw);
+
+    // Then — no exception; dealType is null; caller (ListingIngestionService) handles this
+    assertThat(listing.getDealType()).isNull();
   }
 
   // -------------------------------------------------------------------------
