@@ -52,7 +52,7 @@ public class Listing {
   private String description;
 
   @Enumerated(EnumType.STRING)
-  @Column(name = "deal_type", nullable = false, length = 10)
+  @Column(name = "deal_type", nullable = false, length = 20)
   private DealType dealType;
 
   @Column(name = "property_type", length = 50)

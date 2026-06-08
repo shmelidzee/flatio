@@ -66,17 +66,20 @@ public interface RawListingMapper {
   /**
    * Converts a deal type string from a connector to the {@link DealType} enum.
    *
+   * <p>Returns {@code null} for null or unrecognised values without throwing.
+   * Callers must guard against null before persisting (see {@link DealType#isKnown(String)}).
+   *
    * @param dealType the raw string value, may be null or unrecognised
    * @return the matching enum constant, or {@code null} if the input is null or unrecognised
    */
   default DealType toDealType(String dealType) {
     if (dealType == null) {
-      throw new IllegalArgumentException("deal_type is null");
+      return null;
     }
     try {
       return DealType.valueOf(dealType.toUpperCase());
     } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException("Unknown deal_type: " + dealType);
+      return null;
     }
   }
 }

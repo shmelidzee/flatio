@@ -2,6 +2,7 @@ package com.flatio.service;
 
 import com.flatio.connector.core.RawListing;
 import com.flatio.domain.currency.Currency;
+import com.flatio.domain.listing.DealType;
 import com.flatio.domain.listing.Listing;
 import com.flatio.domain.listing.ListingStatus;
 import com.flatio.domain.listing.PriceHistory;
@@ -42,6 +43,12 @@ public class ListingIngestionServiceImpl implements ListingIngestionService {
   @Override
   @Transactional
   public IngestOutcome ingest(RawListing raw, Source source) {
+    if (!DealType.isKnown(raw.dealType())) {
+      log.warn("Unknown deal_type, skipping listing: source={}, id={}, deal_type={}",
+          source.getCode(), raw.externalId(), raw.dealType());
+      return IngestOutcome.SKIPPED;
+    }
+
     Currency currency = resolveCurrency(raw.currency());
     Optional<Listing> existing = listingRepository.findByExternalIdAndSourceId(
         raw.externalId(), source.getId());
