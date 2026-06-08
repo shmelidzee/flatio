@@ -44,6 +44,9 @@ public class UserAuthProvider {
   @Column(name = "external_id", nullable = false, length = 255)
   private String externalId;
 
+  @Column(name = "telegram_username", length = 255)
+  private String telegramUsername;
+
   @CreationTimestamp
   @Column(name = "created_at", nullable = false, updatable = false)
   private Instant createdAt;
