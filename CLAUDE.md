@@ -80,6 +80,7 @@ com.flatio
 │   └── mapper/                # DTO ↔ Domain маппинг
 
 ├── telegram/
+│   ├── сonfig/                # config файлы для настройки исключительно при работе с телеграм (бот, клиент)
 │   ├── handler/               # обработчики Telegram Update
 │   ├── command/               # Telegram команды
 │   ├── callback/              # callback query обработчики

@@ -41,6 +41,7 @@ Controller → Service → Repository → Database
 * `com.flatio.telegram.callback` — обработчики callback-запросов от inline-кнопок
 * `com.flatio.telegram.keyboard` — фабрики и билдеры Telegram-клавиатур
 * `com.flatio.telegram.state` — состояние пользовательских сценариев (FSM, пошаговые диалоги)
+* `com.flatio.telegram.config` — config файлы для настройки исключительно при работе с телеграм (бот, клиент)
 * `com.flatio.telegram.client` — клиент для работы с Telegram Bot API
 * `com.flatio.integration.core` — базовые интерфейсы и модели интеграций
 * `com.flatio.integration.realt` — интеграция с Realt
