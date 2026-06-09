@@ -135,23 +135,22 @@ public class OnlinerConnector implements ListingConnector {
     BigDecimal lat = apartment.location() != null ? apartment.location().latitude() : null;
     BigDecimal lon = apartment.location() != null ? apartment.location().longitude() : null;
     String address = apartment.location() != null ? apartment.location().address() : null;
-    BigDecimal area = apartment.area() != null ? apartment.area().total() : null;
     List<String> photos = apartment.photo() != null ? List.of(apartment.photo()) : List.of();
-    Instant publishedAt = parseInstant(apartment.createdAt());
-    String title = buildTitle(apartment.roomsCount(), area, address);
+    Instant publishedAt = apartment.lastTimeUp() != null ? apartment.lastTimeUp().toInstant() : null;
+    String title = buildTitle(address);
 
     return new RawListing(
         String.valueOf(apartment.id()),
         title,
         null,
-        apartment.dealType(),
+        "RENT",
         "APARTMENT",
         price,
         currency,
-        apartment.roomsCount(),
-        apartment.floor(),
-        apartment.numberOfFloors(),
-        area,
+        null,
+        null,
+        null,
+        null,
         address,
         lat,
         lon,
@@ -162,36 +161,11 @@ public class OnlinerConnector implements ListingConnector {
     );
   }
 
-  private String buildTitle(Integer rooms, BigDecimal area, String address) {
-    StringBuilder title = new StringBuilder();
-    if (rooms != null) {
-      title.append(rooms).append("-комн.");
-    }
-    if (area != null) {
-      if (!title.isEmpty()) {
-        title.append(", ");
-      }
-      title.append(area).append(" м²");
-    }
+  private String buildTitle(String address) {
     if (address != null && !address.isBlank()) {
-      if (!title.isEmpty()) {
-        title.append(", ");
-      }
-      title.append(address);
+      return address;
     }
-    return title.isEmpty() ? "Квартира на Onliner" : title.toString();
-  }
-
-  private Instant parseInstant(String dateTime) {
-    if (dateTime == null) {
-      return null;
-    }
-    try {
-      return Instant.parse(dateTime);
-    } catch (Exception e) {
-      log.debug("Cannot parse Onliner datetime '{}': {}", dateTime, e.getMessage());
-      return null;
-    }
+    return "Квартира на Onliner";
   }
 
   private long parseRetryAfterSeconds(HttpHeaders headers) {
