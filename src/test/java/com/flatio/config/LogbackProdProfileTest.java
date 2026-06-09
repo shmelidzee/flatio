@@ -3,6 +3,8 @@ package com.flatio.config;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.core.ConsoleAppender;
+import com.flatio.repository.ListingRepository;
+import com.flatio.repository.PriceHistoryRepository;
 import com.flatio.repository.SourceRepository;
 import com.flatio.repository.UserAuthProviderRepository;
 import com.flatio.repository.UserRepository;
@@ -51,6 +53,12 @@ class LogbackProdProfileTest {
 
   @MockBean
   UserAuthProviderRepository userAuthProviderRepository;
+
+  @MockBean
+  ListingRepository listingRepository;
+
+  @MockBean
+  PriceHistoryRepository priceHistoryRepository;
 
   @Test
   void should_configure_logstash_encoder_on_root_logger_when_prod_profile_active() {
