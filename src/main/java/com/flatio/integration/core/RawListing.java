@@ -29,5 +29,6 @@ public record RawListing(
     String city,
     String sourceUrl,
     Instant publishedAt,
-    List<String> photoUrls
+    List<String> photoUrls,
+    Boolean isOwner
 ) {}

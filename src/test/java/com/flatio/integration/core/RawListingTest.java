@@ -38,7 +38,8 @@ class RawListingTest {
         "Минск",
         "https://onliner.by/listings/ext-001",
         publishedAt,
-        photos
+        photos,
+        null
     );
 
     // Then
@@ -81,7 +82,8 @@ class RawListingTest {
         null,    // city
         "https://realt.by/listings/ext-002",
         null,    // publishedAt
-        List.of()
+        List.of(),
+        null
     );
 
     // Then
@@ -192,7 +194,7 @@ class RawListingTest {
         externalId, "Квартира", null, "RENT", null,
         BigDecimal.valueOf(400), "BYN",
         null, null, null, null, null, null, null, null,
-        "https://example.com/" + externalId, null, List.of()
+        "https://example.com/" + externalId, null, List.of(), null
     );
   }
 }
