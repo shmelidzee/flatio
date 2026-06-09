@@ -48,9 +48,7 @@ Root package: `com.flatio`
 com.flatio
 ├── config/              # Spring configuration and beans
 │   ├── OpenApiConfig    # springdoc/Swagger setup
-│   ├── ConnectorConfig  # @Bean("onlinerRestClient") with timeouts + @EnableConfigurationProperties
-│   ├── SchedulerConfig  # @EnableScheduling — activates Spring scheduled task execution
-│   └── BotConfiguration # @EnableConfigurationProperties(BotConfig.class) — Telegram bot config
+│   └── SchedulerConfig  # @EnableScheduling — activates Spring scheduled task execution
 ├── domain/              # JPA entities (domain model)
 │   ├── country/         # Country entity — ISO country reference data
 │   ├── currency/        # Currency entity — currency reference data
@@ -77,19 +75,22 @@ com.flatio
 │   ├── DedupHashServiceImpl       # SHA-256 with normalisation (lowercase, trim, collapse whitespace)
 │   ├── ListingIngestionService    # interface — ingest(RawListing, Source) + ingestBatch(...)
 │   ├── ListingIngestionServiceImpl # upsert: CREATE or UPDATE path + PriceHistory; per-item @Transactional
-│   ├── RawListingMapper           # MapStruct — toEntity(RawListing) + updateEntity(@MappingTarget Listing)
 │   ├── ListingService             # interface (listing queries and management — M1.4)
 │   └── ListingServiceImpl         # placeholder (M1.4)
 ├── web/                 # REST controllers, DTOs, mappers
 │   ├── controller/      # (M1.4 — to be added)
 │   ├── dto/             # ListingResponse (19 fields + @Schema), ListingSummaryResponse (11 fields)
 │   └── mapper/          # ListingMapper — MapStruct Listing ↔ ListingResponse / ListingSummaryResponse
-├── connector/           # Source data connectors
-│   ├── core/            # ListingConnector interface + RawListing record
-│   └── onliner/         # OnlinerConnector + OnlinerProperties + DTO records
-├── bot/                 # Telegram Bot
-│   ├── FlatioBot        # TelegramLongPollingBot Spring bean — delegates token/username to BotConfig
-│   └── BotConfig        # @ConfigurationProperties(prefix = "telegram.bot") Record — token + username
+├── integration/         # External source integrations
+│   ├── core/            # ListingConnector interface, RawListing record, RawListingMapper, ConnectorTransientException
+│   └── onliner/         # Onliner integration
+│       ├── client/      # OnlinerConnector — implements ListingConnector
+│       ├── config/      # OnlinerClientConfig (@Bean onlinerRestClient) + OnlinerProperties
+│       └── dto/         # OnlinerSearchResponse, OnlinerApartment, OnlinerPrice, OnlinerLocation, OnlinerArea, OnlinerPage
+├── telegram/            # Telegram Bot
+│   ├── handler/         # FlatioBot — TelegramLongPollingBot Spring bean
+│   ├── command/         # StartCommandHandler — /start command
+│   └── config/          # BotConfig (@ConfigurationProperties) + BotConfiguration (@EnableConfigurationProperties)
 ├── scheduler/           # Scheduled tasks
 │   └── ListingSyncScheduler  # @Scheduled — iterates all ListingConnector beans, calls ingestBatch per source
 ├── security/            # Auth / JWT (to be added)
@@ -218,7 +219,7 @@ Key design decisions:
 
 ## Connector Contract
 
-Each data-source connector must implement `com.flatio.connector.core.ListingConnector`:
+Each data-source connector must implement `com.flatio.integration.core.ListingConnector`:
 
 ```java
 public interface ListingConnector {
@@ -228,7 +229,7 @@ public interface ListingConnector {
 }
 ```
 
-Raw listing data is transferred via `com.flatio.connector.core.RawListing` (Java Record, 18 fields).
+Raw listing data is transferred via `com.flatio.integration.core.RawListing` (Java Record, 18 fields).
 Optional fields are nullable; the service layer is responsible for validation and mapping to domain types.
 
 Requirements for all connector implementations:
@@ -236,7 +237,7 @@ Requirements for all connector implementations:
 - Retry with exponential backoff (`@Retry(fallbackMethod = "...Fallback")`, 3 attempts: 2s → 4s → 8s);
   the annotated method must **not** catch exceptions internally — they must propagate for retry to trigger
 - Fallback method returns empty list — graceful degradation after exhausted retries
-- HTTP timeouts configured in `ConnectorConfig` (connect: 5s, read: 10s) to prevent thread blocking
+- HTTP timeouts configured in `OnlinerClientConfig` (connect: 5s, read: 10s) to prevent thread blocking
 - Per-listing error isolation — a broken listing must not abort the full fetch
 - No raw HTML stored — return only structured `RawListing` data
 - Realistic `User-Agent` header — not the default OkHttp/RestClient value
@@ -245,7 +246,7 @@ Requirements for all connector implementations:
 
 | Connector | Source | Region | Package |
 |-----------|--------|--------|---------|
-| `OnlinerConnector` | Onliner API (JSON) | BY | `com.flatio.connector.onliner` |
+| `OnlinerConnector` | Onliner API (JSON) | BY | `com.flatio.integration.onliner.client` |
 
 ---
 

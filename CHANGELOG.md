@@ -7,6 +7,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- **PR #100 — Project structure audit: package layout aligned with CLAUDE.md (issue #99)**
+  - `com.flatio.connector.core` → `com.flatio.integration.core`: `ListingConnector`, `RawListing`,
+    `ConnectorTransientException`
+  - `com.flatio.service.mapper.RawListingMapper` → `com.flatio.integration.core.RawListingMapper`
+  - `com.flatio.connector.onliner` → `com.flatio.integration.onliner.client`: `OnlinerConnector`
+  - `com.flatio.config.ConnectorConfig` → `com.flatio.integration.onliner.config.OnlinerClientConfig`
+  - `com.flatio.connector.onliner.OnlinerProperties` → `com.flatio.integration.onliner.config.OnlinerProperties`
+  - `com.flatio.connector.onliner.dto` → `com.flatio.integration.onliner.dto`: all 6 DTO records unchanged
+  - `com.flatio.bot.FlatioBot` → `com.flatio.telegram.handler.FlatioBot`
+  - `com.flatio.bot.StartCommandHandler` → `com.flatio.telegram.command.StartCommandHandler`
+  - `com.flatio.bot.config.BotConfig` + `BotConfiguration` → `com.flatio.telegram.config`
+  - `application.yml` — FQN reference updated: `connector.core.ConnectorTransientException` →
+    `integration.core.ConnectorTransientException`
+
 ### Added
 - **PR #83 — M1.3.9: OnlinerConnector unit tests — fixture-based deserialization (issue #19)**
   - 3 new fixture-based tests in `OnlinerConnectorTest` that load real Onliner API JSON snapshots

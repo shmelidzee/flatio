@@ -1,7 +1,7 @@
 # Connectors (Parsers) — Flatio
 
 Connectors fetch raw listing data from external sources and convert it to `RawListing` records.
-Each connector is an independent Spring `@Service` implementing `com.flatio.connector.core.ListingConnector`.
+Each connector is an independent Spring `@Service` implementing `com.flatio.integration.core.ListingConnector`.
 
 ---
 
@@ -25,7 +25,7 @@ All connectors share the same contract — see `docs/architecture.md`, section *
 
 **Source:** Onliner.by REST API (JSON)  
 **Region:** BY (Belarus)  
-**Package:** `com.flatio.connector.onliner`  
+**Package:** `com.flatio.integration.onliner.client`  
 **Endpoint:** `GET {baseUrl}/search/apartments?page=1&limit={pageSize}`
 
 ### Configuration (`application.yml`)
@@ -62,7 +62,7 @@ resilience4j:
         retry-exceptions:
           - org.springframework.web.client.HttpServerErrorException
           - org.springframework.web.client.ResourceAccessException
-          - com.flatio.connector.core.ConnectorTransientException
+          - com.flatio.integration.core.ConnectorTransientException
         ignore-exceptions:
           - io.github.resilience4j.circuitbreaker.CallNotPermittedException
   circuitbreaker:
@@ -84,7 +84,7 @@ resilience4j:
 - **Retry:** 3 attempts with exponential backoff 2s → 4s → 8s; retries on 5xx, network errors, and HTTP 429 (`ConnectorTransientException`). When the circuit breaker is OPEN, `CallNotPermittedException` is in `ignore-exceptions` — it bypasses retry and goes directly to `fetchFallback`.
 - **Fallback:** `fetchFallback(Exception e)` — returns `List.of()` after exhausted retries.
 
-### HTTP client (`ConnectorConfig`)
+### HTTP client (`OnlinerClientConfig`)
 
 `RestClient` bean `"onlinerRestClient"` configured with:
 - Base URL from `OnlinerProperties`
@@ -126,7 +126,7 @@ resilience4j:
 
 ### Test coverage
 
-File: `src/test/java/com/flatio/connector/onliner/OnlinerConnectorTest.java`  
+File: `src/test/java/com/flatio/integration/onliner/client/OnlinerConnectorTest.java`  
 Fixtures: `src/test/resources/fixtures/onliner/`
 
 | Test | Scenario |
@@ -153,10 +153,10 @@ Fixtures: `src/test/resources/fixtures/onliner/`
 
 ## Adding a New Connector
 
-1. Create package `com.flatio.connector.{source}`
-2. Implement `ListingConnector` — `getSourceId()`, `getSupportedRegionCode()`, `fetch()`
-3. Create `{Source}Properties` record with `@ConfigurationProperties(prefix = "connector.{source}")`
-4. Add `@Bean("{source}RestClient")` in `ConnectorConfig` with timeouts and User-Agent
+1. Create package `com.flatio.integration.{source}` with sub-packages `client`, `config`, `dto`
+2. Implement `ListingConnector` in `client/` — `getSourceId()`, `getSupportedRegionCode()`, `fetch()`
+3. Create `{Source}Properties` record in `config/` with `@ConfigurationProperties(prefix = "connector.{source}")`
+4. Create `{Source}ClientConfig` in `config/` with `@Bean("{source}RestClient")` — timeouts and User-Agent
 5. Add Resilience4j config in `application.yml` under `resilience4j.ratelimiter`, `retry`, and `circuitbreaker`
 6. Add connector env-variables section in `application.yml` under `connector.{source}`
 7. Write unit tests covering all mandatory scenarios (see `testing-standards.md`)
