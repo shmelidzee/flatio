@@ -159,7 +159,8 @@ public class OnlinerConnector implements ListingConnector {
         null,
         apartment.url(),
         publishedAt,
-        photos
+        photos,
+        null
     );
   }
 

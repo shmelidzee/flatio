@@ -115,6 +115,9 @@ public class Listing {
   @Column(name = "dedup_hash", length = 64)
   private String dedupHash;
 
+  @Column(name = "is_owner")
+  private Boolean isOwner;
+
   @Column(name = "published_at")
   private Instant publishedAt;
 

@@ -235,7 +235,7 @@ class ListingIngestionServiceImplTest {
         2, 3, 9, BigDecimal.valueOf(55.5),
         "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
         "Минск", "https://onliner.by/skip1",
-        Instant.parse("2026-06-01T10:00:00Z"), List.of()
+        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null
     );
 
     // When
@@ -254,7 +254,7 @@ class ListingIngestionServiceImplTest {
         2, 3, 9, BigDecimal.valueOf(55.5),
         "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
         "Минск", "https://onliner.by/skip2",
-        Instant.parse("2026-06-01T10:00:00Z"), List.of()
+        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null
     );
 
     // When
@@ -273,7 +273,7 @@ class ListingIngestionServiceImplTest {
         2, 3, 9, BigDecimal.valueOf(55.5),
         "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
         "Минск", "https://onliner.by/skip3",
-        Instant.parse("2026-06-01T10:00:00Z"), List.of()
+        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null
     );
 
     // When
@@ -293,7 +293,7 @@ class ListingIngestionServiceImplTest {
         2, 3, 9, BigDecimal.valueOf(55.5),
         "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
         "Минск", "https://onliner.by/batch-skip",
-        Instant.parse("2026-06-01T10:00:00Z"), List.of()
+        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null
     );
     var rawValid = buildRawListing("ext-batch-valid", BigDecimal.valueOf(500));
 
@@ -399,7 +399,7 @@ class ListingIngestionServiceImplTest {
         BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
         "Минск", "https://onliner.by/" + externalId,
         Instant.parse("2026-06-01T10:00:00Z"),
-        List.of()
+        List.of(), null
     );
   }
 
