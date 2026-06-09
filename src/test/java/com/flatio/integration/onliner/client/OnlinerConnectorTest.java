@@ -284,9 +284,13 @@ class OnlinerConnectorTest {
     assertThat(result.get(0).currency()).isEqualTo("BYN");
     assertThat(result.get(0).priceUsd()).isEqualByComparingTo("450.00");
     assertThat(result.get(0).publishedAt()).isNotNull();
+    assertThat(result.get(0).rooms()).isEqualTo(2);   // rent_type = "2_rooms"
+    assertThat(result.get(0).isOwner()).isTrue();      // contact.owner = true
     assertThat(result.get(1).externalId()).isEqualTo("1002");
     assertThat(result.get(1).dealType()).isEqualTo("RENT");
     assertThat(result.get(1).photoUrls()).isEmpty();
+    assertThat(result.get(1).rooms()).isEqualTo(3);   // rent_type = "3_rooms"
+    assertThat(result.get(1).isOwner()).isFalse();     // contact.owner = false
   }
 
   @Test
@@ -365,6 +369,126 @@ class OnlinerConnectorTest {
     // Then — defaults to APARTMENT when rent_type is unknown
     assertThat(result).hasSize(1);
     assertThat(result.get(0).propertyType()).isEqualTo("APARTMENT");
+  }
+
+  // -------------------------------------------------------------------------
+  // Rooms count mapping — rent_type → rooms (FR-LST-15)
+  // -------------------------------------------------------------------------
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_map_rent_type_1_room_to_rooms_count_1() {
+    // Given
+    var response = buildResponseWithRentType("1_room");
+    mockRestClientReturning(response);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then
+    assertThat(result.get(0).rooms()).isEqualTo(1);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_map_rent_type_2_rooms_to_rooms_count_2() {
+    // Given
+    var response = buildResponseWithRentType("2_rooms");
+    mockRestClientReturning(response);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then
+    assertThat(result.get(0).rooms()).isEqualTo(2);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_map_rent_type_3_rooms_to_rooms_count_3() {
+    // Given
+    var response = buildResponseWithRentType("3_rooms");
+    mockRestClientReturning(response);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then
+    assertThat(result.get(0).rooms()).isEqualTo(3);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_map_rent_type_4_rooms_to_rooms_count_4() {
+    // Given
+    var response = buildResponseWithRentType("4_rooms");
+    mockRestClientReturning(response);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then
+    assertThat(result.get(0).rooms()).isEqualTo(4);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_map_rent_type_room_to_rooms_count_null() {
+    // Given — "room" = single room for rent, not a full apartment → rooms count not applicable
+    var response = buildResponseWithRentType("room");
+    mockRestClientReturning(response);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then — "room" is not in the RENT_TYPE_TO_ROOMS map → null
+    assertThat(result.get(0).rooms()).isNull();
+  }
+
+  // -------------------------------------------------------------------------
+  // Owner contact mapping — contact.owner → isOwner (FR-LST-16)
+  // -------------------------------------------------------------------------
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_map_contact_owner_true_to_is_owner_true() {
+    // Given — contact.owner = true (listing posted directly by the property owner)
+    var response = buildResponseWithOwner(true);
+    mockRestClientReturning(response);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then
+    assertThat(result.get(0).isOwner()).isTrue();
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_map_contact_owner_false_to_is_owner_false() {
+    // Given — contact.owner = false (listing posted by an agent or agency)
+    var response = buildResponseWithOwner(false);
+    mockRestClientReturning(response);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then
+    assertThat(result.get(0).isOwner()).isFalse();
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_return_null_is_owner_when_contact_is_absent() {
+    // Given — contact field absent in API response
+    var response = buildResponseWithNullContact();
+    mockRestClientReturning(response);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then — null signals unknown ownership, not false
+    assertThat(result.get(0).isOwner()).isNull();
   }
 
   // -------------------------------------------------------------------------
@@ -625,6 +749,56 @@ class OnlinerConnectorTest {
         new OnlinerContact(true),
         OffsetDateTime.parse("2026-06-05T12:00:00+03:00"),
         OffsetDateTime.parse("2026-06-05T12:00:00+03:00")
+    );
+    return new OnlinerSearchResponse(
+        List.of(apt), 1,
+        new OnlinerPage(50, 1, 1, 1)
+    );
+  }
+
+  private OnlinerSearchResponse buildResponseWithOwner(boolean owner) {
+    var price = new OnlinerPrice("500.00", "USD",
+        Map.of("BYN", new OnlinerConvertedPrice("1632.50", "BYN")));
+    var location = new OnlinerLocation(
+        "Минск, ул. Сурганова, 8",
+        new BigDecimal("53.9100"),
+        new BigDecimal("27.5700")
+    );
+    var apt = new OnlinerApartment(
+        8001L,
+        "https://r.onliner.by/ak/apartments/8001",
+        "2_rooms",
+        null,
+        price,
+        location,
+        new OnlinerContact(owner),
+        OffsetDateTime.parse("2026-06-06T09:00:00+03:00"),
+        OffsetDateTime.parse("2026-06-06T09:00:00+03:00")
+    );
+    return new OnlinerSearchResponse(
+        List.of(apt), 1,
+        new OnlinerPage(50, 1, 1, 1)
+    );
+  }
+
+  private OnlinerSearchResponse buildResponseWithNullContact() {
+    var price = new OnlinerPrice("600.00", "USD",
+        Map.of("BYN", new OnlinerConvertedPrice("1959.00", "BYN")));
+    var location = new OnlinerLocation(
+        "Минск, ул. Комсомольская, 3",
+        new BigDecimal("53.9050"),
+        new BigDecimal("27.5580")
+    );
+    var apt = new OnlinerApartment(
+        7001L,
+        "https://r.onliner.by/ak/apartments/7001",
+        "1_room",
+        null,
+        price,
+        location,
+        null,
+        OffsetDateTime.parse("2026-06-07T10:00:00+03:00"),
+        OffsetDateTime.parse("2026-06-07T10:00:00+03:00")
     );
     return new OnlinerSearchResponse(
         List.of(apt), 1,

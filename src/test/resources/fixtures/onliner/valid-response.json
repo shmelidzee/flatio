@@ -3,7 +3,7 @@
     {
       "id": 1001,
       "url": "https://r.onliner.by/ak/apartments/1001",
-      "rent_type": "rent",
+      "rent_type": "2_rooms",
       "photo": "https://content.onliner.by/image/1001.jpg",
       "price": {
         "amount": "450.00",
@@ -15,34 +15,38 @@
       },
       "location": {
         "address": "Минск, пр-т Независимости, 72",
+        "user_address": "Минск, пр-т Независимости, 72",
         "latitude": 53.9272,
         "longitude": 27.6244
       },
       "contact": { "owner": true },
       "created_at": "2026-05-15T10:00:00+03:00",
-      "last_time_up": "2026-05-15T10:00:00+03:00"
+      "last_time_up": "2026-05-15T10:00:00+03:00",
+      "up_available_in": 85618
     },
     {
       "id": 1002,
       "url": "https://r.onliner.by/ak/apartments/1002",
-      "rent_type": "sell",
+      "rent_type": "3_rooms",
       "photo": null,
       "price": {
-        "amount": "75000.00",
+        "amount": "750.00",
         "currency": "USD",
         "converted": {
-          "BYN": { "amount": "245250.00", "currency": "BYN" },
-          "USD": { "amount": "75000.00", "currency": "USD" }
+          "BYN": { "amount": "2452.50", "currency": "BYN" },
+          "USD": { "amount": "750.00", "currency": "USD" }
         }
       },
       "location": {
         "address": "Минск, ул. Немига, 5",
+        "user_address": "Минск, ул. Немига, 5",
         "latitude": 53.9006,
         "longitude": 27.5590
       },
       "contact": { "owner": false },
       "created_at": "2026-06-01T08:30:00+03:00",
-      "last_time_up": "2026-06-01T08:30:00+03:00"
+      "last_time_up": "2026-06-01T08:30:00+03:00",
+      "up_available_in": 43200
     }
   ],
   "total": 2,

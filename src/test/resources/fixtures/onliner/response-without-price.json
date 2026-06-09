@@ -3,38 +3,43 @@
     {
       "id": 2001,
       "url": "https://r.onliner.by/ak/apartments/2001",
-      "rent_type": "rent",
+      "rent_type": "1_room",
       "photo": "https://content.onliner.by/image/2001.jpg",
       "price": {
         "amount": "300.00",
         "currency": "USD",
         "converted": {
-          "BYN": { "amount": "981.00", "currency": "BYN" }
+          "BYN": { "amount": "981.00", "currency": "BYN" },
+          "USD": { "amount": "300.00", "currency": "USD" }
         }
       },
       "location": {
         "address": "Минск, ул. Якуба Коласа, 12",
+        "user_address": "Минск, ул. Якуба Коласа, 12",
         "latitude": 53.9080,
         "longitude": 27.5640
       },
       "contact": { "owner": true },
       "created_at": "2026-06-02T09:00:00+03:00",
-      "last_time_up": "2026-06-02T09:00:00+03:00"
+      "last_time_up": "2026-06-02T09:00:00+03:00",
+      "up_available_in": 0
     },
     {
       "id": 2002,
       "url": "https://r.onliner.by/ak/apartments/2002",
-      "rent_type": "rent",
+      "rent_type": "1_room",
       "photo": null,
       "price": null,
       "location": {
         "address": "Минск, пр-т Победителей, 100",
+        "user_address": "Минск, пр-т Победителей, 100",
         "latitude": 53.9350,
         "longitude": 27.5800
       },
       "contact": { "owner": false },
       "created_at": "2026-06-03T10:00:00+03:00",
-      "last_time_up": "2026-06-03T10:00:00+03:00"
+      "last_time_up": "2026-06-03T10:00:00+03:00",
+      "up_available_in": 0
     }
   ],
   "total": 2,
