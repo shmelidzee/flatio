@@ -208,6 +208,7 @@ class ListingSyncSchedulerTest {
         null,
         null,
         null,
+        null,
         "https://onliner.by/" + externalId,
         null,
         null,

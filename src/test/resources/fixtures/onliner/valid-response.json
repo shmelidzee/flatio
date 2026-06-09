@@ -9,7 +9,8 @@
         "amount": "450.00",
         "currency": "USD",
         "converted": {
-          "BYN": { "amount": "1470.00", "currency": "BYN" }
+          "BYN": { "amount": "1470.00", "currency": "BYN" },
+          "USD": { "amount": "450.00", "currency": "USD" }
         }
       },
       "location": {
@@ -30,7 +31,8 @@
         "amount": "75000.00",
         "currency": "USD",
         "converted": {
-          "BYN": { "amount": "245250.00", "currency": "BYN" }
+          "BYN": { "amount": "245250.00", "currency": "BYN" },
+          "USD": { "amount": "75000.00", "currency": "USD" }
         }
       },
       "location": {

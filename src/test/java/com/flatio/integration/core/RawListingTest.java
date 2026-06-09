@@ -28,6 +28,7 @@ class RawListingTest {
         "APARTMENT",
         BigDecimal.valueOf(500),
         "BYN",
+        null,
         2,
         3,
         9,
@@ -72,6 +73,7 @@ class RawListingTest {
         null,    // propertyType
         BigDecimal.valueOf(80_000),
         "USD",
+        null,    // priceUsd
         null,    // rooms
         null,    // floorNumber
         null,    // floorsTotal
@@ -192,7 +194,7 @@ class RawListingTest {
   private RawListing buildMinimalListing(String externalId) {
     return new RawListing(
         externalId, "Квартира", null, "RENT", null,
-        BigDecimal.valueOf(400), "BYN",
+        BigDecimal.valueOf(400), "BYN", null,
         null, null, null, null, null, null, null, null,
         "https://example.com/" + externalId, null, List.of(), null
     );

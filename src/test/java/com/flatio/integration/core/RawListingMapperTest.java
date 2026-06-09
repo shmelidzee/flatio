@@ -134,7 +134,7 @@ class RawListingMapperTest {
     // Given — minimal listing; all optional fields are null
     var raw = new RawListing(
         "ext-min", "Title", null, "RENT", null,
-        BigDecimal.valueOf(300), "BYN",
+        BigDecimal.valueOf(300), "BYN", null,
         null, null, null, null, null, null, null, null,
         "https://example.com/ext-min", null, List.of(), null
     );
@@ -175,7 +175,7 @@ class RawListingMapperTest {
   private RawListing buildFullRawListing(String externalId, String dealType) {
     return new RawListing(
         externalId, "Test apartment", "Nice place", dealType, "APARTMENT",
-        BigDecimal.valueOf(500), "BYN",
+        BigDecimal.valueOf(500), "BYN", null,
         2, 3, 9, BigDecimal.valueOf(55.5),
         "Минск, Немига 5",
         BigDecimal.valueOf(53.9006), BigDecimal.valueOf(27.5590),

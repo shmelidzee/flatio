@@ -87,7 +87,7 @@ class OnlinerConnectorTest {
     assertThat(result).hasSize(2);
     assertThat(result.get(0).externalId()).isEqualTo("1001");
     assertThat(result.get(0).dealType()).isEqualTo("RENT");
-    assertThat(result.get(0).currency()).isEqualTo("USD");
+    assertThat(result.get(0).currency()).isEqualTo("BYN");
     assertThat(result.get(0).photoUrls()).hasSize(1);
 
     assertThat(result.get(1).externalId()).isEqualTo("1002");
@@ -280,8 +280,9 @@ class OnlinerConnectorTest {
     assertThat(result).hasSize(2);
     assertThat(result.get(0).externalId()).isEqualTo("1001");
     assertThat(result.get(0).dealType()).isEqualTo("RENT");
-    assertThat(result.get(0).price()).isEqualByComparingTo("450.00");
-    assertThat(result.get(0).currency()).isEqualTo("USD");
+    assertThat(result.get(0).price()).isEqualByComparingTo("1470.00");
+    assertThat(result.get(0).currency()).isEqualTo("BYN");
+    assertThat(result.get(0).priceUsd()).isEqualByComparingTo("450.00");
     assertThat(result.get(0).publishedAt()).isNotNull();
     assertThat(result.get(1).externalId()).isEqualTo("1002");
     assertThat(result.get(1).dealType()).isEqualTo("RENT");
@@ -461,7 +462,10 @@ class OnlinerConnectorTest {
   // -------------------------------------------------------------------------
 
   private OnlinerSearchResponse buildValidResponse() {
-    var converted1 = Map.of("BYN", new OnlinerConvertedPrice("1470.00", "BYN"));
+    var converted1 = Map.of(
+        "BYN", new OnlinerConvertedPrice("1470.00", "BYN"),
+        "USD", new OnlinerConvertedPrice("450.00", "USD")
+    );
     var price1 = new OnlinerPrice("450.00", "USD", converted1);
     var location1 = new OnlinerLocation(
         "Минск, пр-т Независимости, 72",
@@ -481,7 +485,10 @@ class OnlinerConnectorTest {
         OffsetDateTime.parse("2026-05-15T10:00:00+03:00")
     );
 
-    var converted2 = Map.of("BYN", new OnlinerConvertedPrice("245250.00", "BYN"));
+    var converted2 = Map.of(
+        "BYN", new OnlinerConvertedPrice("245250.00", "BYN"),
+        "USD", new OnlinerConvertedPrice("75000.00", "USD")
+    );
     var price2 = new OnlinerPrice("75000.00", "USD", converted2);
     var location2 = new OnlinerLocation(
         "Минск, ул. Немига, 5",
@@ -515,7 +522,8 @@ class OnlinerConnectorTest {
   }
 
   private OnlinerSearchResponse buildResponseWithBrokenPriceAmount() {
-    var goodPrice = new OnlinerPrice("300.00", "USD", null);
+    var goodPrice = new OnlinerPrice("300.00", "USD",
+        Map.of("BYN", new OnlinerConvertedPrice("978.00", "BYN")));
     var goodLocation = new OnlinerLocation(
         "Минск, ул. Якуба Коласа, 12",
         new BigDecimal("53.9080"),
@@ -555,7 +563,8 @@ class OnlinerConnectorTest {
   }
 
   private OnlinerSearchResponse buildResponseWithNullTitleFields() {
-    var price = new OnlinerPrice("500.00", "USD", null);
+    var price = new OnlinerPrice("500.00", "USD",
+        Map.of("BYN", new OnlinerConvertedPrice("1630.00", "BYN")));
     var apt = new OnlinerApartment(
         4001L,
         "https://r.onliner.by/ak/apartments/4001",
@@ -574,7 +583,8 @@ class OnlinerConnectorTest {
   }
 
   private OnlinerSearchResponse buildResponseWithNullLastTimeUp() {
-    var price = new OnlinerPrice("400.00", "USD", null);
+    var price = new OnlinerPrice("400.00", "USD",
+        Map.of("BYN", new OnlinerConvertedPrice("1305.00", "BYN")));
     var location = new OnlinerLocation(
         "Минск, ул. Ленина, 1",
         new BigDecimal("53.9040"),
@@ -598,7 +608,8 @@ class OnlinerConnectorTest {
   }
 
   private OnlinerSearchResponse buildResponseWithRentType(String rentType) {
-    var price = new OnlinerPrice("400.00", "USD", null);
+    var price = new OnlinerPrice("400.00", "USD",
+        Map.of("BYN", new OnlinerConvertedPrice("1305.00", "BYN")));
     var location = new OnlinerLocation(
         "Минск, ул. Ленина, 1",
         new BigDecimal("53.9040"),
