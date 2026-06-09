@@ -6,6 +6,7 @@ import com.flatio.service.domain.BatchIngestResult;
 import com.flatio.service.domain.IngestOutcome;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * Handles ingestion of raw connector data into the listing store.
@@ -40,4 +41,27 @@ public interface ListingIngestionService {
    * @return summary containing counts of created, updated, and failed items, never null
    */
   BatchIngestResult ingestBatch(List<RawListing> rawListings, Source source);
+
+  /**
+   * Counts total listings for the given source.
+   *
+   * @param source the data source, must not be null
+   * @return total listing count, never negative
+   */
+  long countBySource(Source source);
+
+  /**
+   * Marks all ACTIVE listings for the given source as INACTIVE if their external ID
+   * is absent from {@code activeExternalIds}.
+   *
+   * <p>Intended for use after a full sync to retire listings that no longer appear
+   * in the source's API response. Returns 0 without touching the database when
+   * {@code activeExternalIds} is empty (guards against accidental mass-deactivation
+   * on a failed fetch).
+   *
+   * @param source            the data source, must not be null
+   * @param activeExternalIds set of external IDs currently present in the source, must not be null
+   * @return number of listings deactivated
+   */
+  int deactivateMissing(Source source, Set<String> activeExternalIds);
 }

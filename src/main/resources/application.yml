@@ -63,6 +63,11 @@ telegram:
 flatio:
   sync:
     interval-ms: ${FLATIO_SYNC_INTERVAL_MS:1800000}
+    onliner:
+      delta:
+        cron: ${FLATIO_SYNC_ONLINER_DELTA_CRON:0 */10 * * * *}
+      full:
+        cron: ${FLATIO_SYNC_ONLINER_FULL_CRON:0 0 2 * * *}
 
 resilience4j:
   ratelimiter:

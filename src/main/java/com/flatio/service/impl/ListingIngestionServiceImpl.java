@@ -12,6 +12,7 @@ import com.flatio.repository.ListingRepository;
 import com.flatio.repository.PriceHistoryRepository;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import com.flatio.service.*;
 import com.flatio.service.domain.BatchIngestResult;
@@ -137,6 +138,24 @@ public class ListingIngestionServiceImpl implements ListingIngestionService {
         listing.getAreaTotalM2(),
         listing.getDealType()
     );
+  }
+
+  @Override
+  public long countBySource(Source source) {
+    return listingRepository.countBySource(source);
+  }
+
+  @Override
+  @Transactional
+  public int deactivateMissing(Source source, Set<String> activeExternalIds) {
+    if (activeExternalIds.isEmpty()) {
+      return 0;
+    }
+    int count = listingRepository.deactivateActiveBySourceExcluding(source, activeExternalIds);
+    if (count > 0) {
+      log.info("Deactivated missing listings: source={}, count={}", source.getCode(), count);
+    }
+    return count;
   }
 
   private Currency resolveCurrency(String code) {

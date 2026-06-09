@@ -28,6 +28,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -384,6 +385,67 @@ class ListingIngestionServiceImplTest {
     assertThat(result.added()).isEqualTo(0);
     assertThat(result.updated()).isEqualTo(0);
     assertThat(result.errors()).isEqualTo(0);
+  }
+
+  // -------------------------------------------------------------------------
+  // countBySource
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_return_count_from_repository_when_counting_by_source() {
+    // Given
+    when(listingRepository.countBySource(source)).thenReturn(42L);
+
+    // When
+    long count = ingestionService.countBySource(source);
+
+    // Then
+    assertThat(count).isEqualTo(42L);
+    verify(listingRepository).countBySource(source);
+  }
+
+  // -------------------------------------------------------------------------
+  // deactivateMissing
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_return_zero_and_skip_repository_when_active_ids_set_is_empty() {
+    // Given — empty set means guard against accidental mass-deactivation
+    var emptySet = Set.<String>of();
+
+    // When
+    int result = ingestionService.deactivateMissing(source, emptySet);
+
+    // Then
+    assertThat(result).isEqualTo(0);
+    verify(listingRepository, never()).deactivateActiveBySourceExcluding(any(), any());
+  }
+
+  @Test
+  void should_call_repository_deactivation_when_active_ids_provided() {
+    // Given
+    var activeIds = Set.of("ext-1", "ext-2", "ext-3");
+    when(listingRepository.deactivateActiveBySourceExcluding(source, activeIds)).thenReturn(2);
+
+    // When
+    int result = ingestionService.deactivateMissing(source, activeIds);
+
+    // Then
+    assertThat(result).isEqualTo(2);
+    verify(listingRepository).deactivateActiveBySourceExcluding(source, activeIds);
+  }
+
+  @Test
+  void should_return_zero_when_no_listings_were_deactivated() {
+    // Given — all current listings are still present in the source
+    var activeIds = Set.of("ext-1", "ext-2");
+    when(listingRepository.deactivateActiveBySourceExcluding(source, activeIds)).thenReturn(0);
+
+    // When
+    int result = ingestionService.deactivateMissing(source, activeIds);
+
+    // Then
+    assertThat(result).isEqualTo(0);
   }
 
   // -------------------------------------------------------------------------
