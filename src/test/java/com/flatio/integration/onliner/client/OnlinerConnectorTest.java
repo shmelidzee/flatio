@@ -318,6 +318,55 @@ class OnlinerConnectorTest {
   }
 
   // -------------------------------------------------------------------------
+  // Property type mapping — rent_type → propertyType (FR-LST-15)
+  // -------------------------------------------------------------------------
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_map_rent_type_room_to_property_type_room() {
+    // Given — apartment with rent_type = "room" (single room for rent, not a full apartment)
+    var response = buildResponseWithRentType("room");
+    mockRestClientReturning(response);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).propertyType()).isEqualTo("ROOM");
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_map_rent_type_1_room_to_property_type_apartment() {
+    // Given
+    var response = buildResponseWithRentType("1_room");
+    mockRestClientReturning(response);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then — any N_room(s) rent_type maps to APARTMENT
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).propertyType()).isEqualTo("APARTMENT");
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_map_null_rent_type_to_property_type_apartment() {
+    // Given — rent_type absent in source response
+    var response = buildResponseWithRentType(null);
+    mockRestClientReturning(response);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then — defaults to APARTMENT when rent_type is unknown
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).propertyType()).isEqualTo("APARTMENT");
+  }
+
+  // -------------------------------------------------------------------------
   // HTTP error handling
   // -------------------------------------------------------------------------
 
@@ -541,6 +590,30 @@ class OnlinerConnectorTest {
         null,
         OffsetDateTime.parse("2026-06-05T12:00:00+03:00"),
         null
+    );
+    return new OnlinerSearchResponse(
+        List.of(apt), 1,
+        new OnlinerPage(50, 1, 1, 1)
+    );
+  }
+
+  private OnlinerSearchResponse buildResponseWithRentType(String rentType) {
+    var price = new OnlinerPrice("400.00", "USD", null);
+    var location = new OnlinerLocation(
+        "Минск, ул. Ленина, 1",
+        new BigDecimal("53.9040"),
+        new BigDecimal("27.5620")
+    );
+    var apt = new OnlinerApartment(
+        9001L,
+        "https://r.onliner.by/ak/apartments/9001",
+        rentType,
+        null,
+        price,
+        location,
+        new OnlinerContact(true),
+        OffsetDateTime.parse("2026-06-05T12:00:00+03:00"),
+        OffsetDateTime.parse("2026-06-05T12:00:00+03:00")
     );
     return new OnlinerSearchResponse(
         List.of(apt), 1,
