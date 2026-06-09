@@ -36,6 +36,8 @@ import java.util.List;
 public class OnlinerConnector implements ListingConnector {
 
   private static final long DEFAULT_RETRY_AFTER_SECONDS = 5L;
+  private static final String DEAL_TYPE_RENT = "RENT";
+  private static final String PROPERTY_TYPE_APARTMENT = "APARTMENT";
 
   private final RestClient restClient;
   private final OnlinerProperties properties;
@@ -143,8 +145,8 @@ public class OnlinerConnector implements ListingConnector {
         String.valueOf(apartment.id()),
         title,
         null,
-        "RENT",
-        "APARTMENT",
+        DEAL_TYPE_RENT,
+        PROPERTY_TYPE_APARTMENT,
         price,
         currency,
         null,
