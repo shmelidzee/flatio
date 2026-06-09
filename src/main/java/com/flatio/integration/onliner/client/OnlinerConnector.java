@@ -5,6 +5,7 @@ import com.flatio.integration.core.ListingConnector;
 import com.flatio.integration.core.RawListing;
 import com.flatio.integration.onliner.config.OnlinerProperties;
 import com.flatio.integration.onliner.dto.OnlinerApartment;
+import com.flatio.integration.onliner.dto.OnlinerConvertedPrice;
 import com.flatio.integration.onliner.dto.OnlinerSearchResponse;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
@@ -230,8 +231,14 @@ public class OnlinerConnector implements ListingConnector {
     if (apartment.price() == null) {
       throw new IllegalArgumentException("Missing price for apartment id=" + apartment.id());
     }
-    BigDecimal price = new BigDecimal(apartment.price().amount());
-    String currency = apartment.price().currency();
+    Map<String, OnlinerConvertedPrice> converted = apartment.price().converted();
+    OnlinerConvertedPrice bynConverted = converted != null ? converted.get("BYN") : null;
+    if (bynConverted == null) {
+      throw new IllegalArgumentException("Missing BYN converted price for apartment id=" + apartment.id());
+    }
+    BigDecimal price = new BigDecimal(bynConverted.amount());
+    OnlinerConvertedPrice usdConverted = converted.get("USD");
+    BigDecimal priceUsd = usdConverted != null ? new BigDecimal(usdConverted.amount()) : null;
     BigDecimal lat = apartment.location() != null ? apartment.location().latitude() : null;
     BigDecimal lon = apartment.location() != null ? apartment.location().longitude() : null;
     String address = apartment.location() != null ? apartment.location().address() : null;
@@ -247,7 +254,8 @@ public class OnlinerConnector implements ListingConnector {
         DEAL_TYPE_RENT,
         mapRentTypeToPropertyType(apartment.rentType()),
         price,
-        currency,
+        "BYN",
+        priceUsd,
         rooms,
         null,
         null,

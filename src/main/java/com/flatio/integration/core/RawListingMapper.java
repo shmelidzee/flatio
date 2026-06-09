@@ -21,7 +21,7 @@ public interface RawListingMapper {
    * Maps a {@link RawListing} to a new {@link Listing}.
    *
    * @param raw the raw listing from a connector, must not be null
-   * @return a partially populated listing; caller must set source, currency, country, status, dedupHash
+   * @return a partially populated listing; caller must set source, currency, country, status, and dedupHash
    */
   @Mapping(target = "id", ignore = true)
   @Mapping(target = "source", ignore = true)
@@ -29,7 +29,6 @@ public interface RawListingMapper {
   @Mapping(target = "country", ignore = true)
   @Mapping(target = "status", ignore = true)
   @Mapping(target = "dedupHash", ignore = true)
-  @Mapping(target = "priceUsd", ignore = true)
   @Mapping(target = "areaLivingM2", ignore = true)
   @Mapping(target = "areaKitchenM2", ignore = true)
   @Mapping(target = "district", ignore = true)
@@ -42,8 +41,9 @@ public interface RawListingMapper {
    * Updates mutable fields of an existing {@link Listing} from a {@link RawListing}.
    *
    * <p>Identity ({@code id}), ownership ({@code source}, {@code country}),
-   * financial ({@code currency}, {@code priceUsd}), and computed ({@code status},
-   * {@code dedupHash}) fields are not touched — the caller is responsible for them.
+   * financial ({@code currency}), and computed ({@code status}, {@code dedupHash})
+   * fields are not touched — the caller is responsible for them.
+   * {@code priceUsd} is mapped directly from the raw listing.
    *
    * @param raw     updated raw listing data from a connector, must not be null
    * @param listing the existing listing to update in place, must not be null
@@ -54,7 +54,6 @@ public interface RawListingMapper {
   @Mapping(target = "country", ignore = true)
   @Mapping(target = "status", ignore = true)
   @Mapping(target = "dedupHash", ignore = true)
-  @Mapping(target = "priceUsd", ignore = true)
   @Mapping(target = "areaLivingM2", ignore = true)
   @Mapping(target = "areaKitchenM2", ignore = true)
   @Mapping(target = "district", ignore = true)
