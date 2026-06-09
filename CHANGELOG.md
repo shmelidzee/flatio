@@ -7,6 +7,39 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **PR #113 — REST API: поиск и получение объявлений (issues #21, #23)**
+  - `GET /api/v1/listings` — пагинированный поиск с фильтрами: `dealType`, `city`, `priceMin`, `priceMax`,
+    `rooms`, `sourceId`, `status`; по умолчанию возвращает только ACTIVE объявления; JPA `Specification`
+    с JOIN FETCH source и currency (только в data query, не в count query) для устранения N+1
+  - `GET /api/v1/listings/{id}` — полные данные объявления, включая историю цен (новейшая первой);
+    история цен получается через `PriceHistoryRepository`
+  - `GlobalExceptionHandler` — единый `@RestControllerAdvice`: `ListingNotFoundException` → 404,
+    `MethodArgumentNotValidException` → 400 с перечислением ошибок по полям,
+    `MethodArgumentTypeMismatchException` → 400, необработанные исключения → 500;
+    4xx логируются на уровне WARN, 5xx — ERROR
+  - `ListingNotFoundException` — доменное исключение в `common.exception`
+  - DTO: `ListingSearchCriteria` (query-параметры через `@ModelAttribute`), `ListingResponse` (полный,
+    с `priceHistory`), `ListingSummaryResponse` (для списка), `ErrorResponse`, `ValidationError`,
+    `PriceHistoryEntry`
+  - `ListingMapper` — multi-source маппинг: `toResponse(Listing, List<PriceHistoryEntry>)`,
+    `toSummaryResponse(Listing)`, `toHistoryEntry(PriceHistory)`
+  - `ListingRepository` теперь расширяет `JpaSpecificationExecutor<Listing>`
+
+### Changed
+- **PR #117 — Onliner: rent_type="room" → propertyType="ROOM" (issue #114)**
+  - `OnlinerConnector`: добавлен метод `mapRentTypeToPropertyType(String rentType)` — возвращает `"ROOM"`
+    при `rentType = "room"` (аренда комнаты), `"APARTMENT"` для всех остальных значений включая null
+  - Ранее `propertyType` всегда был `"APARTMENT"` независимо от типа объявления
+
+- **PR #118 — Onliner: price в BYN + priceUsd из converted (issue #115)**
+  - `RawListing`: добавлено поле `BigDecimal priceUsd` (позиция 8, после `currency`)
+  - `OnlinerConnector`: `price` теперь берётся из `price.converted.BYN.amount` (хранится в BYN),
+    `currency` всегда `"BYN"`; `priceUsd` берётся из `price.converted.USD.amount` (nullable)
+  - Ранее `price` брался из `price.amount` (обычно USD), `currency` — из `price.currency`
+  - `RawListingMapper`: убран `@Mapping(target = "priceUsd", ignore = true)` в `toEntity` и `updateEntity` —
+    MapStruct автоматически маппит поле при создании и обновлении листинга
+
 ### Changed
 - **PR #100 — Project structure audit: package layout aligned with CLAUDE.md (issue #99)**
   - `com.flatio.connector.core` → `com.flatio.integration.core`: `ListingConnector`, `RawListing`,
