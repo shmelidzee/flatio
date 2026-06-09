@@ -3,12 +3,13 @@ package com.flatio.integration.onliner.client;
 import com.flatio.integration.core.ConnectorTransientException;
 import com.flatio.integration.core.RawListing;
 import com.flatio.integration.onliner.config.OnlinerProperties;
-import com.flatio.integration.onliner.dto.OnlinerSearchResponse;
 import com.flatio.integration.onliner.dto.OnlinerApartment;
-import com.flatio.integration.onliner.dto.OnlinerArea;
+import com.flatio.integration.onliner.dto.OnlinerContact;
+import com.flatio.integration.onliner.dto.OnlinerConvertedPrice;
 import com.flatio.integration.onliner.dto.OnlinerLocation;
 import com.flatio.integration.onliner.dto.OnlinerPage;
 import com.flatio.integration.onliner.dto.OnlinerPrice;
+import com.flatio.integration.onliner.dto.OnlinerSearchResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,9 +23,13 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.io.IOException;
 import java.io.InputStream;
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -81,14 +86,12 @@ class OnlinerConnectorTest {
     // Then
     assertThat(result).hasSize(2);
     assertThat(result.get(0).externalId()).isEqualTo("1001");
-    assertThat(result.get(0).dealType()).isEqualTo("rent");
+    assertThat(result.get(0).dealType()).isEqualTo("RENT");
     assertThat(result.get(0).currency()).isEqualTo("USD");
-    assertThat(result.get(0).rooms()).isEqualTo(2);
-    assertThat(result.get(0).floorNumber()).isEqualTo(3);
     assertThat(result.get(0).photoUrls()).hasSize(1);
 
     assertThat(result.get(1).externalId()).isEqualTo("1002");
-    assertThat(result.get(1).dealType()).isEqualTo("sell");
+    assertThat(result.get(1).dealType()).isEqualTo("RENT");
     assertThat(result.get(1).photoUrls()).isEmpty();
   }
 
@@ -190,10 +193,10 @@ class OnlinerConnectorTest {
     assertThat(first.externalId()).isEqualTo("1001");
     assertThat(first.sourceUrl()).isEqualTo("https://r.onliner.by/ak/apartments/1001");
     assertThat(first.price()).isNotNull();
-    assertThat(first.rooms()).isEqualTo(2);
-    assertThat(first.floorNumber()).isEqualTo(3);
-    assertThat(first.floorsTotal()).isEqualTo(9);
-    assertThat(first.areaTotalM2()).isNotNull();
+    assertThat(first.rooms()).isNull();
+    assertThat(first.floorNumber()).isNull();
+    assertThat(first.floorsTotal()).isNull();
+    assertThat(first.areaTotalM2()).isNull();
     assertThat(first.address()).isEqualTo("Минск, пр-т Независимости, 72");
     assertThat(first.latitude()).isNotNull();
     assertThat(first.longitude()).isNotNull();
@@ -204,7 +207,7 @@ class OnlinerConnectorTest {
   @Test
   @SuppressWarnings("unchecked")
   void should_return_fallback_title_when_all_title_fields_are_null() {
-    // Given — apartment with rooms, area, address all null
+    // Given — apartment with address null
     var response = buildResponseWithNullTitleFields();
     mockRestClientReturning(response);
 
@@ -230,6 +233,35 @@ class OnlinerConnectorTest {
     assertThat(result.get(1).photoUrls()).isEmpty();
   }
 
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_use_last_time_up_as_published_at_when_present() {
+    // Given
+    var response = buildValidResponse();
+    mockRestClientReturning(response);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then — lastTimeUp is mapped to publishedAt
+    assertThat(result.get(0).publishedAt()).isNotNull();
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_return_null_published_at_when_last_time_up_is_absent() {
+    // Given — apartment without lastTimeUp
+    var response = buildResponseWithNullLastTimeUp();
+    mockRestClientReturning(response);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then — publishedAt is null, not a crash
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).publishedAt()).isNull();
+  }
+
   // -------------------------------------------------------------------------
   // Fixture-based deserialization (JSON → RawListing full chain)
   // -------------------------------------------------------------------------
@@ -237,7 +269,7 @@ class OnlinerConnectorTest {
   @Test
   @SuppressWarnings("unchecked")
   void should_correctly_deserialize_valid_response_fixture_including_json_property_mappings() throws IOException {
-    // Given — loads actual Onliner API snapshot; verifies @JsonProperty (deal_type, rooms_count, etc.)
+    // Given — loads actual Onliner API snapshot; verifies @JsonProperty (rent_type, last_time_up, etc.)
     var response = loadFixture("fixtures/onliner/valid-response.json");
     mockRestClientReturning(response);
 
@@ -247,14 +279,12 @@ class OnlinerConnectorTest {
     // Then — all snake_case JSON fields correctly mapped to camelCase Java fields
     assertThat(result).hasSize(2);
     assertThat(result.get(0).externalId()).isEqualTo("1001");
-    assertThat(result.get(0).dealType()).isEqualTo("rent");
+    assertThat(result.get(0).dealType()).isEqualTo("RENT");
     assertThat(result.get(0).price()).isEqualByComparingTo("450.00");
     assertThat(result.get(0).currency()).isEqualTo("USD");
-    assertThat(result.get(0).rooms()).isEqualTo(2);
-    assertThat(result.get(0).floorNumber()).isEqualTo(3);
-    assertThat(result.get(0).floorsTotal()).isEqualTo(9);
+    assertThat(result.get(0).publishedAt()).isNotNull();
     assertThat(result.get(1).externalId()).isEqualTo("1002");
-    assertThat(result.get(1).dealType()).isEqualTo("sell");
+    assertThat(result.get(1).dealType()).isEqualTo("RENT");
     assertThat(result.get(1).photoUrls()).isEmpty();
   }
 
@@ -372,7 +402,9 @@ class OnlinerConnectorTest {
   private OnlinerSearchResponse loadFixture(String path) throws IOException {
     InputStream stream = getClass().getClassLoader().getResourceAsStream(path);
     assertThat(stream).as("fixture file not found on classpath: %s", path).isNotNull();
-    return new ObjectMapper().readValue(stream, OnlinerSearchResponse.class);
+    ObjectMapper mapper = new ObjectMapper();
+    mapper.registerModule(new JavaTimeModule());
+    return mapper.readValue(stream, OnlinerSearchResponse.class);
   }
 
   // -------------------------------------------------------------------------
@@ -380,37 +412,44 @@ class OnlinerConnectorTest {
   // -------------------------------------------------------------------------
 
   private OnlinerSearchResponse buildValidResponse() {
-    var price1 = new OnlinerPrice("450.00", "USD");
+    var converted1 = Map.of("BYN", new OnlinerConvertedPrice("1470.00", "BYN"));
+    var price1 = new OnlinerPrice("450.00", "USD", converted1);
     var location1 = new OnlinerLocation(
         "Минск, пр-т Независимости, 72",
-        new java.math.BigDecimal("53.9272"),
-        new java.math.BigDecimal("27.6244")
+        new BigDecimal("53.9272"),
+        new BigDecimal("27.6244")
     );
-    var area1 = new OnlinerArea(
-        new java.math.BigDecimal("55.5"),
-        new java.math.BigDecimal("35.2"),
-        new java.math.BigDecimal("8.3")
-    );
+    var contact1 = new OnlinerContact(true);
     var apt1 = new OnlinerApartment(
-        1001L, "https://r.onliner.by/ak/apartments/1001", "rent",
+        1001L,
+        "https://r.onliner.by/ak/apartments/1001",
+        "rent",
         "https://content.onliner.by/image/1001.jpg",
-        price1, location1, area1, 2, 3, 9, "2026-05-15T10:00:00Z"
+        price1,
+        location1,
+        contact1,
+        OffsetDateTime.parse("2026-05-15T10:00:00+03:00"),
+        OffsetDateTime.parse("2026-05-15T10:00:00+03:00")
     );
 
-    var price2 = new OnlinerPrice("75000.00", "USD");
+    var converted2 = Map.of("BYN", new OnlinerConvertedPrice("245250.00", "BYN"));
+    var price2 = new OnlinerPrice("75000.00", "USD", converted2);
     var location2 = new OnlinerLocation(
         "Минск, ул. Немига, 5",
-        new java.math.BigDecimal("53.9006"),
-        new java.math.BigDecimal("27.5590")
+        new BigDecimal("53.9006"),
+        new BigDecimal("27.5590")
     );
-    var area2 = new OnlinerArea(
-        new java.math.BigDecimal("42.0"),
-        new java.math.BigDecimal("28.0"),
-        new java.math.BigDecimal("6.0")
-    );
+    var contact2 = new OnlinerContact(false);
     var apt2 = new OnlinerApartment(
-        1002L, "https://r.onliner.by/ak/apartments/1002", "sell",
-        null, price2, location2, area2, 1, 7, 12, "2026-06-01T08:30:00Z"
+        1002L,
+        "https://r.onliner.by/ak/apartments/1002",
+        "sell",
+        null,
+        price2,
+        location2,
+        contact2,
+        OffsetDateTime.parse("2026-06-01T08:30:00+03:00"),
+        OffsetDateTime.parse("2026-06-01T08:30:00+03:00")
     );
 
     return new OnlinerSearchResponse(
@@ -427,22 +466,37 @@ class OnlinerConnectorTest {
   }
 
   private OnlinerSearchResponse buildResponseWithBrokenPriceAmount() {
-    var goodPrice = new OnlinerPrice("300.00", "USD");
+    var goodPrice = new OnlinerPrice("300.00", "USD", null);
     var goodLocation = new OnlinerLocation(
         "Минск, ул. Якуба Коласа, 12",
-        new java.math.BigDecimal("53.9080"),
-        new java.math.BigDecimal("27.5640")
+        new BigDecimal("53.9080"),
+        new BigDecimal("27.5640")
     );
+    var goodContact = new OnlinerContact(true);
     var goodApt = new OnlinerApartment(
-        3001L, "https://r.onliner.by/ak/apartments/3001", "rent",
-        null, goodPrice, goodLocation, null, 1, 2, 5, null
+        3001L,
+        "https://r.onliner.by/ak/apartments/3001",
+        "rent",
+        null,
+        goodPrice,
+        goodLocation,
+        goodContact,
+        OffsetDateTime.parse("2026-06-02T09:00:00+03:00"),
+        null
     );
 
     // Apartment with price field present but amount = invalid string → new BigDecimal throws
-    var brokenPrice = new OnlinerPrice("not-a-number", "USD");
+    var brokenPrice = new OnlinerPrice("not-a-number", "USD", null);
     var brokenApt = new OnlinerApartment(
-        3002L, "https://r.onliner.by/ak/apartments/3002", "rent",
-        null, brokenPrice, null, null, null, null, null, null
+        3002L,
+        "https://r.onliner.by/ak/apartments/3002",
+        "rent",
+        null,
+        brokenPrice,
+        null,
+        null,
+        null,
+        null
     );
 
     return new OnlinerSearchResponse(
@@ -452,10 +506,41 @@ class OnlinerConnectorTest {
   }
 
   private OnlinerSearchResponse buildResponseWithNullTitleFields() {
-    var price = new OnlinerPrice("500.00", "USD");
+    var price = new OnlinerPrice("500.00", "USD", null);
     var apt = new OnlinerApartment(
-        4001L, "https://r.onliner.by/ak/apartments/4001", "rent",
-        null, price, null, null, null, null, null, null
+        4001L,
+        "https://r.onliner.by/ak/apartments/4001",
+        "rent",
+        null,
+        price,
+        null,
+        null,
+        null,
+        null
+    );
+    return new OnlinerSearchResponse(
+        List.of(apt), 1,
+        new OnlinerPage(50, 1, 1, 1)
+    );
+  }
+
+  private OnlinerSearchResponse buildResponseWithNullLastTimeUp() {
+    var price = new OnlinerPrice("400.00", "USD", null);
+    var location = new OnlinerLocation(
+        "Минск, ул. Ленина, 1",
+        new BigDecimal("53.9040"),
+        new BigDecimal("27.5620")
+    );
+    var apt = new OnlinerApartment(
+        5001L,
+        "https://r.onliner.by/ak/apartments/5001",
+        "rent",
+        null,
+        price,
+        location,
+        null,
+        OffsetDateTime.parse("2026-06-05T12:00:00+03:00"),
+        null
     );
     return new OnlinerSearchResponse(
         List.of(apt), 1,
