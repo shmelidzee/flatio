@@ -1,6 +1,6 @@
 package com.flatio.service;
 
-import com.flatio.connector.core.RawListing;
+import com.flatio.integration.core.RawListing;
 import com.flatio.domain.country.Country;
 import com.flatio.domain.currency.Currency;
 import com.flatio.domain.listing.DealType;
@@ -18,7 +18,7 @@ import java.util.Optional;
 
 import com.flatio.service.domain.IngestOutcome;
 import com.flatio.service.impl.ListingIngestionServiceImpl;
-import com.flatio.service.mapper.RawListingMapper;
+import com.flatio.integration.core.RawListingMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

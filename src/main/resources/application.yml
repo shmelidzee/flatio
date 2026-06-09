@@ -81,7 +81,7 @@ resilience4j:
         retry-exceptions:
           - org.springframework.web.client.HttpServerErrorException
           - org.springframework.web.client.ResourceAccessException
-          - com.flatio.connector.core.ConnectorTransientException
+          - com.flatio.integration.core.ConnectorTransientException
         ignore-exceptions:
           - io.github.resilience4j.circuitbreaker.CallNotPermittedException
   circuitbreaker:
