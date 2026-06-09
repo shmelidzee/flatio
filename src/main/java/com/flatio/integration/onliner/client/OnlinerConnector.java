@@ -45,6 +45,7 @@ public class OnlinerConnector implements ListingConnector {
   private static final long DEFAULT_RETRY_AFTER_SECONDS = 5L;
   private static final String DEAL_TYPE_RENT = "RENT";
   private static final String PROPERTY_TYPE_APARTMENT = "APARTMENT";
+  private static final String PROPERTY_TYPE_ROOM = "ROOM";
 
   /**
    * Maps Onliner {@code rent_type} to room count.
@@ -244,7 +245,7 @@ public class OnlinerConnector implements ListingConnector {
         buildTitle(address),
         null,
         DEAL_TYPE_RENT,
-        PROPERTY_TYPE_APARTMENT,
+        mapRentTypeToPropertyType(apartment.rentType()),
         price,
         currency,
         rooms,
@@ -267,6 +268,22 @@ public class OnlinerConnector implements ListingConnector {
       return null;
     }
     return RENT_TYPE_TO_ROOMS.get(rentType);
+  }
+
+  /**
+   * Maps Onliner {@code rent_type} to a property type string.
+   *
+   * <p>{@code "room"} (single room for rent) maps to {@code "ROOM"}.
+   * All apartment rent types ({@code "1_room"}, {@code "2_rooms"}, etc.) map to {@code "APARTMENT"}.
+   *
+   * @param rentType the Onliner rent_type value, may be null
+   * @return {@code "ROOM"} if rent_type is {@code "room"}, {@code "APARTMENT"} otherwise
+   */
+  private static String mapRentTypeToPropertyType(String rentType) {
+    if ("room".equals(rentType)) {
+      return PROPERTY_TYPE_ROOM;
+    }
+    return PROPERTY_TYPE_APARTMENT;
   }
 
   private String buildTitle(String address) {
