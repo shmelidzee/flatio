@@ -100,10 +100,11 @@ resilience4j:
 | `title` | Built from `rooms_count`, `area.total`, `location.address` | Fallback: "Квартира на Onliner" |
 | `description` | — | Always `null` (not returned in list view) |
 | `dealType` | `deal_type` | `"rent"` / `"sell"` as-is |
-| `propertyType` | — | Always `"APARTMENT"` |
-| `price` | `price.amount` | Parsed as `BigDecimal` |
-| `currency` | `price.currency` | `"USD"` / `"BYN"` as-is |
-| `rooms` | `rooms_count` | nullable |
+| `propertyType` | `rent_type` | `"room"` → `"ROOM"`; anything else (including null) → `"APARTMENT"` |
+| `price` | `price.converted.BYN.amount` | BYN price; exception if BYN key absent — listing skipped |
+| `currency` | — | Always `"BYN"` |
+| `priceUsd` | `price.converted.USD.amount` | nullable; `null` when USD key absent in `converted` |
+| `rooms` | `rent_type` | Mapped via table: `1_room`→1, `2_rooms`→2, `3_rooms`→3, `4_rooms`→4; `null` otherwise |
 | `floorNumber` | `floor` | nullable |
 | `floorsTotal` | `number_of_floors` | nullable |
 | `areaTotalM2` | `area.total` | nullable |
@@ -112,7 +113,7 @@ resilience4j:
 | `longitude` | `location.longitude` | nullable |
 | `city` | — | Always `null` (no separate city field in Onliner API) |
 | `sourceUrl` | `url` | |
-| `publishedAt` | `created_at` | ISO-8601 string → `Instant`; `null` on parse failure |
+| `publishedAt` | `last_time_up` | ISO-8601 string → `Instant`; `null` when field absent |
 | `photoUrls` | `photo` | Single photo URL wrapped in `List.of()`; `List.of()` when null |
 
 ### Error handling
@@ -148,6 +149,9 @@ Fixtures: `src/test/resources/fixtures/onliner/`
 | `should_correctly_deserialize_valid_response_fixture_including_json_property_mappings` | JSON `@JsonProperty` mappings via fixture |
 | `should_return_empty_list_from_empty_response_fixture` | Empty fixture deserialized correctly |
 | `should_skip_listing_with_null_price_when_loaded_from_fixture` | `price: null` in fixture → listing skipped |
+| `should_map_rent_type_room_to_property_type_room` | `rent_type="room"` → `propertyType="ROOM"` |
+| `should_map_rent_type_1_room_to_property_type_apartment` | `rent_type="1_room"` → `propertyType="APARTMENT"` |
+| `should_map_null_rent_type_to_property_type_apartment` | `rent_type=null` → `propertyType="APARTMENT"` (default) |
 
 ---
 
