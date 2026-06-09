@@ -1,8 +1,10 @@
 package com.flatio.web.mapper;
 
 import com.flatio.domain.listing.Listing;
+import com.flatio.domain.listing.PriceHistory;
 import com.flatio.web.dto.ListingResponse;
 import com.flatio.web.dto.ListingSummaryResponse;
+import com.flatio.web.dto.PriceHistoryEntry;
 import java.util.List;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -14,14 +16,19 @@ import org.mapstruct.Mapping;
 public interface ListingMapper {
 
   /**
-   * Converts a Listing entity to a full response DTO.
+   * Converts a Listing entity and its pre-fetched price history to a full response DTO.
    *
-   * @param listing the listing entity, must not be null
+   * <p>Price history must be fetched separately by the service and passed here to avoid
+   * lazy-load issues and keep the Listing entity free of bidirectional associations.
+   *
+   * @param listing      the listing entity, must not be null
+   * @param priceHistory price history entries, newest first; may be empty, never null
    * @return full listing response DTO, never null
    */
-  @Mapping(source = "source.code", target = "sourceId")
-  @Mapping(source = "currency.code", target = "currency")
-  ListingResponse toResponse(Listing listing);
+  @Mapping(source = "listing.source.code", target = "sourceId")
+  @Mapping(source = "listing.currency.code", target = "currency")
+  @Mapping(source = "priceHistory", target = "priceHistory")
+  ListingResponse toResponse(Listing listing, List<PriceHistoryEntry> priceHistory);
 
   /**
    * Converts a Listing entity to a summary response DTO for list displays.
@@ -44,4 +51,13 @@ public interface ListingMapper {
    * @return list of summary DTOs, never null
    */
   List<ListingSummaryResponse> toSummaryResponseList(List<Listing> listings);
+
+  /**
+   * Converts a {@link PriceHistory} entity to a {@link PriceHistoryEntry} DTO.
+   *
+   * @param priceHistory the price history entity, must not be null
+   * @return price history entry DTO, never null
+   */
+  @Mapping(source = "currency.code", target = "currency")
+  PriceHistoryEntry toHistoryEntry(PriceHistory priceHistory);
 }

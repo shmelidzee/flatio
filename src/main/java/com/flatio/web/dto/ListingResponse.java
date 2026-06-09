@@ -5,6 +5,7 @@ import com.flatio.domain.listing.ListingStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 
 @Schema(description = "Full details of a real estate listing")
 public record ListingResponse(
@@ -19,6 +20,9 @@ public record ListingResponse(
 
     @Schema(description = "Listing title", example = "2-комнатная квартира, 52 м², Минск")
     String title,
+
+    @Schema(description = "Full description provided by the source", example = "Сдаётся квартира с мебелью")
+    String description,
 
     @Schema(description = "Deal type: rent or sell", example = "SELL")
     DealType dealType,
@@ -53,6 +57,15 @@ public record ListingResponse(
     @Schema(description = "District or neighbourhood", example = "Советский район")
     String district,
 
+    @Schema(description = "Latitude coordinate", example = "53.9006")
+    BigDecimal latitude,
+
+    @Schema(description = "Longitude coordinate", example = "27.5590")
+    BigDecimal longitude,
+
+    @Schema(description = "True if posted directly by the property owner (not an agency)", example = "true")
+    Boolean isOwner,
+
     @Schema(description = "Listing visibility status", example = "ACTIVE")
     ListingStatus status,
 
@@ -66,5 +79,8 @@ public record ListingResponse(
 
     @Schema(description = "Date and time when the listing was first ingested",
         example = "2026-01-15T11:00:00Z")
-    Instant createdAt
+    Instant createdAt,
+
+    @Schema(description = "Price change history, newest entry first")
+    List<PriceHistoryEntry> priceHistory
 ) {}
