@@ -3,12 +3,14 @@ package com.flatio.repository;
 import com.flatio.domain.listing.Listing;
 import com.flatio.domain.listing.ListingStatus;
 import com.flatio.domain.source.Source;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -74,5 +76,34 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
       @Param("countryCode") String countryCode,
       @Param("status") ListingStatus status,
       Pageable pageable
+  );
+
+  /**
+   * Counts all listings for the given source.
+   *
+   * @param source the data source
+   * @return total listing count, never negative
+   */
+  long countBySource(Source source);
+
+  /**
+   * Sets status to INACTIVE for all ACTIVE listings of the given source whose external ID
+   * is not in the provided collection.
+   *
+   * <p>Used after a full sync to retire listings that disappeared from the source's API.
+   * The caller must guarantee {@code activeExternalIds} is non-empty before invoking this method
+   * to avoid accidentally deactivating every listing when a fetch returns no results.
+   *
+   * @param source            the data source whose listings to check
+   * @param activeExternalIds external IDs that are still present in the source; must not be empty
+   * @return number of listings updated
+   */
+  @Modifying
+  @Query("UPDATE Listing l SET l.status = com.flatio.domain.listing.ListingStatus.INACTIVE " +
+      "WHERE l.source = :source AND l.externalId NOT IN :activeExternalIds " +
+      "AND l.status = com.flatio.domain.listing.ListingStatus.ACTIVE")
+  int deactivateActiveBySourceExcluding(
+      @Param("source") Source source,
+      @Param("activeExternalIds") Collection<String> activeExternalIds
   );
 }
