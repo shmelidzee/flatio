@@ -86,13 +86,13 @@ com.flatio
 │   └── onliner/         # Onliner integration
 │       ├── client/      # OnlinerConnector — implements ListingConnector
 │       ├── config/      # OnlinerClientConfig (@Bean onlinerRestClient) + OnlinerProperties
-│       └── dto/         # OnlinerSearchResponse, OnlinerApartment, OnlinerPrice, OnlinerLocation, OnlinerArea, OnlinerPage
+│       ├── dto/         # OnlinerSearchResponse, OnlinerApartment, OnlinerPrice, OnlinerLocation, OnlinerArea, OnlinerPage
+│       └── scheduler/   # OnlinerDeltaSyncJob (every 10 min), OnlinerFullSyncJob (daily 02:00)
 ├── telegram/            # Telegram Bot
 │   ├── handler/         # FlatioBot — TelegramLongPollingBot Spring bean
 │   ├── command/         # StartCommandHandler — /start command
 │   └── config/          # BotConfig (@ConfigurationProperties) + BotConfiguration (@EnableConfigurationProperties)
-├── scheduler/           # Scheduled tasks
-│   └── ListingSyncScheduler  # @Scheduled — iterates all ListingConnector beans, calls ingestBatch per source
+├── scheduler/           # Generic scheduled tasks (currently empty; source-specific jobs live in integration/)
 ├── security/            # Auth / JWT (to be added)
 └── util/                # Utilities
 ```

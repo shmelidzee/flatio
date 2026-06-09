@@ -8,13 +8,15 @@ Each connector is an independent Spring `@Service` implementing `com.flatio.inte
 ## Architecture
 
 ```
-Scheduler
+OnlinerDeltaSyncJob (every 10 min)    OnlinerFullSyncJob (daily 02:00)
+  ↓                                       ↓
+ListingConnector.fetchDelta(since)    ListingConnector.fetchAll()
+  ↓                                       ↓
+  ←── @RateLimiter + @Retry + @CircuitBreaker ──→
+  ↓                                       ↓
+List<RawListing>              ←── never raw HTML ──→
   ↓
-ListingConnector.fetch()          ← @RateLimiter + @Retry(fallbackMethod = "...Fallback")
-  ↓
-List<RawListing>                  ← structured data, never raw HTML
-  ↓
-ListingService (dedup + persist)
+ListingIngestionService (dedup + persist)
 ```
 
 All connectors share the same contract — see `docs/architecture.md`, section **Connector Contract**.
@@ -115,13 +117,14 @@ resilience4j:
 | `sourceUrl` | `url` | |
 | `publishedAt` | `last_time_up` | ISO-8601 string → `Instant`; `null` when field absent |
 | `photoUrls` | `photo` | Single photo URL wrapped in `List.of()`; `List.of()` when null |
+| `isOwner` | `contact.owner` | `true` when owner, `false` when agency; `null` when `contact` absent |
 
 ### Error handling
 
 - **HTTP 5xx / network failure:** exception propagates from `fetch()`, `@Retry` triggers with exponential backoff; after 3 failed attempts circuit breaker records the failure; `fetchFallback` returns `List.of()`
 - **HTTP 429 Too Many Requests:** `Retry-After` header is read (default 5s), thread sleeps, then `ConnectorTransientException` is thrown to trigger retry
 - **HTTP 4xx (non-429):** logged at ERROR, returns `List.of()` without retry
-- **Circuit breaker OPEN:** `CallNotPermittedException` propagates to `ListingSyncScheduler`, which logs `WARN "Circuit OPEN, skipping: source={}"` and moves on to the next connector
+- **Circuit breaker OPEN:** `CallNotPermittedException` is caught by `OnlinerDeltaSyncJob` / `OnlinerFullSyncJob`, which logs `WARN "Circuit OPEN, skipping Onliner sync"` and exits the current run without propagating the exception
 - **Single broken listing** (e.g., `price: null`, invalid `price.amount`): skipped with `log.warn`, rest are processed
 - **Null / empty API response:** `fetch()` returns `List.of()` without retry
 
@@ -152,6 +155,14 @@ Fixtures: `src/test/resources/fixtures/onliner/`
 | `should_map_rent_type_room_to_property_type_room` | `rent_type="room"` → `propertyType="ROOM"` |
 | `should_map_rent_type_1_room_to_property_type_apartment` | `rent_type="1_room"` → `propertyType="APARTMENT"` |
 | `should_map_null_rent_type_to_property_type_apartment` | `rent_type=null` → `propertyType="APARTMENT"` (default) |
+| `should_map_rent_type_1_room_to_rooms_count_1` | `rent_type="1_room"` → `rooms=1` |
+| `should_map_rent_type_2_rooms_to_rooms_count_2` | `rent_type="2_rooms"` → `rooms=2` |
+| `should_map_rent_type_3_rooms_to_rooms_count_3` | `rent_type="3_rooms"` → `rooms=3` |
+| `should_map_rent_type_4_rooms_to_rooms_count_4` | `rent_type="4_rooms"` → `rooms=4` |
+| `should_map_rent_type_room_to_rooms_count_null` | `rent_type="room"` → `rooms=null` |
+| `should_map_contact_owner_true_to_is_owner_true` | `contact.owner=true` → `isOwner=true` |
+| `should_map_contact_owner_false_to_is_owner_false` | `contact.owner=false` → `isOwner=false` |
+| `should_return_null_is_owner_when_contact_is_absent` | `contact=null` → `isOwner=null` |
 
 ---
 
