@@ -1,7 +1,7 @@
 package com.flatio.scheduler;
 
-import com.flatio.connector.core.ListingConnector;
-import com.flatio.connector.core.RawListing;
+import com.flatio.integration.core.ListingConnector;
+import com.flatio.integration.core.RawListing;
 import com.flatio.domain.source.Source;
 import com.flatio.repository.SourceRepository;
 import com.flatio.service.domain.BatchIngestResult;
