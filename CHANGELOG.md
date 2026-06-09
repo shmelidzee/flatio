@@ -8,6 +8,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **PR #120 — M1.3.10+M1.3.11: OnlinerDeltaSyncJob + OnlinerFullSyncJob (issue #104)**
+  - `com.flatio.integration.onliner.scheduler.OnlinerDeltaSyncJob` — инкрементальный синк:
+    - `@Scheduled(fixedDelayString = "${flatio.onliner.delta-sync.interval-ms}", initialDelay = 0)` — по умолчанию каждые 10 минут
+    - `@EventListener(ApplicationReadyEvent.class)` — принудительный запуск при старте приложения
+    - `AtomicReference<Instant> lastSyncCursor` — потокобезопасный курсор; передаётся в `OnlinerConnector.fetchDelta(since)`
+    - Обрабатывает `CallNotPermittedException` (circuit breaker OPEN) — логирует WARN, не пробрасывает
+    - Структурированное логирование: `source`, `since`, `fetched`, `added`, `updated`, `errors`, `durationMs`
+  - `com.flatio.integration.onliner.scheduler.OnlinerFullSyncJob` — полный синк:
+    - `@Scheduled(cron = "${flatio.onliner.full-sync.cron}", zone = "Europe/Minsk")` — по умолчанию каждый день в 02:00
+    - Вызывает `OnlinerConnector.fetchAll()`, затем `ListingIngestionService.ingestBatch()`
+    - Деактивирует объявления, которых нет в ответе Onliner: `listingRepository.deactivateMissingListings(sourceId, returnedExternalIds)`
+    - Обрабатывает `CallNotPermittedException` аналогично дельта-синку
+  - `application.yml` — добавлены конфиги:
+    ```
+    flatio.onliner.delta-sync.interval-ms: ${ONLINER_DELTA_SYNC_INTERVAL_MS:600000}
+    flatio.onliner.full-sync.cron: ${ONLINER_FULL_SYNC_CRON:0 0 2 * * *}
+    ```
+  - Удалён `com.flatio.scheduler.ListingSyncScheduler` — дженерик-планировщик заменён двумя специализированными Onliner-джобами
+  - Тесты: `OnlinerDeltaSyncJobTest` (9 тестов), `OnlinerFullSyncJobTest` (9 тестов) в пакете `com.flatio.integration.onliner.scheduler`
+  - Удалён `ListingSyncSchedulerTest`
+  - Старые тестовые файлы из `com.flatio.scheduler` удалены
+
+### Added
 - **PR #113 — REST API: поиск и получение объявлений (issues #21, #23)**
   - `GET /api/v1/listings` — пагинированный поиск с фильтрами: `dealType`, `city`, `priceMin`, `priceMax`,
     `rooms`, `sourceId`, `status`; по умолчанию возвращает только ACTIVE объявления; JPA `Specification`
@@ -27,6 +50,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - `ListingRepository` теперь расширяет `JpaSpecificationExecutor<Listing>`
 
 ### Changed
+- **PR #121 — M1.3.9: OnlinerConnector — обновление фикстур и тестов (issue #105)**
+  - `OnlinerApartment` и `OnlinerLocation` — добавлен `@JsonIgnoreProperties(ignoreUnknown = true)`:
+    без этой аннотации коннектор падал с `UnrecognizedPropertyException` при разборе реальных ответов Onliner
+    (поля `up_available_in` в `OnlinerApartment`, `user_address` в `OnlinerLocation`)
+  - Фикстуры `valid-response.json` и `response-without-price.json` обновлены до реальной структуры Onliner API:
+    `rent_type` теперь содержит реальные значения (`2_rooms`, `3_rooms`, `1_room` вместо `"rent"`/`"sell"`),
+    добавлены поля `up_available_in`, `user_address`, `contact.owner`
+  - 8 новых тестов в `OnlinerConnectorTest`:
+    - Маппинг `rent_type` → `rooms`: `1_room`→1, `2_rooms`→2, `3_rooms`→3, `4_rooms`→4, `room`→null
+    - Маппинг `contact.owner` → `isOwner`: `true`, `false`, отсутствующий `contact`→null
+  - Итого 30 тестов в `OnlinerConnectorTest` (было 22 до PR #121), 0 failed
+
 - **PR #117 — Onliner: rent_type="room" → propertyType="ROOM" (issue #114)**
   - `OnlinerConnector`: добавлен метод `mapRentTypeToPropertyType(String rentType)` — возвращает `"ROOM"`
     при `rentType = "room"` (аренда комнаты), `"APARTMENT"` для всех остальных значений включая null
