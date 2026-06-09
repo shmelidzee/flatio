@@ -4,6 +4,7 @@ import org.springframework.boot.web.client.ClientHttpRequestFactories;
 import org.springframework.boot.web.client.ClientHttpRequestFactorySettings;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.MediaType;
 import org.springframework.web.client.RestClient;
 
 import java.time.Duration;
@@ -30,7 +31,7 @@ public class OnlinerClientConfig {
    *
    * @param builder    Spring-managed RestClient.Builder
    * @param properties connector configuration
-   * @return RestClient with base URL, User-Agent, and timeouts configured
+   * @return RestClient with base URL, User-Agent, Accept, and timeouts configured
    */
   @Bean("onlinerRestClient")
   public RestClient onlinerRestClient(RestClient.Builder builder, OnlinerProperties properties) {
@@ -42,6 +43,7 @@ public class OnlinerClientConfig {
         .requestFactory(ClientHttpRequestFactories.get(factorySettings))
         .baseUrl(properties.baseUrl())
         .defaultHeader("User-Agent", ONLINER_USER_AGENT)
+        .defaultHeader("Accept", MediaType.APPLICATION_JSON_VALUE)
         .build();
   }
 }
