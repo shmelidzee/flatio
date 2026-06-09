@@ -1,4 +1,4 @@
-package com.flatio.scheduler;
+package com.flatio.integration.onliner.scheduler;
 
 import com.flatio.domain.source.Source;
 import com.flatio.integration.core.RawListing;
