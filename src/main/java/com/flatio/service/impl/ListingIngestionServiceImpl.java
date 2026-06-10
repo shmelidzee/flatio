@@ -10,12 +10,12 @@ import com.flatio.domain.source.Source;
 import com.flatio.repository.CurrencyRepository;
 import com.flatio.repository.ListingRepository;
 import com.flatio.repository.PriceHistoryRepository;
-import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
-import com.flatio.service.*;
+import com.flatio.service.DedupHashService;
+import com.flatio.service.ListingIngestionService;
 import com.flatio.service.domain.BatchIngestResult;
 import com.flatio.service.domain.IngestOutcome;
 import com.flatio.integration.core.RawListingMapper;
