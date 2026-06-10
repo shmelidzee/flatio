@@ -4,6 +4,7 @@ import com.flatio.domain.listing.DealType;
 import java.math.BigDecimal;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -13,6 +14,10 @@ import org.springframework.stereotype.Component;
  *
  * <p>State is stored in a {@link ConcurrentHashMap} keyed by Telegram user ID.
  * MVP — survives within a single JVM instance only (no Redis/DB persistence).
+ *
+ * <p><b>MVP limitation:</b> state is never evicted automatically. Each active user
+ * occupies a small entry for the lifetime of the JVM. Replace with Caffeine Cache
+ * ({@code expireAfterWrite(30m)}) before production-scale deployment.
  */
 @Component
 @Slf4j
@@ -23,6 +28,8 @@ public class SearchFilterWizard {
 
   /** Callback value meaning "no filter applied" for a given step. */
   public static final String VALUE_ANY = "ANY";
+
+  private static final Set<String> ALLOWED_PROPERTY_TYPES = Set.of("APARTMENT", "HOUSE", "ROOM");
 
   static final BigDecimal PRICE_LOW_MAX = BigDecimal.valueOf(1_000);
   static final BigDecimal PRICE_MED_MIN = BigDecimal.valueOf(1_000);
@@ -72,7 +79,7 @@ public class SearchFilterWizard {
         state.setCurrentStep(FilterStep.PROPERTY_TYPE);
       }
       case PROPERTY_TYPE -> {
-        state.setPropertyType(VALUE_ANY.equals(value) ? null : value);
+        state.setPropertyType(VALUE_ANY.equals(value) ? null : parsePropertyType(value));
         state.setCurrentStep(FilterStep.ROOMS);
       }
       case ROOMS -> {
@@ -121,6 +128,14 @@ public class SearchFilterWizard {
     log.debug("Filter wizard reset: telegramId={}", telegramId);
   }
 
+  private String parsePropertyType(String value) {
+    if (ALLOWED_PROPERTY_TYPES.contains(value)) {
+      return value;
+    }
+    log.warn("Unknown property type value in callback: {}", value);
+    return null;
+  }
+
   private DealType parseDealType(String value) {
     try {
       return DealType.valueOf(value);
@@ -149,6 +164,7 @@ public class SearchFilterWizard {
       case "HIGH" -> { state.setPriceMin(PRICE_HIGH_MIN); state.setPriceMax(PRICE_HIGH_MAX); }
       case "PREMIUM" -> { state.setPriceMin(PRICE_PREMIUM_MIN); state.setPriceMax(null); }
       case VALUE_ANY -> { state.setPriceMin(null); state.setPriceMax(null); }
+      // Unknown value: price stays null (no filter), step still advances to DONE — intentional graceful degradation
       default -> log.warn("Unknown price range value in callback: {}", value);
     }
   }

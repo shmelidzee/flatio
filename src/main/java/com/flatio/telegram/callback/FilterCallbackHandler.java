@@ -23,6 +23,9 @@ import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 @RequiredArgsConstructor
 public class FilterCallbackHandler {
 
+  /** Callback data value that triggers the start of the filter wizard. */
+  public static final String ACTION_SEARCH = "action:search";
+
   private final SearchFilterWizard wizard;
   private final FilterKeyboardFactory keyboardFactory;
 
@@ -51,7 +54,7 @@ public class FilterCallbackHandler {
   }
 
   private SearchFilterState resolveState(Long telegramId, String data) {
-    if ("action:search".equals(data)) {
+    if (ACTION_SEARCH.equals(data)) {
       return wizard.start(telegramId);
     }
     if ((SearchFilterWizard.CALLBACK_PREFIX + ":BACK").equals(data)) {

@@ -332,6 +332,20 @@ class SearchFilterWizardTest {
   }
 
   @Test
+  void should_set_null_property_type_when_unknown_value_received() {
+    // Given
+    wizard.start(1L);
+    wizard.applySelection(1L, FilterStep.DEAL_TYPE, "RENT");
+
+    // When
+    var state = wizard.applySelection(1L, FilterStep.PROPERTY_TYPE, "UNKNOWN_TYPE");
+
+    // Then — unknown value silently falls back to null, step still advances
+    assertThat(state.getPropertyType()).isNull();
+    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.ROOMS);
+  }
+
+  @Test
   void should_not_throw_when_unknown_price_range_received() {
     // Given
     wizard.start(1L);

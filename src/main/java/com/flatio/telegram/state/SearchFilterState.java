@@ -17,6 +17,7 @@ public class SearchFilterState {
 
   private FilterStep currentStep = FilterStep.DEAL_TYPE;
   private DealType dealType;
+  /** One of: APARTMENT, HOUSE, ROOM — null means no filter. */
   private String propertyType;
   private Integer rooms;
   private BigDecimal priceMin;

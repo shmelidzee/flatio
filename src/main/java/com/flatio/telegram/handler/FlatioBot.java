@@ -3,6 +3,7 @@ package com.flatio.telegram.handler;
 import com.flatio.telegram.callback.FilterCallbackHandler;
 import com.flatio.telegram.command.StartCommandHandler;
 import com.flatio.telegram.config.BotConfig;
+import com.flatio.telegram.state.SearchFilterWizard;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,7 +29,7 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
 @RequiredArgsConstructor
 public class FlatioBot implements SpringLongPollingBot, LongPollingUpdateConsumer {
 
-  private static final String FILTER_CALLBACK_PREFIX = "FILTER:";
+  private static final String FILTER_CALLBACK_PREFIX = SearchFilterWizard.CALLBACK_PREFIX + ":";
 
   private final BotConfig botConfig;
   private final TelegramClient telegramClient;
@@ -92,7 +93,7 @@ public class FlatioBot implements SpringLongPollingBot, LongPollingUpdateConsume
     String data = callbackQuery.getData();
     answerCallbackQuery(callbackQuery.getId());
 
-    if ("action:search".equals(data) || data.startsWith(FILTER_CALLBACK_PREFIX)) {
+    if (FilterCallbackHandler.ACTION_SEARCH.equals(data) || data.startsWith(FILTER_CALLBACK_PREFIX)) {
       try {
         telegramClient.execute(filterCallbackHandler.handle(callbackQuery));
       } catch (TelegramApiException e) {
