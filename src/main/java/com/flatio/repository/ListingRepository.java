@@ -33,6 +33,21 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
   );
 
   /**
+   * Finds the first listing with the same deduplication hash from the same source
+   * but with a different external ID.
+   *
+   * <p>Used for within-source repost detection: if another listing from the same source
+   * shares the computed hash but has a different external ID, the incoming listing is a repost.
+   *
+   * @param dedupHash  the deduplication hash to match
+   * @param source     the source to search within
+   * @param externalId the external ID to exclude
+   * @return the original listing if a match is found, or empty
+   */
+  Optional<Listing> findFirstByDedupHashAndSourceAndExternalIdNot(
+      String dedupHash, Source source, String externalId);
+
+  /**
    * Finds listings with the given deduplication hash from any source except the specified one.
    *
    * <p>Used for cross-source duplicate detection: locates listings from other sources
