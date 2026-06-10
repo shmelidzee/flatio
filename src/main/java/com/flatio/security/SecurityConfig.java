@@ -1,6 +1,9 @@
 package com.flatio.security;
 
+import java.util.Arrays;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -11,6 +14,9 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 /**
  * Spring Security configuration for the Flatio API.
@@ -23,9 +29,15 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
  * <ul>
  *   <li>{@code /api/v1/admin/**} — requires {@code ADMIN} role</li>
  *   <li>{@code /api/v1/**} — requires any authenticated user</li>
- *   <li>Swagger UI and OpenAPI docs — publicly accessible</li>
- *   <li>Everything else — permitted without authentication</li>
+ *   <li>Swagger UI, OpenAPI docs, and Actuator health/info — publicly accessible</li>
+ *   <li>Everything else — denied (fail-closed, HTTP 403)</li>
  * </ul>
+ *
+ * <p>CORS is configured via {@code flatio.cors.allowed-origins}
+ * (environment variable: {@code CORS_ALLOWED_ORIGINS}).
+ * Accepts a comma-separated list of allowed origins.
+ * Defaults to {@code http://localhost:3000} for local development.
+ * Wildcard origins ({@code *}) are never accepted.
  */
 @Configuration
 @EnableWebSecurity
@@ -35,6 +47,9 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
   private final JwtAuthenticationFilter jwtAuthFilter;
+
+  @Value("${flatio.cors.allowed-origins:http://localhost:3000}")
+  private String corsAllowedOrigins;
 
   /**
    * Configures the main security filter chain.
@@ -47,14 +62,43 @@ public class SecurityConfig {
   public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
     return http
         .csrf(AbstractHttpConfigurer::disable)
+        .cors(cors -> cors.configurationSource(corsConfigurationSource()))
         .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(auth -> auth
             .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
             .requestMatchers("/api/v1/**").authenticated()
-            .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/api-docs/**").permitAll()
-            .anyRequest().permitAll()
+            .requestMatchers(
+                "/swagger-ui/**", "/swagger-ui.html",
+                "/v3/api-docs/**", "/api-docs/**",
+                "/actuator/health/**", "/actuator/info"
+            ).permitAll()
+            .anyRequest().denyAll()
         )
         .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
         .build();
+  }
+
+  /**
+   * Provides the CORS policy for all API paths.
+   *
+   * <p>Allowed origins are read from {@code flatio.cors.allowed-origins}
+   * (env: {@code CORS_ALLOWED_ORIGINS}). Multiple origins may be provided as a
+   * comma-separated string. Credentials are permitted; wildcard origins are not.
+   *
+   * @return the configured {@link CorsConfigurationSource}
+   */
+  @Bean
+  CorsConfigurationSource corsConfigurationSource() {
+    var config = new CorsConfiguration();
+    config.setAllowedOrigins(Arrays.stream(corsAllowedOrigins.split(","))
+        .map(String::trim)
+        .toList());
+    config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+    config.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+    config.setAllowCredentials(true);
+    config.setMaxAge(3600L);
+    var source = new UrlBasedCorsConfigurationSource();
+    source.registerCorsConfiguration("/**", config);
+    return source;
   }
 }
