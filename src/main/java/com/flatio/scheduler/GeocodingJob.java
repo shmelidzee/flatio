@@ -11,7 +11,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Background job that enriches listings with a human-readable city name via reverse geocoding.
@@ -45,7 +44,6 @@ public class GeocodingJob {
    * the scheduler or subsequent runs.
    */
   @Scheduled(cron = "${flatio.geocoding.cron:0 */30 * * * *}")
-  @Transactional
   public void runGeocoding() {
     log.info("Geocoding job started: batchSize={}", batchSize);
     try {
