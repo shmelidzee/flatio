@@ -121,7 +121,7 @@ class ListingServiceTest {
     when(listingRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(page);
     when(listingMapper.toSummaryResponse(listing)).thenReturn(summary);
 
-    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null);
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null);
 
     // When
     var result = listingService.search(criteria, pageable);
@@ -140,7 +140,7 @@ class ListingServiceTest {
 
     when(listingRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(emptyPage);
 
-    var criteria = new ListingSearchCriteria(DealType.SELL, null, null, "Гомель", null, null, null, null);
+    var criteria = new ListingSearchCriteria(DealType.SELL, null, null, "Гомель", null, null, null, null, null);
 
     // When
     var result = listingService.search(criteria, pageable);
@@ -160,7 +160,7 @@ class ListingServiceTest {
 
     var criteria = new ListingSearchCriteria(
         DealType.RENT, "APARTMENT", "onliner", "Минск",
-        BigDecimal.valueOf(500), BigDecimal.valueOf(1500), 2, ListingStatus.ACTIVE
+        BigDecimal.valueOf(500), BigDecimal.valueOf(1500), 2, ListingStatus.ACTIVE, null
     );
 
     // When

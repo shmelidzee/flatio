@@ -48,8 +48,30 @@ public class ListingServiceImpl implements ListingService {
   @Override
   public Page<ListingSummaryResponse> search(ListingSearchCriteria criteria, Pageable pageable) {
     log.debug("Searching listings with criteria={}", criteria);
+    if (criteria.query() != null && !criteria.query().isBlank()) {
+      return searchWithFts(criteria, pageable);
+    }
     return listingRepository.findAll(buildSearchSpec(criteria), pageable)
         .map(listingMapper::toSummaryResponse);
+  }
+
+  private Page<ListingSummaryResponse> searchWithFts(ListingSearchCriteria criteria, Pageable pageable) {
+    ListingStatus effectiveStatus = criteria.status() != null ? criteria.status() : ListingStatus.ACTIVE;
+    String dealType = criteria.dealType() != null ? criteria.dealType().name() : null;
+    String cityPattern = criteria.city() != null && !criteria.city().isBlank()
+        ? "%" + criteria.city().toLowerCase() + "%" : null;
+    return listingRepository.fullTextSearch(
+        criteria.query(),
+        effectiveStatus.name(),
+        dealType,
+        criteria.priceMin(),
+        criteria.priceMax(),
+        criteria.rooms(),
+        cityPattern,
+        criteria.sourceId(),
+        criteria.propertyType(),
+        pageable
+    ).map(listingMapper::toSummaryResponse);
   }
 
   private Specification<Listing> buildSearchSpec(ListingSearchCriteria criteria) {
