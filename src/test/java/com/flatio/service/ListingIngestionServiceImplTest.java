@@ -136,6 +136,159 @@ class ListingIngestionServiceImplTest {
   }
 
   // -------------------------------------------------------------------------
+  // detectRepost — within-source repost detection
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_set_status_reposted_and_reposted_from_when_original_found() {
+    // Given — incoming listing has the same dedup hash as an existing listing from the same source
+    var raw = buildRawListing("ext-repost-01", BigDecimal.valueOf(500));
+    var mapped = new Listing();
+    mapped.setDealType(DealType.RENT);
+    mapped.setExternalId("ext-repost-01");
+
+    var original = buildExistingListing("ext-original-01", BigDecimal.valueOf(500));
+    original.setId(77L);
+
+    when(currencyRepository.findByCode("BYN")).thenReturn(Optional.of(byn));
+    when(listingRepository.findByExternalIdAndSourceId("ext-repost-01", 1L)).thenReturn(Optional.empty());
+    when(rawListingMapper.toEntity(raw)).thenReturn(mapped);
+    when(dedupHashService.computeDedupHash(any(), any(), any(), any())).thenReturn("same-hash");
+    when(listingRepository.findFirstByDedupHashAndSourceAndExternalIdNotAndStatus("same-hash", source, "ext-repost-01", ListingStatus.ACTIVE))
+        .thenReturn(Optional.of(original));
+
+    // When
+    ingestionService.ingest(raw, source);
+
+    // Then
+    assertThat(mapped.getStatus()).isEqualTo(ListingStatus.REPOSTED);
+    assertThat(mapped.getRepostedFrom()).isEqualTo(77L);
+  }
+
+  @Test
+  void should_set_last_reposted_at_on_original_when_repost_detected() {
+    // Given
+    var raw = buildRawListing("ext-repost-02", BigDecimal.valueOf(500));
+    var mapped = new Listing();
+    mapped.setDealType(DealType.RENT);
+    mapped.setExternalId("ext-repost-02");
+
+    var original = buildExistingListing("ext-original-02", BigDecimal.valueOf(500));
+    original.setId(88L);
+
+    when(currencyRepository.findByCode("BYN")).thenReturn(Optional.of(byn));
+    when(listingRepository.findByExternalIdAndSourceId("ext-repost-02", 1L)).thenReturn(Optional.empty());
+    when(rawListingMapper.toEntity(raw)).thenReturn(mapped);
+    when(dedupHashService.computeDedupHash(any(), any(), any(), any())).thenReturn("same-hash-2");
+    when(listingRepository.findFirstByDedupHashAndSourceAndExternalIdNotAndStatus("same-hash-2", source, "ext-repost-02", ListingStatus.ACTIVE))
+        .thenReturn(Optional.of(original));
+
+    // When
+    ingestionService.ingest(raw, source);
+
+    // Then
+    assertThat(original.getLastRepostedAt()).isNotNull();
+  }
+
+  @Test
+  void should_save_original_listing_when_repost_detected() {
+    // Given
+    var raw = buildRawListing("ext-repost-03", BigDecimal.valueOf(500));
+    var mapped = new Listing();
+    mapped.setDealType(DealType.RENT);
+    mapped.setExternalId("ext-repost-03");
+
+    var original = buildExistingListing("ext-original-03", BigDecimal.valueOf(500));
+    original.setId(99L);
+
+    when(currencyRepository.findByCode("BYN")).thenReturn(Optional.of(byn));
+    when(listingRepository.findByExternalIdAndSourceId("ext-repost-03", 1L)).thenReturn(Optional.empty());
+    when(rawListingMapper.toEntity(raw)).thenReturn(mapped);
+    when(dedupHashService.computeDedupHash(any(), any(), any(), any())).thenReturn("same-hash-3");
+    when(listingRepository.findFirstByDedupHashAndSourceAndExternalIdNotAndStatus("same-hash-3", source, "ext-repost-03", ListingStatus.ACTIVE))
+        .thenReturn(Optional.of(original));
+
+    // When
+    ingestionService.ingest(raw, source);
+
+    // Then — original must be saved with updated lastRepostedAt
+    var captor = ArgumentCaptor.forClass(Listing.class);
+    verify(listingRepository, org.mockito.Mockito.atLeastOnce()).save(captor.capture());
+    var savedListings = captor.getAllValues();
+    assertThat(savedListings).anyMatch(l -> l == original);
+  }
+
+  @Test
+  void should_keep_status_active_when_no_original_found() {
+    // Given — no other listing with the same dedup hash from the same source
+    var raw = buildRawListing("ext-unique-01", BigDecimal.valueOf(500));
+    var mapped = new Listing();
+    mapped.setDealType(DealType.RENT);
+    mapped.setExternalId("ext-unique-01");
+
+    when(currencyRepository.findByCode("BYN")).thenReturn(Optional.of(byn));
+    when(listingRepository.findByExternalIdAndSourceId("ext-unique-01", 1L)).thenReturn(Optional.empty());
+    when(rawListingMapper.toEntity(raw)).thenReturn(mapped);
+    when(dedupHashService.computeDedupHash(any(), any(), any(), any())).thenReturn("unique-hash");
+    when(listingRepository.findFirstByDedupHashAndSourceAndExternalIdNotAndStatus("unique-hash", source, "ext-unique-01", ListingStatus.ACTIVE))
+        .thenReturn(Optional.empty());
+
+    // When
+    ingestionService.ingest(raw, source);
+
+    // Then
+    assertThat(mapped.getStatus()).isEqualTo(ListingStatus.ACTIVE);
+    assertThat(mapped.getRepostedFrom()).isNull();
+  }
+
+  @Test
+  void should_skip_repost_check_when_dedup_hash_is_null() {
+    // Given — dedupHashService returns null (e.g. no address available)
+    var raw = buildRawListing("ext-nohash-01", BigDecimal.valueOf(500));
+    var mapped = new Listing();
+    mapped.setDealType(DealType.RENT);
+    mapped.setExternalId("ext-nohash-01");
+
+    when(currencyRepository.findByCode("BYN")).thenReturn(Optional.of(byn));
+    when(listingRepository.findByExternalIdAndSourceId("ext-nohash-01", 1L)).thenReturn(Optional.empty());
+    when(rawListingMapper.toEntity(raw)).thenReturn(mapped);
+    when(dedupHashService.computeDedupHash(any(), any(), any(), any())).thenReturn(null);
+
+    // When
+    ingestionService.ingest(raw, source);
+
+    // Then — repository must not be queried for repost detection
+    verify(listingRepository, never()).findFirstByDedupHashAndSourceAndExternalIdNotAndStatus(
+        anyString(), any(), anyString(), any());
+    assertThat(mapped.getStatus()).isEqualTo(ListingStatus.ACTIVE);
+  }
+
+  @Test
+  void should_return_created_outcome_when_repost_is_detected() {
+    // Given — IngestOutcome is CREATED regardless of repost status; status is set on the Listing entity
+    var raw = buildRawListing("ext-repost-04", BigDecimal.valueOf(500));
+    var mapped = new Listing();
+    mapped.setDealType(DealType.RENT);
+    mapped.setExternalId("ext-repost-04");
+
+    var original = buildExistingListing("ext-original-04", BigDecimal.valueOf(500));
+    original.setId(101L);
+
+    when(currencyRepository.findByCode("BYN")).thenReturn(Optional.of(byn));
+    when(listingRepository.findByExternalIdAndSourceId("ext-repost-04", 1L)).thenReturn(Optional.empty());
+    when(rawListingMapper.toEntity(raw)).thenReturn(mapped);
+    when(dedupHashService.computeDedupHash(any(), any(), any(), any())).thenReturn("same-hash-4");
+    when(listingRepository.findFirstByDedupHashAndSourceAndExternalIdNotAndStatus("same-hash-4", source, "ext-repost-04", ListingStatus.ACTIVE))
+        .thenReturn(Optional.of(original));
+
+    // When
+    var result = ingestionService.ingest(raw, source);
+
+    // Then
+    assertThat(result).isEqualTo(IngestOutcome.CREATED);
+  }
+
+  // -------------------------------------------------------------------------
   // ingest — UPDATE path
   // -------------------------------------------------------------------------
 

@@ -11,6 +11,7 @@ import com.flatio.domain.source.Source;
 import com.flatio.repository.CurrencyRepository;
 import com.flatio.repository.ListingRepository;
 import com.flatio.repository.PriceHistoryRepository;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -104,6 +105,7 @@ public class ListingIngestionServiceImpl implements ListingIngestionService {
     listing.setStatus(ListingStatus.ACTIVE);
     listing.setPriceUnit(derivePriceUnit(listing.getDealType()));
     listing.setDedupHash(computeDedupHash(listing));
+    detectRepost(listing, source);
 
     listingRepository.save(listing);
     recordPriceHistory(listing, currency);
@@ -178,6 +180,26 @@ public class ListingIngestionServiceImpl implements ListingIngestionService {
     log.info("Missed sync penalty applied: source={}, incremented={}, deactivated={}, threshold={}",
         source.getCode(), incremented, deactivated, inactiveThreshold);
     return deactivated;
+  }
+
+  private void detectRepost(Listing listing, Source source) {
+    if (listing.getDedupHash() == null) {
+      return;
+    }
+    Optional<Listing> original = listingRepository
+        .findFirstByDedupHashAndSourceAndExternalIdNotAndStatus(
+            listing.getDedupHash(), source, listing.getExternalId(), ListingStatus.ACTIVE);
+    if (original.isEmpty()) {
+      return;
+    }
+    Listing originalListing = original.get();
+    listing.setStatus(ListingStatus.REPOSTED);
+    listing.setRepostedFrom(originalListing.getId());
+    originalListing.setLastRepostedAt(Instant.now());
+    listingRepository.save(originalListing);
+    log.info("Repost detected: original={}, repost={}, source={}",
+        originalListing.getId(), listing.getExternalId(), source.getCode());
+    // FR-SUB-4: subscription notification stub — to be implemented in M2.3
   }
 
   private static PriceUnit derivePriceUnit(DealType dealType) {

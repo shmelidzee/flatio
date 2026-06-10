@@ -33,6 +33,23 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
   );
 
   /**
+   * Finds the first active listing with the same deduplication hash from the same source
+   * but with a different external ID.
+   *
+   * <p>Used for within-source repost detection: if another active listing from the same source
+   * shares the computed hash but has a different external ID, the incoming listing is a repost.
+   * Only ACTIVE listings are considered originals — INACTIVE or REPOSTED listings are skipped.
+   *
+   * @param dedupHash  the deduplication hash to match
+   * @param source     the source to search within
+   * @param externalId the external ID to exclude
+   * @param status     the status to filter by; pass {@link ListingStatus#ACTIVE} for repost detection
+   * @return the original listing if a match is found, or empty
+   */
+  Optional<Listing> findFirstByDedupHashAndSourceAndExternalIdNotAndStatus(
+      String dedupHash, Source source, String externalId, ListingStatus status);
+
+  /**
    * Finds listings with the given deduplication hash from any source except the specified one.
    *
    * <p>Used for cross-source duplicate detection: locates listings from other sources
@@ -181,11 +198,12 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
   @Query(
       value = """
           SELECT l.id, l.external_id, l.source_id, l.title, l.description,
-                 l.deal_type, l.property_type, l.price, l.currency_id, l.price_usd,
+                 l.deal_type, l.price_unit, l.property_type, l.price, l.currency_id, l.price_usd,
                  l.rooms, l.floor_number, l.floors_total, l.area_total_m2, l.area_living_m2,
                  l.area_kitchen_m2, l.address, l.latitude, l.longitude, l.country_id,
                  l.city, l.district, l.status, l.source_url, l.dedup_hash,
-                 l.is_owner, l.missed_syncs_count, l.published_at, l.created_at, l.updated_at
+                 l.is_owner, l.reposted_from, l.last_reposted_at,
+                 l.missed_syncs_count, l.published_at, l.created_at, l.updated_at
           FROM listings l
           WHERE l.search_vector @@ websearch_to_tsquery(CAST(:ftsLanguage AS regconfig), :query)
             AND l.status = :status

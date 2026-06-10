@@ -37,6 +37,8 @@ public interface RawListingMapper {
   @Mapping(target = "updatedAt", ignore = true)
   @Mapping(source = "dealType", target = "dealType")
   @Mapping(target = "priceUnit", ignore = true)
+  @Mapping(target = "repostedFrom", ignore = true)
+  @Mapping(target = "lastRepostedAt", ignore = true)
   Listing toEntity(RawListing raw);
 
   /**
@@ -65,6 +67,8 @@ public interface RawListingMapper {
   @Mapping(target = "updatedAt", ignore = true)
   @Mapping(source = "dealType", target = "dealType")
   @Mapping(target = "priceUnit", ignore = true)
+  @Mapping(target = "repostedFrom", ignore = true)
+  @Mapping(target = "lastRepostedAt", ignore = true)
   void updateEntity(RawListing raw, @MappingTarget Listing listing);
 
   /**
