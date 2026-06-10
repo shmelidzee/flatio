@@ -6,6 +6,26 @@ Base URL: `/api/v1`
 
 ---
 
+## Справочник значений
+
+### ListingStatus
+
+| Значение | Описание |
+|----------|----------|
+| `ACTIVE` | Объявление активно |
+| `INACTIVE` | Объявление снято с публикации или исчезло из источника |
+| `REPOSTED` | Объявление признано повторной публикацией существующего объявления того же источника |
+
+### PriceUnit
+
+| Значение | Описание |
+|----------|----------|
+| `PER_MONTH` | Цена за месяц (тип сделки `RENT`) |
+| `PER_DAY` | Цена за сутки (тип сделки `RENT_DAILY`) |
+| `null` | Не применимо (тип сделки `SELL`)
+
+---
+
 ## Listings
 
 ### GET /api/v1/listings
@@ -24,7 +44,7 @@ Base URL: `/api/v1`
 | `priceMax` | BigDecimal | Максимальная цена в BYN |
 | `rooms` | Integer | Количество комнат |
 | `sourceId` | String | Код источника (`ONLINER`, `REALT`, …) |
-| `status` | `ACTIVE` \| `INACTIVE` | По умолчанию `ACTIVE` |
+| `status` | `ACTIVE` \| `INACTIVE` \| `REPOSTED` | По умолчанию `ACTIVE` |
 | `page` | Integer | Номер страницы (от 0), по умолчанию 0 |
 | `size` | Integer | Размер страницы, по умолчанию 20 |
 | `sort` | String | Поле и направление, например `publishedAt,desc` |
@@ -43,11 +63,11 @@ Base URL: `/api/v1`
       "propertyType": "APARTMENT",
       "price": 1470.00,
       "currency": "BYN",
+      "priceUnit": "PER_MONTH",
       "rooms": 2,
       "areaTotalM2": 55.5,
       "city": "Минск",
       "photoUrl": null,
-      "sourceId": "ONLINER",
       "publishedAt": "2026-05-15T10:00:00Z",
       "status": "ACTIVE"
     }
@@ -91,6 +111,7 @@ Base URL: `/api/v1`
   "propertyType": "APARTMENT",
   "price": 1470.00,
   "currency": "BYN",
+  "priceUnit": "PER_MONTH",
   "rooms": 2,
   "floorNumber": 5,
   "floorsTotal": 9,
