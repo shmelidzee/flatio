@@ -30,11 +30,13 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
 public class FlatioBot implements SpringLongPollingBot, LongPollingUpdateConsumer {
 
   private static final String FILTER_CALLBACK_PREFIX = SearchFilterWizard.CALLBACK_PREFIX + ":";
+  private static final String FILTER_SEARCH_CALLBACK = SearchFilterWizard.CALLBACK_PREFIX + ":SEARCH";
 
   private final BotConfig botConfig;
   private final TelegramClient telegramClient;
   private final StartCommandHandler startCommandHandler;
   private final FilterCallbackHandler filterCallbackHandler;
+  private final SearchResultSender searchResultSender;
 
   /**
    * Returns the bot API token used for long-polling authentication.
@@ -93,7 +95,9 @@ public class FlatioBot implements SpringLongPollingBot, LongPollingUpdateConsume
     String data = callbackQuery.getData();
     answerCallbackQuery(callbackQuery.getId());
 
-    if (FilterCallbackHandler.ACTION_SEARCH.equals(data) || data.startsWith(FILTER_CALLBACK_PREFIX)) {
+    if (FILTER_SEARCH_CALLBACK.equals(data)) {
+      searchResultSender.handle(callbackQuery);
+    } else if (FilterCallbackHandler.ACTION_SEARCH.equals(data) || data.startsWith(FILTER_CALLBACK_PREFIX)) {
       try {
         telegramClient.execute(filterCallbackHandler.handle(callbackQuery));
       } catch (TelegramApiException e) {

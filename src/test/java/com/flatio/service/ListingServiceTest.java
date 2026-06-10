@@ -387,7 +387,8 @@ class ListingServiceTest {
   private static ListingSummaryResponse buildListingSummary(Long id) {
     return new ListingSummaryResponse(
         id, "Test listing", BigDecimal.valueOf(75_000), "USD", 2,
-        BigDecimal.valueOf(52.5), "Минск", null, "realt", Instant.now(), null
+        BigDecimal.valueOf(52.5), "Минск", null, "realt", Instant.now(), null,
+        "https://realt.by/" + id
     );
   }
 }

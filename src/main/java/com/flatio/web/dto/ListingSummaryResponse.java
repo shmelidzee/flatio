@@ -39,5 +39,9 @@ public record ListingSummaryResponse(
 
     @Schema(description = "URL of the main listing photo, null if not available",
         example = "https://cdn.realt.by/photos/123456/main.jpg")
-    String photoUrl
+    String photoUrl,
+
+    @Schema(description = "URL of the listing on the source platform, used for the open-listing button",
+        example = "https://re.kufar.by/vi/minsk/snyat-kvartiru/123456")
+    String sourceUrl
 ) {}
