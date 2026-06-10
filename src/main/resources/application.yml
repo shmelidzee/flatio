@@ -76,6 +76,8 @@ flatio:
   geocoding:
     cron: ${FLATIO_GEOCODING_CRON:0 */30 * * * *}
     batch-size: ${FLATIO_GEOCODING_BATCH_SIZE:50}
+  search:
+    fts-language: ${FLATIO_SEARCH_FTS_LANGUAGE:russian}
 
 resilience4j:
   ratelimiter:

@@ -3,6 +3,7 @@ package com.flatio.repository;
 import com.flatio.domain.listing.Listing;
 import com.flatio.domain.listing.ListingStatus;
 import com.flatio.domain.source.Source;
+import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -155,5 +156,72 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
   int deactivateByMissedSyncsThreshold(
       @Param("source") Source source,
       @Param("threshold") int threshold
+  );
+
+  /**
+   * Full-text search across listing title, description and address using PostgreSQL tsvector.
+   *
+   * <p>Uses {@code websearch_to_tsquery} which supports plain text, quoted phrases and
+   * minus-word exclusion without additional parsing on the caller side.
+   * Structural filters are applied alongside the FTS predicate; null parameters are ignored.
+   *
+   * @param query       full-text search string, must not be null or blank
+   * @param ftsLanguage PostgreSQL text-search configuration name (e.g. "russian", "english")
+   * @param status      listing status filter, as enum name string (e.g. "ACTIVE")
+   * @param dealType    deal type filter (e.g. "RENT"), or null to skip
+   * @param priceMin    minimum price inclusive, or null to skip
+   * @param priceMax    maximum price inclusive, or null to skip
+   * @param rooms       number of rooms filter, or null to skip
+   * @param cityPattern SQL LIKE pattern for city name (e.g. "%минск%"), or null to skip
+   * @param sourceCode  source platform code (e.g. "ONLINER"), or null to skip
+   * @param propertyType property type filter (e.g. "APARTMENT"), or null to skip
+   * @param pageable    pagination configuration
+   * @return page of matching listings, never null
+   */
+  @Query(
+      value = """
+          SELECT l.id, l.external_id, l.source_id, l.title, l.description,
+                 l.deal_type, l.property_type, l.price, l.currency_id, l.price_usd,
+                 l.rooms, l.floor_number, l.floors_total, l.area_total_m2, l.area_living_m2,
+                 l.area_kitchen_m2, l.address, l.latitude, l.longitude, l.country_id,
+                 l.city, l.district, l.status, l.source_url, l.dedup_hash,
+                 l.is_owner, l.missed_syncs_count, l.published_at, l.created_at, l.updated_at
+          FROM listings l
+          WHERE l.search_vector @@ websearch_to_tsquery(CAST(:ftsLanguage AS regconfig), :query)
+            AND l.status = :status
+            AND (:dealType IS NULL OR l.deal_type = :dealType)
+            AND (:priceMin IS NULL OR l.price >= CAST(:priceMin AS numeric))
+            AND (:priceMax IS NULL OR l.price <= CAST(:priceMax AS numeric))
+            AND (:rooms IS NULL OR l.rooms = :rooms)
+            AND (:cityPattern IS NULL OR LOWER(l.city) LIKE :cityPattern)
+            AND (:sourceCode IS NULL OR l.source_id = (SELECT id FROM source WHERE code = :sourceCode))
+            AND (:propertyType IS NULL OR l.property_type = :propertyType)
+          """,
+      countQuery = """
+          SELECT count(*) FROM listings l
+          WHERE l.search_vector @@ websearch_to_tsquery(CAST(:ftsLanguage AS regconfig), :query)
+            AND l.status = :status
+            AND (:dealType IS NULL OR l.deal_type = :dealType)
+            AND (:priceMin IS NULL OR l.price >= CAST(:priceMin AS numeric))
+            AND (:priceMax IS NULL OR l.price <= CAST(:priceMax AS numeric))
+            AND (:rooms IS NULL OR l.rooms = :rooms)
+            AND (:cityPattern IS NULL OR LOWER(l.city) LIKE :cityPattern)
+            AND (:sourceCode IS NULL OR l.source_id = (SELECT id FROM source WHERE code = :sourceCode))
+            AND (:propertyType IS NULL OR l.property_type = :propertyType)
+          """,
+      nativeQuery = true
+  )
+  Page<Listing> fullTextSearch(
+      @Param("query") String query,
+      @Param("ftsLanguage") String ftsLanguage,
+      @Param("status") String status,
+      @Param("dealType") String dealType,
+      @Param("priceMin") BigDecimal priceMin,
+      @Param("priceMax") BigDecimal priceMax,
+      @Param("rooms") Integer rooms,
+      @Param("cityPattern") String cityPattern,
+      @Param("sourceCode") String sourceCode,
+      @Param("propertyType") String propertyType,
+      Pageable pageable
   );
 }

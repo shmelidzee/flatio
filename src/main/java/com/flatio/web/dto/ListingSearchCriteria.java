@@ -35,5 +35,12 @@ public record ListingSearchCriteria(
     Integer rooms,
 
     @Schema(description = "Listing status filter; defaults to ACTIVE when null", example = "ACTIVE")
-    ListingStatus status
+    ListingStatus status,
+
+    @Schema(
+        description = "Full-text search query against title, description and address. " +
+            "Supports quoted phrases (\\\"двухкомнатная квартира\\\") and minus-word exclusion (-гараж).",
+        example = "двухкомнатная квартира Минск"
+    )
+    String query
 ) {}

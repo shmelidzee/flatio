@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -29,6 +30,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Slf4j
 @RequiredArgsConstructor
 public class ListingServiceImpl implements ListingService {
+
+  @Value("${flatio.search.fts-language:russian}")
+  private String ftsLanguage;
 
   private final ListingRepository listingRepository;
   private final PriceHistoryRepository priceHistoryRepository;
@@ -48,8 +52,31 @@ public class ListingServiceImpl implements ListingService {
   @Override
   public Page<ListingSummaryResponse> search(ListingSearchCriteria criteria, Pageable pageable) {
     log.debug("Searching listings with criteria={}", criteria);
+    if (criteria.query() != null && !criteria.query().isBlank()) {
+      return searchWithFts(criteria, pageable);
+    }
     return listingRepository.findAll(buildSearchSpec(criteria), pageable)
         .map(listingMapper::toSummaryResponse);
+  }
+
+  private Page<ListingSummaryResponse> searchWithFts(ListingSearchCriteria criteria, Pageable pageable) {
+    ListingStatus effectiveStatus = criteria.status() != null ? criteria.status() : ListingStatus.ACTIVE;
+    String dealType = criteria.dealType() != null ? criteria.dealType().name() : null;
+    String cityPattern = criteria.city() != null && !criteria.city().isBlank()
+        ? "%" + criteria.city().toLowerCase() + "%" : null;
+    return listingRepository.fullTextSearch(
+        criteria.query(),
+        ftsLanguage,
+        effectiveStatus.name(),
+        dealType,
+        criteria.priceMin(),
+        criteria.priceMax(),
+        criteria.rooms(),
+        cityPattern,
+        criteria.sourceId(),
+        criteria.propertyType(),
+        pageable
+    ).map(listingMapper::toSummaryResponse);
   }
 
   private Specification<Listing> buildSearchSpec(ListingSearchCriteria criteria) {
