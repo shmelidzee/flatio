@@ -81,6 +81,8 @@ flatio:
   jwt:
     secret-key: ${JWT_SECRET_KEY}
     access-token-expiry: ${JWT_ACCESS_TOKEN_EXPIRY:3600}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
 
 resilience4j:
   ratelimiter:
