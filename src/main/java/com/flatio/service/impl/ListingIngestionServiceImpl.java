@@ -187,8 +187,8 @@ public class ListingIngestionServiceImpl implements ListingIngestionService {
       return;
     }
     Optional<Listing> original = listingRepository
-        .findFirstByDedupHashAndSourceAndExternalIdNot(
-            listing.getDedupHash(), source, listing.getExternalId());
+        .findFirstByDedupHashAndSourceAndExternalIdNotAndStatus(
+            listing.getDedupHash(), source, listing.getExternalId(), ListingStatus.ACTIVE);
     if (original.isEmpty()) {
       return;
     }
