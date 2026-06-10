@@ -33,6 +33,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -168,6 +170,175 @@ class ListingServiceTest {
 
     // Then — Specification was passed to repository (its building/execution is tested via integration tests)
     verify(listingRepository).findAll(any(Specification.class), eq(pageable));
+  }
+
+  // -------------------------------------------------------------------------
+  // search — FTS routing
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_call_fullTextSearch_when_query_is_present() {
+    // Given
+    var pageable = PageRequest.of(0, 20);
+    var listing = buildListing(1L);
+    var summary = buildListingSummary(1L);
+    var page = new PageImpl<>(List.of(listing), pageable, 1);
+
+    when(listingRepository.fullTextSearch(
+        eq("двухкомнатная квартира"),
+        eq("ACTIVE"),
+        isNull(),
+        isNull(),
+        isNull(),
+        isNull(),
+        isNull(),
+        isNull(),
+        isNull(),
+        eq(pageable)
+    )).thenReturn(page);
+    when(listingMapper.toSummaryResponse(listing)).thenReturn(summary);
+
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, "двухкомнатная квартира");
+
+    // When
+    var result = listingService.search(criteria, pageable);
+
+    // Then
+    assertThat(result.getTotalElements()).isEqualTo(1);
+    verify(listingRepository).fullTextSearch(
+        eq("двухкомнатная квартира"),
+        eq("ACTIVE"),
+        isNull(),
+        isNull(),
+        isNull(),
+        isNull(),
+        isNull(),
+        isNull(),
+        isNull(),
+        eq(pageable)
+    );
+    verify(listingRepository, never()).findAll(any(Specification.class), eq(pageable));
+  }
+
+  @Test
+  void should_not_call_fullTextSearch_when_query_is_null() {
+    // Given
+    var pageable = PageRequest.of(0, 20);
+    Page<Listing> emptyPage = new PageImpl<>(Collections.emptyList(), pageable, 0);
+
+    when(listingRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(emptyPage);
+
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null);
+
+    // When
+    listingService.search(criteria, pageable);
+
+    // Then
+    verify(listingRepository).findAll(any(Specification.class), eq(pageable));
+    verify(listingRepository, never()).fullTextSearch(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+  }
+
+  @Test
+  void should_not_call_fullTextSearch_when_query_is_blank() {
+    // Given
+    var pageable = PageRequest.of(0, 20);
+    Page<Listing> emptyPage = new PageImpl<>(Collections.emptyList(), pageable, 0);
+
+    when(listingRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(emptyPage);
+
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, "   ");
+
+    // When
+    listingService.search(criteria, pageable);
+
+    // Then
+    verify(listingRepository).findAll(any(Specification.class), eq(pageable));
+    verify(listingRepository, never()).fullTextSearch(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+  }
+
+  @Test
+  void should_pass_status_as_string_when_routing_to_fts() {
+    // Given
+    var pageable = PageRequest.of(0, 20);
+    Page<Listing> emptyPage = new PageImpl<>(Collections.emptyList(), pageable, 0);
+
+    when(listingRepository.fullTextSearch(
+        any(), eq("ACTIVE"), any(), any(), any(), any(), any(), any(), any(), any()
+    )).thenReturn(emptyPage);
+
+    // criteria.status() == null → effectiveStatus должен стать ACTIVE
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, "квартира");
+
+    // When
+    listingService.search(criteria, pageable);
+
+    // Then
+    verify(listingRepository).fullTextSearch(
+        any(), eq("ACTIVE"), any(), any(), any(), any(), any(), any(), any(), any()
+    );
+  }
+
+  @Test
+  void should_pass_all_structural_filters_to_fts_query() {
+    // Given
+    var pageable = PageRequest.of(0, 20);
+    Page<Listing> emptyPage = new PageImpl<>(Collections.emptyList(), pageable, 0);
+
+    when(listingRepository.fullTextSearch(
+        eq("квартира"),
+        eq("ACTIVE"),
+        eq("RENT"),
+        eq(BigDecimal.valueOf(500)),
+        eq(BigDecimal.valueOf(1500)),
+        eq(2),
+        eq("%минск%"),
+        eq("onliner"),
+        eq("APARTMENT"),
+        eq(pageable)
+    )).thenReturn(emptyPage);
+
+    var criteria = new ListingSearchCriteria(
+        DealType.RENT, "APARTMENT", "onliner", "Минск",
+        BigDecimal.valueOf(500), BigDecimal.valueOf(1500), 2, null, "квартира"
+    );
+
+    // When
+    listingService.search(criteria, pageable);
+
+    // Then
+    verify(listingRepository).fullTextSearch(
+        eq("квартира"),
+        eq("ACTIVE"),
+        eq("RENT"),
+        eq(BigDecimal.valueOf(500)),
+        eq(BigDecimal.valueOf(1500)),
+        eq(2),
+        eq("%минск%"),
+        eq("onliner"),
+        eq("APARTMENT"),
+        eq(pageable)
+    );
+  }
+
+  @Test
+  void should_convert_city_to_like_pattern_when_routing_to_fts() {
+    // Given
+    var pageable = PageRequest.of(0, 20);
+    Page<Listing> emptyPage = new PageImpl<>(Collections.emptyList(), pageable, 0);
+
+    when(listingRepository.fullTextSearch(
+        any(), any(), any(), any(), any(), any(), eq("%минск%"), any(), any(), any()
+    )).thenReturn(emptyPage);
+
+    var criteria = new ListingSearchCriteria(null, null, null, "Минск", null, null, null, null, "квартира");
+
+    // When
+    listingService.search(criteria, pageable);
+
+    // Then
+    verify(listingRepository).fullTextSearch(
+        any(), any(), any(), any(), any(), any(), eq("%минск%"), any(), any(), any()
+    );
   }
 
   // -------------------------------------------------------------------------
