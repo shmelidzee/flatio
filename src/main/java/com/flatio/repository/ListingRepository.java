@@ -87,6 +87,17 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
   long countBySource(Source source);
 
   /**
+   * Finds listings that need reverse geocoding: coordinates are known but city is not yet set.
+   *
+   * <p>Used by the background geocoding job to enrich listings in batches.
+   *
+   * @param pageable pagination configuration controlling batch size
+   * @return page of listings needing geocoding, never null
+   */
+  @Query("SELECT l FROM Listing l WHERE l.city IS NULL AND l.latitude IS NOT NULL")
+  List<Listing> findNeedingGeocoding(Pageable pageable);
+
+  /**
    * Sets status to INACTIVE for all ACTIVE listings of the given source whose external ID
    * is not in the provided collection.
    *

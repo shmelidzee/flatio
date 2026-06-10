@@ -60,6 +60,10 @@ telegram:
     token: ${TELEGRAM_BOT_TOKEN}
     username: ${TELEGRAM_BOT_USERNAME}
 
+nominatim:
+  base-url: ${NOMINATIM_BASE_URL:https://nominatim.openstreetmap.org}
+  user-agent: ${NOMINATIM_USER_AGENT:Flatio/1.0 (cr7mks1@gmail.com)}
+
 flatio:
   sync:
     interval-ms: ${FLATIO_SYNC_INTERVAL_MS:1800000}
@@ -68,11 +72,18 @@ flatio:
         cron: ${FLATIO_SYNC_ONLINER_DELTA_CRON:0 */10 * * * *}
       full:
         cron: ${FLATIO_SYNC_ONLINER_FULL_CRON:0 0 2 * * *}
+  geocoding:
+    cron: ${FLATIO_GEOCODING_CRON:0 */30 * * * *}
+    batch-size: ${FLATIO_GEOCODING_BATCH_SIZE:50}
 
 resilience4j:
   ratelimiter:
     instances:
       connector-onliner:
+        limit-for-period: 1
+        limit-refresh-period: 1s
+        timeout-duration: 5s
+      nominatim:
         limit-for-period: 1
         limit-refresh-period: 1s
         timeout-duration: 5s
