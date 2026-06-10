@@ -118,6 +118,14 @@ class ListingControllerTest {
         .andExpect(jsonPath("$.status").value(400));
   }
 
+  @Test
+  void should_return_400_when_deal_type_param_is_invalid() throws Exception {
+    // When / Then — binding fails when enum value is not recognised
+    mockMvc.perform(get("/api/v1/listings").param("dealType", "TOTALLY_INVALID"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.status").value(400));
+  }
+
   // -------------------------------------------------------------------------
   // helpers
   // -------------------------------------------------------------------------
