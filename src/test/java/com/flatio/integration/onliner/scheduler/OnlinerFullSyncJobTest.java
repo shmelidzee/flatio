@@ -59,7 +59,7 @@ class OnlinerFullSyncJobTest {
     when(onlinerConnector.fetchAll()).thenReturn(List.of(buildRawListing("ext-1")));
     when(listingIngestionService.ingestBatch(any(), eq(source)))
         .thenReturn(new BatchIngestResult(1, 0, 0));
-    when(listingIngestionService.deactivateMissing(eq(source), any())).thenReturn(0);
+    when(listingIngestionService.applyMissedSyncPenalty(eq(source), any())).thenReturn(0);
 
     // When
     fullSyncJob.onApplicationReady();
@@ -102,7 +102,7 @@ class OnlinerFullSyncJobTest {
     when(onlinerConnector.fetchAll()).thenReturn(List.of(raw));
     when(listingIngestionService.ingestBatch(any(), eq(source)))
         .thenReturn(new BatchIngestResult(1, 0, 0));
-    when(listingIngestionService.deactivateMissing(eq(source), any())).thenReturn(0);
+    when(listingIngestionService.applyMissedSyncPenalty(eq(source), any())).thenReturn(0);
 
     // When
     fullSyncJob.runFullSync();
@@ -123,14 +123,14 @@ class OnlinerFullSyncJobTest {
 
     @SuppressWarnings("unchecked")
     ArgumentCaptor<Set<String>> captor = ArgumentCaptor.forClass(Set.class);
-    when(listingIngestionService.deactivateMissing(eq(source), captor.capture())).thenReturn(3);
+    when(listingIngestionService.applyMissedSyncPenalty(eq(source), captor.capture())).thenReturn(3);
 
     // When
     fullSyncJob.runFullSync();
 
     // Then — deactivation called with exactly the fetched external IDs
     assertThat(captor.getValue()).containsExactlyInAnyOrder("ext-1", "ext-2");
-    verify(listingIngestionService).deactivateMissing(eq(source), any());
+    verify(listingIngestionService).applyMissedSyncPenalty(eq(source), any());
   }
 
   @Test
@@ -142,7 +142,7 @@ class OnlinerFullSyncJobTest {
     fullSyncJob.runFullSync();
 
     // Then — deactivation must NOT be called to guard against mass data loss
-    verify(listingIngestionService, never()).deactivateMissing(any(), any());
+    verify(listingIngestionService, never()).applyMissedSyncPenalty(any(), any());
     verify(listingIngestionService, never()).ingestBatch(any(), any());
   }
 
@@ -179,7 +179,7 @@ class OnlinerFullSyncJobTest {
     // When / Then
     assertThatNoException().isThrownBy(() -> fullSyncJob.runFullSync());
     verify(listingIngestionService, never()).ingestBatch(any(), any());
-    verify(listingIngestionService, never()).deactivateMissing(any(), any());
+    verify(listingIngestionService, never()).applyMissedSyncPenalty(any(), any());
   }
 
   // -------------------------------------------------------------------------

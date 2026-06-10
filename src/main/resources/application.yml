@@ -67,6 +67,7 @@ nominatim:
 flatio:
   sync:
     interval-ms: ${FLATIO_SYNC_INTERVAL_MS:1800000}
+    inactive-threshold: ${FLATIO_SYNC_INACTIVE_THRESHOLD:3}
     onliner:
       delta:
         cron: ${FLATIO_SYNC_ONLINER_DELTA_CRON:0 */10 * * * *}

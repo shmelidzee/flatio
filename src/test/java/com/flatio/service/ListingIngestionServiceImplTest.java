@@ -33,6 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
@@ -61,6 +62,7 @@ class ListingIngestionServiceImplTest {
     source = buildSource(1L, "ONLINER");
     // @Lazy @Autowired field is not injectable by Mockito constructor injection; set explicitly
     ReflectionTestUtils.setField(ingestionService, "self", self);
+    ReflectionTestUtils.setField(ingestionService, "inactiveThreshold", 3);
   }
 
   // -------------------------------------------------------------------------
@@ -443,6 +445,67 @@ class ListingIngestionServiceImplTest {
 
     // When
     int result = ingestionService.deactivateMissing(source, activeIds);
+
+    // Then
+    assertThat(result).isEqualTo(0);
+  }
+
+  // -------------------------------------------------------------------------
+  // applyMissedSyncPenalty
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_return_zero_and_skip_repository_when_active_ids_empty_for_penalty() {
+    // Given — guard: empty set means fetch failed, must not trigger mass update
+    var emptySet = Set.<String>of();
+
+    // When
+    int result = ingestionService.applyMissedSyncPenalty(source, emptySet);
+
+    // Then
+    assertThat(result).isEqualTo(0);
+    verify(listingRepository, never()).incrementMissedSyncsForAbsent(any(), any());
+    verify(listingRepository, never()).deactivateByMissedSyncsThreshold(any(), anyInt());
+  }
+
+  @Test
+  void should_call_increment_then_deactivate_when_active_ids_provided() {
+    // Given
+    var activeIds = Set.of("ext-1", "ext-2");
+    when(listingRepository.incrementMissedSyncsForAbsent(source, activeIds)).thenReturn(5);
+    when(listingRepository.deactivateByMissedSyncsThreshold(source, 3)).thenReturn(2);
+
+    // When
+    ingestionService.applyMissedSyncPenalty(source, activeIds);
+
+    // Then — both repository calls issued in order
+    verify(listingRepository).incrementMissedSyncsForAbsent(source, activeIds);
+    verify(listingRepository).deactivateByMissedSyncsThreshold(source, 3);
+  }
+
+  @Test
+  void should_return_deactivated_count_not_incremented_count() {
+    // Given — incremented=5, deactivated=2; method must return deactivated
+    var activeIds = Set.of("ext-1");
+    when(listingRepository.incrementMissedSyncsForAbsent(source, activeIds)).thenReturn(5);
+    when(listingRepository.deactivateByMissedSyncsThreshold(source, 3)).thenReturn(2);
+
+    // When
+    int result = ingestionService.applyMissedSyncPenalty(source, activeIds);
+
+    // Then
+    assertThat(result).isEqualTo(2);
+  }
+
+  @Test
+  void should_return_zero_when_no_listings_reached_threshold() {
+    // Given — counters incremented but none hit threshold yet
+    var activeIds = Set.of("ext-1", "ext-2");
+    when(listingRepository.incrementMissedSyncsForAbsent(source, activeIds)).thenReturn(3);
+    when(listingRepository.deactivateByMissedSyncsThreshold(source, 3)).thenReturn(0);
+
+    // When
+    int result = ingestionService.applyMissedSyncPenalty(source, activeIds);
 
     // Then
     assertThat(result).isEqualTo(0);

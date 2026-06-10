@@ -14,13 +14,15 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
-import com.flatio.service.*;
+import com.flatio.service.DedupHashService;
+import com.flatio.service.ListingIngestionService;
 import com.flatio.service.domain.BatchIngestResult;
 import com.flatio.service.domain.IngestOutcome;
 import com.flatio.integration.core.RawListingMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -45,6 +47,9 @@ public class ListingIngestionServiceImpl implements ListingIngestionService {
   @Lazy
   @Autowired
   private ListingIngestionService self;
+
+  @Value("${flatio.sync.inactive-threshold:3}")
+  private int inactiveThreshold;
 
   @Override
   @Transactional
@@ -111,6 +116,7 @@ public class ListingIngestionServiceImpl implements ListingIngestionService {
     rawListingMapper.updateEntity(raw, existing);
     existing.setCurrency(currency);
     existing.setStatus(ListingStatus.ACTIVE);
+    existing.setMissedSyncsCount(0);
     existing.setDedupHash(computeDedupHash(existing));
 
     if (priceChanged) {
@@ -156,6 +162,19 @@ public class ListingIngestionServiceImpl implements ListingIngestionService {
       log.info("Deactivated missing listings: source={}, count={}", source.getCode(), count);
     }
     return count;
+  }
+
+  @Override
+  @Transactional
+  public int applyMissedSyncPenalty(Source source, Set<String> activeExternalIds) {
+    if (activeExternalIds.isEmpty()) {
+      return 0;
+    }
+    int incremented = listingRepository.incrementMissedSyncsForAbsent(source, activeExternalIds);
+    int deactivated = listingRepository.deactivateByMissedSyncsThreshold(source, inactiveThreshold);
+    log.info("Missed sync penalty applied: source={}, incremented={}, deactivated={}, threshold={}",
+        source.getCode(), incremented, deactivated, inactiveThreshold);
+    return deactivated;
   }
 
   private Currency resolveCurrency(String code) {

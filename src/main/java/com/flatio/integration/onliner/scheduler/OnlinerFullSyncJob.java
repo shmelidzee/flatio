@@ -94,7 +94,7 @@ public class OnlinerFullSyncJob {
         .map(RawListing::externalId)
         .collect(Collectors.toSet());
 
-    int deactivated = listingIngestionService.deactivateMissing(source, activeExternalIds);
+    int deactivated = listingIngestionService.applyMissedSyncPenalty(source, activeExternalIds);
     long durationMs = Duration.between(start, Instant.now()).toMillis();
 
     log.info("Onliner full sync completed: fetched={}, added={}, updated={}, errors={}, deactivated={}, durationMs={}",
