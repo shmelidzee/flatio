@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.validation.BindException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -28,6 +29,16 @@ public class GlobalExceptionHandler {
   public ErrorResponse handleListingNotFound(ListingNotFoundException ex, HttpServletRequest request) {
     log.warn("Resource not found on {}: {}", request.getRequestURI(), ex.getMessage());
     return buildError(HttpStatus.NOT_FOUND, ex.getMessage(), request.getRequestURI(), List.of());
+  }
+
+  @ExceptionHandler(BindException.class)
+  @ResponseStatus(HttpStatus.BAD_REQUEST)
+  public ErrorResponse handleBindException(BindException ex, HttpServletRequest request) {
+    List<ValidationError> errors = ex.getBindingResult().getFieldErrors().stream()
+        .map(fe -> new ValidationError(fe.getField(), fe.getDefaultMessage()))
+        .toList();
+    log.warn("Binding failed on {}: {} field error(s)", request.getRequestURI(), errors.size());
+    return buildError(HttpStatus.BAD_REQUEST, "Invalid request parameters", request.getRequestURI(), errors);
   }
 
   @ExceptionHandler(MethodArgumentNotValidException.class)
