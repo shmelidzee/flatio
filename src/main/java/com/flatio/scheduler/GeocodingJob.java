@@ -68,6 +68,7 @@ public class GeocodingJob {
           listing.getLatitude(), listing.getLongitude());
       if (city.isPresent()) {
         listing.setCity(city.get());
+        listingRepository.save(listing);
         resolved++;
       }
     }

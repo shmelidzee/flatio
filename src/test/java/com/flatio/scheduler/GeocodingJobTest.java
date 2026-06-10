@@ -55,6 +55,7 @@ class GeocodingJobTest {
     // Then
     assertThat(listing.getCity()).isEqualTo("Минск");
     verify(listingRepository).findNeedingGeocoding(any());
+    verify(listingRepository).save(listing);
     verify(nominatimClient).reverseGeocode(listing.getLatitude(), listing.getLongitude());
   }
 
@@ -91,8 +92,9 @@ class GeocodingJobTest {
     // When
     geocodingJob.runGeocoding();
 
-    // Then — city remains null; listing not updated with empty value
+    // Then — city remains null; save not called
     assertThat(listing.getCity()).isNull();
+    verify(listingRepository, never()).save(any());
   }
 
   @Test
