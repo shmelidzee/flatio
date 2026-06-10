@@ -31,6 +31,7 @@ val testcontainersVersion = "1.19.7"
 val springdocVersion = "2.4.0"
 val logstashEncoderVersion = "7.4"
 val telegramBotsVersion = "9.5.0"
+val jjwtVersion = "0.12.6"
 
 dependencies {
   implementation("org.springframework.boot:spring-boot-starter-web")
@@ -38,6 +39,10 @@ dependencies {
   implementation("org.springframework.boot:spring-boot-starter-validation")
   implementation("org.springframework.boot:spring-boot-starter-actuator")
   implementation("org.springframework.boot:spring-boot-starter-aop")
+  implementation("org.springframework.boot:spring-boot-starter-security")
+  implementation("io.jsonwebtoken:jjwt-api:$jjwtVersion")
+  runtimeOnly("io.jsonwebtoken:jjwt-impl:$jjwtVersion")
+  runtimeOnly("io.jsonwebtoken:jjwt-jackson:$jjwtVersion")
 
   implementation("org.flywaydb:flyway-core")
   runtimeOnly("org.postgresql:postgresql")
@@ -60,6 +65,7 @@ dependencies {
   annotationProcessor("org.projectlombok:lombok-mapstruct-binding:0.2.0")
 
   testImplementation("org.springframework.boot:spring-boot-starter-test")
+  testImplementation("org.springframework.security:spring-security-test")
   testImplementation("org.testcontainers:junit-jupiter")
   testImplementation("org.testcontainers:postgresql")
 }

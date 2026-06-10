@@ -78,6 +78,9 @@ flatio:
     batch-size: ${FLATIO_GEOCODING_BATCH_SIZE:50}
   search:
     fts-language: ${FLATIO_SEARCH_FTS_LANGUAGE:russian}
+  jwt:
+    secret-key: ${JWT_SECRET_KEY}
+    access-token-expiry: ${JWT_ACCESS_TOKEN_EXPIRY:3600}
 
 resilience4j:
   ratelimiter:
