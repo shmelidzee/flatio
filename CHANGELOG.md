@@ -8,6 +8,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **PR #143 — Карточка объявления: форматирование и отправка результатов поиска (issue #29)**
+  - `com.flatio.telegram.formatter.ListingFormatter` — форматирует `ListingSummaryResponse` в HTML-caption
+    и `InlineKeyboardMarkup`; caption состоит из трёх зон: заголовок + цены (BYN и USD), геолокация + площадь,
+    время публикации + источник; единственная кнопка «Открыть объявление →» содержит `sourceUrl`
+  - `com.flatio.telegram.handler.SearchResultSender` — обрабатывает callback `FILTER:SEARCH`;
+    вызывает `ListingService.search()` с критериями из `SearchFilterState`, затем отправляет карточки
+    через `ListingFormatter`; каждая карточка отправляется методом `sendPhoto` / `sendMessage`
+  - `ListingSummaryResponse` — добавлено поле `sourceUrl` (URL объявления на сайте-источнике)
+  - `FlatioBot` — роутинг callback `FILTER:SEARCH` передан в `SearchResultSender`
+
+- **PR #136 — Пошаговый wizard выбора фильтров поиска (issue #28)**
+  - `com.flatio.telegram.state.FilterStep` — enum шагов wizard: `DEAL_TYPE`, `PROPERTY_TYPE`,
+    `ROOMS`, `PRICE`, `DONE`
+  - `com.flatio.telegram.state.SearchFilterState` — in-memory состояние фильтра пользователя;
+    хранится в `ConcurrentHashMap<Long, SearchFilterState>` (ключ — Telegram userId)
+  - `com.flatio.telegram.state.SearchFilterWizard` — Spring `@Component`; управляет переходами
+    между шагами FSM: определяет текущий шаг, применяет выбор пользователя, возвращает следующий шаг
+  - `com.flatio.telegram.keyboard.FilterKeyboardFactory` — строит `InlineKeyboardMarkup`
+    для каждого шага wizard
+  - `com.flatio.telegram.callback.FilterCallbackHandler` — обрабатывает callback-запросы
+    с префиксом `FILTER:*`; при достижении шага `DONE` инициирует action `search`
+  - `FlatioBot` — добавлена обработка callback queries; роутинг `FILTER:*` передан
+    в `FilterCallbackHandler`
+
 - **PR #131 — Поле `price_unit` в `Listing` (issue #90)**
   - `com.flatio.domain.listing.PriceUnit` — новый enum: `PER_MONTH` | `PER_DAY`
   - `Listing.priceUnit` — новое поле `@Enumerated(EnumType.STRING)`, nullable; автоматически

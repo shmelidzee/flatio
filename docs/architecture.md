@@ -91,8 +91,12 @@ com.flatio
 │       ├── dto/         # OnlinerSearchResponse, OnlinerApartment, OnlinerPrice, OnlinerLocation, OnlinerArea, OnlinerPage
 │       └── scheduler/   # OnlinerDeltaSyncJob (every 10 min), OnlinerFullSyncJob (daily 02:00)
 ├── telegram/            # Telegram Bot
-│   ├── handler/         # FlatioBot — TelegramLongPollingBot Spring bean
+│   ├── handler/         # FlatioBot — TelegramLongPollingBot Spring bean; SearchResultSender — отправка карточек
 │   ├── command/         # StartCommandHandler — /start command
+│   ├── callback/        # FilterCallbackHandler — обработка callback FILTER:*
+│   ├── keyboard/        # FilterKeyboardFactory — InlineKeyboardMarkup для шагов wizard
+│   ├── state/           # FSM и пользовательские сценарии: FilterStep (enum шагов), SearchFilterState (in-memory состояние), SearchFilterWizard (управление переходами)
+│   ├── formatter/       # ListingFormatter — форматирование ListingSummaryResponse в HTML-caption и InlineKeyboardMarkup
 │   └── config/          # BotConfig (@ConfigurationProperties) + BotConfiguration (@EnableConfigurationProperties)
 ├── scheduler/           # Generic scheduled tasks (currently empty; source-specific jobs live in integration/)
 ├── security/            # JWT authentication

@@ -68,6 +68,7 @@ Base URL: `/api/v1`
       "areaTotalM2": 55.5,
       "city": "Минск",
       "photoUrl": null,
+      "sourceUrl": "https://r.onliner.by/ak/apartments/12345",
       "publishedAt": "2026-05-15T10:00:00Z",
       "status": "ACTIVE"
     }
