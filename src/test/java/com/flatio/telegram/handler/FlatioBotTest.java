@@ -3,6 +3,7 @@ package com.flatio.telegram.handler;
 import com.flatio.telegram.callback.FilterCallbackHandler;
 import com.flatio.telegram.command.StartCommandHandler;
 import com.flatio.telegram.config.BotConfig;
+import com.flatio.telegram.handler.SearchResultSender;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
@@ -21,7 +22,8 @@ class FlatiBotTest {
         config,
         mock(TelegramClient.class),
         mock(StartCommandHandler.class),
-        mock(FilterCallbackHandler.class)
+        mock(FilterCallbackHandler.class),
+        mock(SearchResultSender.class)
     );
   }
 
