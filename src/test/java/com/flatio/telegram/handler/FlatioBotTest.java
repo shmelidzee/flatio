@@ -1,5 +1,6 @@
 package com.flatio.telegram.handler;
 
+import com.flatio.telegram.callback.FilterCallbackHandler;
 import com.flatio.telegram.command.StartCommandHandler;
 import com.flatio.telegram.config.BotConfig;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,7 +17,12 @@ class FlatiBotTest {
   @BeforeEach
   void setUp() {
     var config = new BotConfig("test_token:123", "test_bot");
-    flatioBot = new FlatioBot(config, mock(TelegramClient.class), mock(StartCommandHandler.class));
+    flatioBot = new FlatioBot(
+        config,
+        mock(TelegramClient.class),
+        mock(StartCommandHandler.class),
+        mock(FilterCallbackHandler.class)
+    );
   }
 
   @Test
