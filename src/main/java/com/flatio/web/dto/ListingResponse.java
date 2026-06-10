@@ -2,6 +2,7 @@ package com.flatio.web.dto;
 
 import com.flatio.domain.listing.DealType;
 import com.flatio.domain.listing.ListingStatus;
+import com.flatio.domain.listing.PriceUnit;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -26,6 +27,10 @@ public record ListingResponse(
 
     @Schema(description = "Deal type: rent or sell", example = "SELL")
     DealType dealType,
+
+    @Schema(description = "Price unit for rental listings: PER_MONTH or PER_DAY. Null for sales.",
+        example = "PER_MONTH")
+    PriceUnit priceUnit,
 
     @Schema(description = "Property type", example = "APARTMENT")
     String propertyType,

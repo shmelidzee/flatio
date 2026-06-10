@@ -40,6 +40,7 @@ class RawListingTest {
         "https://onliner.by/listings/ext-001",
         publishedAt,
         photos,
+        null,
         null
     );
 
@@ -85,7 +86,8 @@ class RawListingTest {
         "https://realt.by/listings/ext-002",
         null,    // publishedAt
         List.of(),
-        null
+        null,    // isOwner
+        null     // priceUnit
     );
 
     // Then
@@ -196,7 +198,7 @@ class RawListingTest {
         externalId, "Квартира", null, "RENT", null,
         BigDecimal.valueOf(400), "BYN", null,
         null, null, null, null, null, null, null, null,
-        "https://example.com/" + externalId, null, List.of(), null
+        "https://example.com/" + externalId, null, List.of(), null, null
     );
   }
 }

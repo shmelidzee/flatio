@@ -55,6 +55,10 @@ public class Listing {
   @Column(name = "deal_type", nullable = false, length = 20)
   private DealType dealType;
 
+  @Enumerated(EnumType.STRING)
+  @Column(name = "price_unit", length = 10)
+  private PriceUnit priceUnit;
+
   @Column(name = "property_type", length = 50)
   private String propertyType;
 

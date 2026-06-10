@@ -5,6 +5,7 @@ import com.flatio.domain.currency.Currency;
 import com.flatio.domain.listing.DealType;
 import com.flatio.domain.listing.Listing;
 import com.flatio.domain.listing.ListingStatus;
+import com.flatio.domain.listing.PriceUnit;
 import com.flatio.domain.listing.PriceHistory;
 import com.flatio.domain.source.Source;
 import com.flatio.repository.CurrencyRepository;
@@ -101,6 +102,7 @@ public class ListingIngestionServiceImpl implements ListingIngestionService {
     listing.setCurrency(currency);
     listing.setCountry(source.getCountry());
     listing.setStatus(ListingStatus.ACTIVE);
+    listing.setPriceUnit(derivePriceUnit(listing.getDealType()));
     listing.setDedupHash(computeDedupHash(listing));
 
     listingRepository.save(listing);
@@ -117,6 +119,7 @@ public class ListingIngestionServiceImpl implements ListingIngestionService {
     existing.setCurrency(currency);
     existing.setStatus(ListingStatus.ACTIVE);
     existing.setMissedSyncsCount(0);
+    existing.setPriceUnit(derivePriceUnit(existing.getDealType()));
     existing.setDedupHash(computeDedupHash(existing));
 
     if (priceChanged) {
@@ -175,6 +178,17 @@ public class ListingIngestionServiceImpl implements ListingIngestionService {
     log.info("Missed sync penalty applied: source={}, incremented={}, deactivated={}, threshold={}",
         source.getCode(), incremented, deactivated, inactiveThreshold);
     return deactivated;
+  }
+
+  private static PriceUnit derivePriceUnit(DealType dealType) {
+    if (dealType == null) {
+      return null;
+    }
+    return switch (dealType) {
+      case RENT -> PriceUnit.PER_MONTH;
+      case RENT_DAILY -> PriceUnit.PER_DAY;
+      case SELL -> null;
+    };
   }
 
   private Currency resolveCurrency(String code) {
