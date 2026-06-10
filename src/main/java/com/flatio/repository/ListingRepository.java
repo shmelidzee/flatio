@@ -166,6 +166,7 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
    * Structural filters are applied alongside the FTS predicate; null parameters are ignored.
    *
    * @param query       full-text search string, must not be null or blank
+   * @param ftsLanguage PostgreSQL text-search configuration name (e.g. "russian", "english")
    * @param status      listing status filter, as enum name string (e.g. "ACTIVE")
    * @param dealType    deal type filter (e.g. "RENT"), or null to skip
    * @param priceMin    minimum price inclusive, or null to skip
@@ -179,8 +180,14 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
    */
   @Query(
       value = """
-          SELECT l.* FROM listings l
-          WHERE l.search_vector @@ websearch_to_tsquery('russian', :query)
+          SELECT l.id, l.external_id, l.source_id, l.title, l.description,
+                 l.deal_type, l.property_type, l.price, l.currency_id, l.price_usd,
+                 l.rooms, l.floor_number, l.floors_total, l.area_total_m2, l.area_living_m2,
+                 l.area_kitchen_m2, l.address, l.latitude, l.longitude, l.country_id,
+                 l.city, l.district, l.status, l.source_url, l.dedup_hash,
+                 l.is_owner, l.missed_syncs_count, l.published_at, l.created_at, l.updated_at
+          FROM listings l
+          WHERE l.search_vector @@ websearch_to_tsquery(CAST(:ftsLanguage AS regconfig), :query)
             AND l.status = :status
             AND (:dealType IS NULL OR l.deal_type = :dealType)
             AND (:priceMin IS NULL OR l.price >= CAST(:priceMin AS numeric))
@@ -192,7 +199,7 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
           """,
       countQuery = """
           SELECT count(*) FROM listings l
-          WHERE l.search_vector @@ websearch_to_tsquery('russian', :query)
+          WHERE l.search_vector @@ websearch_to_tsquery(CAST(:ftsLanguage AS regconfig), :query)
             AND l.status = :status
             AND (:dealType IS NULL OR l.deal_type = :dealType)
             AND (:priceMin IS NULL OR l.price >= CAST(:priceMin AS numeric))
@@ -206,6 +213,7 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
   )
   Page<Listing> fullTextSearch(
       @Param("query") String query,
+      @Param("ftsLanguage") String ftsLanguage,
       @Param("status") String status,
       @Param("dealType") String dealType,
       @Param("priceMin") BigDecimal priceMin,

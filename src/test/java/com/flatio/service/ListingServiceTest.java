@@ -18,6 +18,7 @@ import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -28,6 +29,8 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -52,6 +55,11 @@ class ListingServiceTest {
 
   @InjectMocks
   private ListingServiceImpl listingService;
+
+  @BeforeEach
+  void setUp() {
+    ReflectionTestUtils.setField(listingService, "ftsLanguage", "russian");
+  }
 
   // -------------------------------------------------------------------------
   // findById
@@ -186,6 +194,7 @@ class ListingServiceTest {
 
     when(listingRepository.fullTextSearch(
         eq("двухкомнатная квартира"),
+        eq("russian"),
         eq("ACTIVE"),
         isNull(),
         isNull(),
@@ -207,6 +216,7 @@ class ListingServiceTest {
     assertThat(result.getTotalElements()).isEqualTo(1);
     verify(listingRepository).fullTextSearch(
         eq("двухкомнатная квартира"),
+        eq("russian"),
         eq("ACTIVE"),
         isNull(),
         isNull(),
@@ -235,7 +245,7 @@ class ListingServiceTest {
 
     // Then
     verify(listingRepository).findAll(any(Specification.class), eq(pageable));
-    verify(listingRepository, never()).fullTextSearch(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+    verify(listingRepository, never()).fullTextSearch(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
   }
 
   @Test
@@ -253,7 +263,7 @@ class ListingServiceTest {
 
     // Then
     verify(listingRepository).findAll(any(Specification.class), eq(pageable));
-    verify(listingRepository, never()).fullTextSearch(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+    verify(listingRepository, never()).fullTextSearch(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
   }
 
   @Test
@@ -263,7 +273,7 @@ class ListingServiceTest {
     Page<Listing> emptyPage = new PageImpl<>(Collections.emptyList(), pageable, 0);
 
     when(listingRepository.fullTextSearch(
-        any(), eq("ACTIVE"), any(), any(), any(), any(), any(), any(), any(), any()
+        any(), any(), eq("ACTIVE"), any(), any(), any(), any(), any(), any(), any(), any()
     )).thenReturn(emptyPage);
 
     // criteria.status() == null → effectiveStatus должен стать ACTIVE
@@ -274,7 +284,7 @@ class ListingServiceTest {
 
     // Then
     verify(listingRepository).fullTextSearch(
-        any(), eq("ACTIVE"), any(), any(), any(), any(), any(), any(), any(), any()
+        any(), any(), eq("ACTIVE"), any(), any(), any(), any(), any(), any(), any(), any()
     );
   }
 
@@ -286,6 +296,7 @@ class ListingServiceTest {
 
     when(listingRepository.fullTextSearch(
         eq("квартира"),
+        eq("russian"),
         eq("ACTIVE"),
         eq("RENT"),
         eq(BigDecimal.valueOf(500)),
@@ -308,6 +319,7 @@ class ListingServiceTest {
     // Then
     verify(listingRepository).fullTextSearch(
         eq("квартира"),
+        eq("russian"),
         eq("ACTIVE"),
         eq("RENT"),
         eq(BigDecimal.valueOf(500)),
@@ -327,7 +339,7 @@ class ListingServiceTest {
     Page<Listing> emptyPage = new PageImpl<>(Collections.emptyList(), pageable, 0);
 
     when(listingRepository.fullTextSearch(
-        any(), any(), any(), any(), any(), any(), eq("%минск%"), any(), any(), any()
+        any(), any(), any(), any(), any(), any(), any(), eq("%минск%"), any(), any(), any()
     )).thenReturn(emptyPage);
 
     var criteria = new ListingSearchCriteria(null, null, null, "Минск", null, null, null, null, "квартира");
@@ -337,7 +349,7 @@ class ListingServiceTest {
 
     // Then
     verify(listingRepository).fullTextSearch(
-        any(), any(), any(), any(), any(), any(), eq("%минск%"), any(), any(), any()
+        any(), any(), any(), any(), any(), any(), any(), eq("%минск%"), any(), any(), any()
     );
   }
 

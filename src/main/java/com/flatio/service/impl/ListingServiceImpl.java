@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -29,6 +30,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Slf4j
 @RequiredArgsConstructor
 public class ListingServiceImpl implements ListingService {
+
+  @Value("${flatio.search.fts-language:russian}")
+  private String ftsLanguage;
 
   private final ListingRepository listingRepository;
   private final PriceHistoryRepository priceHistoryRepository;
@@ -62,6 +66,7 @@ public class ListingServiceImpl implements ListingService {
         ? "%" + criteria.city().toLowerCase() + "%" : null;
     return listingRepository.fullTextSearch(
         criteria.query(),
+        ftsLanguage,
         effectiveStatus.name(),
         dealType,
         criteria.priceMin(),
