@@ -53,7 +53,13 @@ public class ListingFormatter {
       return full;
     }
     log.debug("Caption exceeds limit ({}), dropping zone 2: listingId={}", full.length(), listing.id());
-    return assembleCaption(listing, false);
+    String short_ = assembleCaption(listing, false);
+    if (short_.length() <= CAPTION_MAX_LENGTH) {
+      return short_;
+    }
+    log.warn("Caption still exceeds limit ({}) after dropping zone 2, hard-clamping: listingId={}",
+        short_.length(), listing.id());
+    return short_.substring(0, CAPTION_MAX_LENGTH - 1) + "…";
   }
 
   /**
