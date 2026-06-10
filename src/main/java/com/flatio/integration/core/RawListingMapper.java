@@ -29,6 +29,7 @@ public interface RawListingMapper {
   @Mapping(target = "country", ignore = true)
   @Mapping(target = "status", ignore = true)
   @Mapping(target = "dedupHash", ignore = true)
+  @Mapping(target = "missedSyncsCount", ignore = true)
   @Mapping(target = "areaLivingM2", ignore = true)
   @Mapping(target = "areaKitchenM2", ignore = true)
   @Mapping(target = "district", ignore = true)
@@ -41,8 +42,8 @@ public interface RawListingMapper {
    * Updates mutable fields of an existing {@link Listing} from a {@link RawListing}.
    *
    * <p>Identity ({@code id}), ownership ({@code source}, {@code country}),
-   * financial ({@code currency}), and computed ({@code status}, {@code dedupHash})
-   * fields are not touched — the caller is responsible for them.
+   * financial ({@code currency}), and computed ({@code status}, {@code dedupHash},
+   * {@code missedSyncsCount}) fields are not touched — the caller is responsible for them.
    * {@code priceUsd} is mapped directly from the raw listing.
    *
    * @param raw     updated raw listing data from a connector, must not be null
@@ -54,6 +55,7 @@ public interface RawListingMapper {
   @Mapping(target = "country", ignore = true)
   @Mapping(target = "status", ignore = true)
   @Mapping(target = "dedupHash", ignore = true)
+  @Mapping(target = "missedSyncsCount", ignore = true)
   @Mapping(target = "areaLivingM2", ignore = true)
   @Mapping(target = "areaKitchenM2", ignore = true)
   @Mapping(target = "district", ignore = true)

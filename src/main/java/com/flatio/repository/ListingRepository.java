@@ -117,4 +117,43 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
       @Param("source") Source source,
       @Param("activeExternalIds") Collection<String> activeExternalIds
   );
+
+  /**
+   * Increments {@code missedSyncsCount} for all ACTIVE listings of the given source
+   * whose external ID is absent from the provided collection.
+   *
+   * <p>Called after each full sync to track how many consecutive syncs a listing has been absent.
+   * Only ACTIVE listings are counted — INACTIVE ones are already retired.
+   * The caller must guarantee {@code activeExternalIds} is non-empty.
+   *
+   * @param source            the data source whose listings to check
+   * @param activeExternalIds external IDs present in the current sync batch; must not be empty
+   * @return number of listings whose counter was incremented
+   */
+  @Modifying
+  @Query("UPDATE Listing l SET l.missedSyncsCount = l.missedSyncsCount + 1 " +
+      "WHERE l.source = :source AND l.externalId NOT IN :activeExternalIds " +
+      "AND l.status = com.flatio.domain.listing.ListingStatus.ACTIVE")
+  int incrementMissedSyncsForAbsent(
+      @Param("source") Source source,
+      @Param("activeExternalIds") Collection<String> activeExternalIds
+  );
+
+  /**
+   * Marks as INACTIVE all ACTIVE listings of the given source whose {@code missedSyncsCount}
+   * has reached or exceeded the given threshold.
+   *
+   * @param source    the data source whose listings to check
+   * @param threshold minimum missed sync count required to trigger deactivation
+   * @return number of listings deactivated
+   */
+  @Modifying
+  @Query("UPDATE Listing l SET l.status = com.flatio.domain.listing.ListingStatus.INACTIVE " +
+      "WHERE l.source = :source " +
+      "AND l.status = com.flatio.domain.listing.ListingStatus.ACTIVE " +
+      "AND l.missedSyncsCount >= :threshold")
+  int deactivateByMissedSyncsThreshold(
+      @Param("source") Source source,
+      @Param("threshold") int threshold
+  );
 }

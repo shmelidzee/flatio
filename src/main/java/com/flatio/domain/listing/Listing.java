@@ -118,6 +118,9 @@ public class Listing {
   @Column(name = "is_owner")
   private Boolean isOwner;
 
+  @Column(name = "missed_syncs_count", nullable = false)
+  private int missedSyncsCount;
+
   @Column(name = "published_at")
   private Instant publishedAt;
 

@@ -1,0 +1,2 @@
+ALTER TABLE listings
+  ADD COLUMN missed_syncs_count INTEGER NOT NULL DEFAULT 0;

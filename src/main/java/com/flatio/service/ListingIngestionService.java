@@ -64,4 +64,18 @@ public interface ListingIngestionService {
    * @return number of listings deactivated
    */
   int deactivateMissing(Source source, Set<String> activeExternalIds);
+
+  /**
+   * Applies the missed-sync penalty after a full sync:
+   * increments {@code missedSyncsCount} for absent ACTIVE listings and marks as INACTIVE
+   * those that have exceeded the configured threshold.
+   *
+   * <p>Returns immediately without touching the database when {@code activeExternalIds} is empty
+   * — this prevents accidental mass-deactivation when a fetch returns no results.
+   *
+   * @param source            the data source, must not be null
+   * @param activeExternalIds set of external IDs present in the current sync batch, must not be null
+   * @return number of listings newly deactivated in this call
+   */
+  int applyMissedSyncPenalty(Source source, Set<String> activeExternalIds);
 }
