@@ -59,9 +59,10 @@ com.flatio
 │   │   ├── DealType     # Enum: RENT | SELL
 │   │   └── ListingStatus # Enum: ACTIVE | INACTIVE
 │   └── user/            # User authentication domain
-│       ├── User         # User entity: displayName, email, active
+│       ├── User         # User entity: displayName, email, active, role
 │       ├── UserAuthProvider # Auth provider link: provider enum + externalId
-│       └── AuthProvider # Enum: TELEGRAM | GOOGLE | EMAIL
+│       ├── AuthProvider # Enum: TELEGRAM | GOOGLE | EMAIL
+│       └── UserRole     # Enum: USER | ADMIN
 ├── repository/          # Spring Data JPA repositories
 │   ├── CountryRepository
 │   ├── CurrencyRepository
@@ -93,7 +94,11 @@ com.flatio
 │   ├── command/         # StartCommandHandler — /start command
 │   └── config/          # BotConfig (@ConfigurationProperties) + BotConfiguration (@EnableConfigurationProperties)
 ├── scheduler/           # Generic scheduled tasks (currently empty; source-specific jobs live in integration/)
-├── security/            # Auth / JWT (to be added)
+├── security/            # JWT authentication
+│   ├── JwtService       # Token generation and validation (HMAC-SHA256)
+│   ├── JwtAuthenticationFilter # OncePerRequestFilter — extracts Bearer token, populates SecurityContext
+│   ├── JwtProperties    # @ConfigurationProperties(prefix = "flatio.jwt"): secretKey, accessTokenExpiry
+│   └── SecurityConfig   # Spring Security filter chain: stateless, JWT-based
 └── util/                # Utilities
 ```
 
@@ -178,6 +183,12 @@ Records are inserted only, never updated or deleted. Used to track price history
 | V8 | `V8__add_user_auth_provider_indexes.sql` | Index on `user_auth_provider.user_id` |
 | V9 | `V9__create_price_history.sql` | DDL for `price_history` table + composite index |
 | V10 | `V10__add_listing_dedup_hash.sql` | `dedup_hash VARCHAR(64)` column + index on `listings` |
+| V11 | `V11__add_users_last_seen.sql` | `last_seen TIMESTAMPTZ` column on `users` |
+| V12 | `V12__extend_deal_type_column.sql` | Extend `deal_type` column |
+| V13 | `V13__add_is_owner_to_listings.sql` | `is_owner BOOLEAN` column on `listings` |
+| V14 | `V14__add_listing_missed_syncs_count.sql` | `missed_syncs_count INTEGER` column on `listings` |
+| V15 | `V15__add_listings_search_vector.sql` | FTS `search_vector TSVECTOR` column + GIN index on `listings` |
+| V16 | `V16__add_user_role.sql` | `role VARCHAR(20) NOT NULL DEFAULT 'USER'` column on `users` |
 
 Migration files are located in `src/main/resources/db/migration/`.
 Never edit an existing migration file — always create a new one.

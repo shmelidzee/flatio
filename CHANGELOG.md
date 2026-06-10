@@ -7,6 +7,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Security
+- **PR #127 — ADMIN роль и Spring Security с JWT (issue #32)**
+  - `com.flatio.security.JwtService` — генерация и валидация JWT токенов (HMAC-SHA256);
+    ключ обязателен через `JWT_SECRET_KEY` env variable без default значения
+  - `com.flatio.security.JwtAuthenticationFilter` — `OncePerRequestFilter`: извлекает Bearer токен,
+    проверяет через `JwtService`, устанавливает аутентификацию в `SecurityContextHolder`
+  - `com.flatio.security.SecurityConfig` — stateless фильтр-цепочка:
+    `/api/v1/admin/**` → ADMIN, `/api/v1/**` → authenticated, Swagger UI → public
+  - `com.flatio.security.JwtProperties` — `@ConfigurationProperties(prefix = "flatio.jwt")`:
+    `secret-key` (обязательно), `access-token-expiry` (default: 3600 сек)
+  - `com.flatio.domain.user.UserRole` — enum: `USER` | `ADMIN`
+  - `User.role` — новое поле `@Enumerated(EnumType.STRING)`, default `USER`
+  - Flyway V16 — `ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'USER'`
+  - `application.yml` — `flatio.jwt.secret-key: ${JWT_SECRET_KEY}`, `flatio.jwt.access-token-expiry: ${JWT_ACCESS_TOKEN_EXPIRY:3600}`
+  - Тесты: `JwtServiceTest` (9 тестов), `JwtAuthenticationFilterTest` (5 тестов)
+  - Follow-up issues: #128 (anyRequest политика), #129 (CORS конфигурация)
+
 ### Added
 - **PR #120 — M1.3.10+M1.3.11: OnlinerDeltaSyncJob + OnlinerFullSyncJob (issue #104)**
   - `com.flatio.integration.onliner.scheduler.OnlinerDeltaSyncJob` — инкрементальный синк:

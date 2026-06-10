@@ -65,9 +65,11 @@ cp src/main/resources/application-local.yml.example src/main/resources/applicati
 | `DB_FLATIO_PASSWORD` | Пароль PostgreSQL | `flatio_local` |
 | `TELEGRAM_BOT_TOKEN` | Telegram Bot API токен | — (обязательно) |
 | `TELEGRAM_BOT_USERNAME` | Имя Telegram-бота (без @) | — (обязательно) |
+| `JWT_SECRET_KEY` | HMAC-SHA ключ для подписи JWT (минимум 256 бит) | — (обязательно) |
+| `JWT_ACCESS_TOKEN_EXPIRY` | Срок жизни access токена, секунды | `3600` |
 
 При локальной разработке значения по умолчанию применяются автоматически, если переменные не заданы.
-`TELEGRAM_BOT_TOKEN` и `TELEGRAM_BOT_USERNAME` не имеют дефолтов — приложение не стартует без них.
+`TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` и `JWT_SECRET_KEY` не имеют дефолтов — приложение не стартует без них.
 Для деплоя на Railway задайте эти переменные в Railway Dashboard → Variables, используя данные подключения к PostgreSQL.
 
 ## Документация API
