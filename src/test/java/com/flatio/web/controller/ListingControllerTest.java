@@ -118,6 +118,28 @@ class ListingControllerTest {
         .andExpect(jsonPath("$.status").value(400));
   }
 
+  @Test
+  void should_return_400_when_deal_type_param_is_invalid() throws Exception {
+    // When / Then — binding fails when enum value is not recognised
+    mockMvc.perform(get("/api/v1/listings").param("dealType", "TOTALLY_INVALID"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.status").value(400));
+  }
+
+  @Test
+  void should_return_200_when_service_returns_data_regardless_of_connector_state() throws Exception {
+    // Given — service returns DB data; no real connector is wired (MockBean)
+    var summary = buildSummary(7L);
+    Page<ListingSummaryResponse> page = new PageImpl<>(List.of(summary), PageRequest.of(0, 20), 1);
+    when(listingService.search(any(), any())).thenReturn(page);
+
+    // When / Then — API responds 200 even when connector is unavailable;
+    // ListingController depends only on ListingService, not on connectors directly
+    mockMvc.perform(get("/api/v1/listings"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.content[0].id").value(7));
+  }
+
   // -------------------------------------------------------------------------
   // helpers
   // -------------------------------------------------------------------------
