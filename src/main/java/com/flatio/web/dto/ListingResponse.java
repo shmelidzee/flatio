@@ -29,7 +29,7 @@ public record ListingResponse(
     DealType dealType,
 
     @Schema(description = "Price unit for rental listings: PER_MONTH or PER_DAY. Null for sales.",
-        example = "PER_MONTH")
+        example = "PER_MONTH", nullable = true)
     PriceUnit priceUnit,
 
     @Schema(description = "Property type", example = "APARTMENT")
