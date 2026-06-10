@@ -3,28 +3,40 @@ package com.flatio.web.controller;
 import com.flatio.common.exception.ListingNotFoundException;
 import com.flatio.domain.listing.DealType;
 import com.flatio.domain.listing.ListingStatus;
+import com.flatio.security.JwtAuthenticationFilter;
+import com.flatio.security.JwtService;
 import com.flatio.service.ListingService;
 import com.flatio.web.dto.ListingResponse;
 import com.flatio.web.dto.ListingSummaryResponse;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest({ListingController.class, GlobalExceptionHandler.class})
+@WithMockUser
+@TestPropertySource(properties = "JWT_SECRET_KEY=test-secret-key-for-unit-tests-minimum-256-bits-long")
 class ListingControllerTest {
 
   @Autowired
@@ -32,6 +44,25 @@ class ListingControllerTest {
 
   @MockBean
   private ListingService listingService;
+
+  @MockBean
+  private JwtService jwtService;
+
+  @MockBean
+  private JwtAuthenticationFilter jwtAuthenticationFilter;
+
+  @BeforeEach
+  void setUp() throws Exception {
+    doAnswer(invocation -> {
+      var chain = (FilterChain) invocation.getArgument(2);
+      chain.doFilter(
+          (HttpServletRequest) invocation.getArgument(0),
+          (HttpServletResponse) invocation.getArgument(1)
+      );
+      return null;
+    }).when(jwtAuthenticationFilter)
+        .doFilter(any(HttpServletRequest.class), any(HttpServletResponse.class), any(FilterChain.class));
+  }
 
   // -------------------------------------------------------------------------
   // GET /api/v1/listings

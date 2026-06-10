@@ -33,7 +33,8 @@ import static org.assertj.core.api.Assertions.assertThat;
             "org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration," +
             "org.telegram.telegrambots.longpolling.starter.TelegramBotStarterConfiguration",
         "telegram.bot.token=dummy-test-token",
-        "telegram.bot.username=dummy_test_bot"
+        "telegram.bot.username=dummy_test_bot",
+        "JWT_SECRET_KEY=test-secret-key-for-logback-test-minimum-256-bits-long"
     }
 )
 @ActiveProfiles("prod")
