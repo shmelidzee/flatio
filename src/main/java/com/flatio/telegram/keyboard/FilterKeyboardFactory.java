@@ -1,0 +1,165 @@
+package com.flatio.telegram.keyboard;
+
+import com.flatio.domain.listing.DealType;
+import com.flatio.telegram.state.FilterStep;
+import com.flatio.telegram.state.SearchFilterState;
+import com.flatio.telegram.state.SearchFilterWizard;
+import java.math.BigDecimal;
+import org.springframework.stereotype.Component;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardRow;
+
+/**
+ * Builds inline keyboards and prompt texts for each step of the search filter wizard.
+ */
+@Component
+public class FilterKeyboardFactory {
+
+  private static final String P = SearchFilterWizard.CALLBACK_PREFIX;
+
+  /**
+   * Returns the inline keyboard markup for the current wizard step.
+   *
+   * @param state current filter state, never null
+   * @return keyboard markup appropriate for the current step, never null
+   */
+  public InlineKeyboardMarkup buildForStep(SearchFilterState state) {
+    return switch (state.getCurrentStep()) {
+      case DEAL_TYPE -> buildDealTypeKeyboard();
+      case PROPERTY_TYPE -> buildPropertyTypeKeyboard();
+      case ROOMS -> buildRoomsKeyboard();
+      case PRICE -> buildPriceKeyboard();
+      case DONE -> buildDoneKeyboard();
+    };
+  }
+
+  /**
+   * Returns the prompt text displayed above the keyboard for the current wizard step.
+   *
+   * @param state current filter state, never null
+   * @return prompt text, never null
+   */
+  public String getStepText(SearchFilterState state) {
+    return switch (state.getCurrentStep()) {
+      case DEAL_TYPE -> "🏠 Выберите тип сделки:";
+      case PROPERTY_TYPE -> "🏢 Тип недвижимости:";
+      case ROOMS -> "🛏 Количество комнат:";
+      case PRICE -> "💰 Диапазон цены (BYN/мес):";
+      case DONE -> buildSummaryText(state);
+    };
+  }
+
+  private InlineKeyboardMarkup buildDealTypeKeyboard() {
+    var rent = btn("Аренда", P + ":DEAL_TYPE:RENT");
+    var sell = btn("Продажа", P + ":DEAL_TYPE:SELL");
+    var any = btn("Любой", P + ":DEAL_TYPE:ANY");
+    return InlineKeyboardMarkup.builder()
+        .keyboardRow(new InlineKeyboardRow(rent, sell))
+        .keyboardRow(new InlineKeyboardRow(any))
+        .keyboardRow(resetRow())
+        .build();
+  }
+
+  private InlineKeyboardMarkup buildPropertyTypeKeyboard() {
+    var apartment = btn("Квартира", P + ":PROPERTY_TYPE:APARTMENT");
+    var house = btn("Дом", P + ":PROPERTY_TYPE:HOUSE");
+    var room = btn("Комната", P + ":PROPERTY_TYPE:ROOM");
+    var any = btn("Любой", P + ":PROPERTY_TYPE:ANY");
+    return InlineKeyboardMarkup.builder()
+        .keyboardRow(new InlineKeyboardRow(apartment, house, room))
+        .keyboardRow(new InlineKeyboardRow(any))
+        .keyboardRow(navRow())
+        .build();
+  }
+
+  private InlineKeyboardMarkup buildRoomsKeyboard() {
+    var r1 = btn("1", P + ":ROOMS:1");
+    var r2 = btn("2", P + ":ROOMS:2");
+    var r3 = btn("3", P + ":ROOMS:3");
+    var r4 = btn("4+", P + ":ROOMS:4_PLUS");
+    var any = btn("Любое", P + ":ROOMS:ANY");
+    return InlineKeyboardMarkup.builder()
+        .keyboardRow(new InlineKeyboardRow(r1, r2, r3, r4))
+        .keyboardRow(new InlineKeyboardRow(any))
+        .keyboardRow(navRow())
+        .build();
+  }
+
+  private InlineKeyboardMarkup buildPriceKeyboard() {
+    var low = btn("до 1 000", P + ":PRICE:LOW");
+    var med = btn("1 000–2 000", P + ":PRICE:MEDIUM");
+    var high = btn("2 000–4 000", P + ":PRICE:HIGH");
+    var premium = btn("4 000+", P + ":PRICE:PREMIUM");
+    var any = btn("Любая", P + ":PRICE:ANY");
+    return InlineKeyboardMarkup.builder()
+        .keyboardRow(new InlineKeyboardRow(low, med))
+        .keyboardRow(new InlineKeyboardRow(high, premium))
+        .keyboardRow(new InlineKeyboardRow(any))
+        .keyboardRow(navRow())
+        .build();
+  }
+
+  private InlineKeyboardMarkup buildDoneKeyboard() {
+    var search = btn("🔍 Найти", P + ":SEARCH");
+    var reset = btn("🔄 Изменить фильтр", P + ":RESET");
+    return InlineKeyboardMarkup.builder()
+        .keyboardRow(new InlineKeyboardRow(search))
+        .keyboardRow(new InlineKeyboardRow(reset))
+        .build();
+  }
+
+  private InlineKeyboardRow navRow() {
+    return new InlineKeyboardRow(
+        btn("← Назад", P + ":BACK"),
+        btn("🔄 Сбросить", P + ":RESET")
+    );
+  }
+
+  private InlineKeyboardRow resetRow() {
+    return new InlineKeyboardRow(btn("🔄 Сбросить", P + ":RESET"));
+  }
+
+  private InlineKeyboardButton btn(String text, String callbackData) {
+    return InlineKeyboardButton.builder().text(text).callbackData(callbackData).build();
+  }
+
+  private String buildSummaryText(SearchFilterState state) {
+    return "✅ Фильтр настроен:\n"
+        + "Сделка: " + dealTypeLabel(state.getDealType()) + "\n"
+        + "Тип: " + propertyTypeLabel(state.getPropertyType()) + "\n"
+        + "Комнат: " + roomsLabel(state.getRooms()) + "\n"
+        + "Цена: " + priceLabel(state.getPriceMin(), state.getPriceMax());
+  }
+
+  private String dealTypeLabel(DealType dealType) {
+    if (dealType == null) return "Любой";
+    return switch (dealType) {
+      case RENT -> "Аренда";
+      case SELL -> "Продажа";
+      case RENT_DAILY -> "Посуточно";
+    };
+  }
+
+  private String propertyTypeLabel(String propertyType) {
+    if (propertyType == null) return "Любой";
+    return switch (propertyType) {
+      case "APARTMENT" -> "Квартира";
+      case "HOUSE" -> "Дом";
+      case "ROOM" -> "Комната";
+      default -> propertyType;
+    };
+  }
+
+  private String roomsLabel(Integer rooms) {
+    if (rooms == null) return "Любое";
+    return rooms >= 4 ? "4+" : rooms.toString();
+  }
+
+  private String priceLabel(BigDecimal priceMin, BigDecimal priceMax) {
+    if (priceMin == null && priceMax == null) return "Любая";
+    if (priceMin == null) return "до " + priceMax.toPlainString() + " BYN";
+    if (priceMax == null) return "от " + priceMin.toPlainString() + " BYN";
+    return priceMin.toPlainString() + "–" + priceMax.toPlainString() + " BYN";
+  }
+}

@@ -1,5 +1,6 @@
 package com.flatio.telegram.handler;
 
+import com.flatio.telegram.callback.FilterCallbackHandler;
 import com.flatio.telegram.command.StartCommandHandler;
 import com.flatio.telegram.config.BotConfig;
 import java.util.List;
@@ -8,6 +9,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.longpolling.interfaces.LongPollingUpdateConsumer;
 import org.telegram.telegrambots.longpolling.starter.SpringLongPollingBot;
+import org.telegram.telegrambots.meta.api.methods.AnswerCallbackQuery;
+import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
@@ -25,9 +28,12 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
 @RequiredArgsConstructor
 public class FlatioBot implements SpringLongPollingBot, LongPollingUpdateConsumer {
 
+  private static final String FILTER_CALLBACK_PREFIX = "FILTER:";
+
   private final BotConfig botConfig;
   private final TelegramClient telegramClient;
   private final StartCommandHandler startCommandHandler;
+  private final FilterCallbackHandler filterCallbackHandler;
 
   /**
    * Returns the bot API token used for long-polling authentication.
@@ -61,9 +67,14 @@ public class FlatioBot implements SpringLongPollingBot, LongPollingUpdateConsume
 
   private void handleUpdate(Update update) {
     log.debug("Update received: updateId={}", update.getUpdateId());
-    if (!update.hasMessage() || !update.getMessage().hasText()) {
-      return;
+    if (update.hasMessage() && update.getMessage().hasText()) {
+      handleTextMessage(update);
+    } else if (update.hasCallbackQuery()) {
+      handleCallbackQuery(update.getCallbackQuery());
     }
+  }
+
+  private void handleTextMessage(Update update) {
     String text = update.getMessage().getText();
     if (text.startsWith("/start")) {
       try {
@@ -74,6 +85,32 @@ public class FlatioBot implements SpringLongPollingBot, LongPollingUpdateConsume
         log.error("Unexpected error handling /start: chatId={}, updateId={}",
             update.getMessage().getChatId(), update.getUpdateId(), e);
       }
+    }
+  }
+
+  private void handleCallbackQuery(CallbackQuery callbackQuery) {
+    String data = callbackQuery.getData();
+    answerCallbackQuery(callbackQuery.getId());
+
+    if ("action:search".equals(data) || data.startsWith(FILTER_CALLBACK_PREFIX)) {
+      try {
+        telegramClient.execute(filterCallbackHandler.handle(callbackQuery));
+      } catch (TelegramApiException e) {
+        log.error("Failed to edit filter wizard message: chatId={}",
+            callbackQuery.getMessage().getChatId(), e);
+      } catch (Exception e) {
+        log.error("Unexpected error handling filter callback: data={}", data, e);
+      }
+    }
+  }
+
+  private void answerCallbackQuery(String callbackQueryId) {
+    try {
+      telegramClient.execute(AnswerCallbackQuery.builder()
+          .callbackQueryId(callbackQueryId)
+          .build());
+    } catch (TelegramApiException e) {
+      log.warn("Failed to answer callback query: id={}", callbackQueryId, e);
     }
   }
 }
