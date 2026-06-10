@@ -16,6 +16,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
+import com.flatio.domain.listing.PriceUnit;
 import com.flatio.service.domain.IngestOutcome;
 import com.flatio.service.impl.ListingIngestionServiceImpl;
 import com.flatio.integration.core.RawListingMapper;
@@ -226,6 +227,92 @@ class ListingIngestionServiceImplTest {
   }
 
   // -------------------------------------------------------------------------
+  // ingest — price_unit derivation
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_set_price_unit_per_month_when_deal_type_is_rent() {
+    // Given
+    var raw = buildRawListing("ext-pu1", BigDecimal.valueOf(500));
+    var mapped = new Listing();
+    mapped.setDealType(DealType.RENT);
+
+    when(currencyRepository.findByCode("BYN")).thenReturn(Optional.of(byn));
+    when(listingRepository.findByExternalIdAndSourceId("ext-pu1", 1L)).thenReturn(Optional.empty());
+    when(rawListingMapper.toEntity(raw)).thenReturn(mapped);
+    when(dedupHashService.computeDedupHash(any(), any(), any(), any())).thenReturn("hashpu1");
+
+    // When
+    ingestionService.ingest(raw, source);
+
+    // Then
+    assertThat(mapped.getPriceUnit()).isEqualTo(PriceUnit.PER_MONTH);
+  }
+
+  @Test
+  void should_set_price_unit_per_day_when_deal_type_is_rent_daily() {
+    // Given
+    var raw = new RawListing(
+        "ext-pu2", "Test", null, "RENT_DAILY", "APARTMENT",
+        BigDecimal.valueOf(50), "BYN", null,
+        2, 3, 9, BigDecimal.valueOf(55.5),
+        "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
+        "Минск", "https://onliner.by/pu2",
+        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null, null
+    );
+    var mapped = new Listing();
+    mapped.setDealType(DealType.RENT_DAILY);
+
+    when(currencyRepository.findByCode("BYN")).thenReturn(Optional.of(byn));
+    when(listingRepository.findByExternalIdAndSourceId("ext-pu2", 1L)).thenReturn(Optional.empty());
+    when(rawListingMapper.toEntity(raw)).thenReturn(mapped);
+    when(dedupHashService.computeDedupHash(any(), any(), any(), any())).thenReturn("hashpu2");
+
+    // When
+    ingestionService.ingest(raw, source);
+
+    // Then
+    assertThat(mapped.getPriceUnit()).isEqualTo(PriceUnit.PER_DAY);
+  }
+
+  @Test
+  void should_set_price_unit_null_when_deal_type_is_sell() {
+    // Given
+    var raw = buildRawListing("ext-pu3", BigDecimal.valueOf(120_000));
+    var mapped = new Listing();
+    mapped.setDealType(DealType.SELL);
+
+    when(currencyRepository.findByCode("BYN")).thenReturn(Optional.of(byn));
+    when(listingRepository.findByExternalIdAndSourceId("ext-pu3", 1L)).thenReturn(Optional.empty());
+    when(rawListingMapper.toEntity(raw)).thenReturn(mapped);
+    when(dedupHashService.computeDedupHash(any(), any(), any(), any())).thenReturn("hashpu3");
+
+    // When
+    ingestionService.ingest(raw, source);
+
+    // Then
+    assertThat(mapped.getPriceUnit()).isNull();
+  }
+
+  @Test
+  void should_update_price_unit_on_update_path() {
+    // Given — existing listing has RENT deal type (mapped via mock), should get PER_MONTH
+    var raw = buildRawListing("ext-pu4", BigDecimal.valueOf(500));
+    var existing = buildExistingListing("ext-pu4", BigDecimal.valueOf(500));
+    existing.setDealType(DealType.RENT);
+
+    when(currencyRepository.findByCode("BYN")).thenReturn(Optional.of(byn));
+    when(listingRepository.findByExternalIdAndSourceId("ext-pu4", 1L)).thenReturn(Optional.of(existing));
+    when(dedupHashService.computeDedupHash(any(), any(), any(), any())).thenReturn("hashpu4");
+
+    // When
+    ingestionService.ingest(raw, source);
+
+    // Then
+    assertThat(existing.getPriceUnit()).isEqualTo(PriceUnit.PER_MONTH);
+  }
+
+  // -------------------------------------------------------------------------
   // ingest — unknown deal_type skip
   // -------------------------------------------------------------------------
 
@@ -238,7 +325,7 @@ class ListingIngestionServiceImplTest {
         2, 3, 9, BigDecimal.valueOf(55.5),
         "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
         "Минск", "https://onliner.by/skip1",
-        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null
+        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null, null
     );
 
     // When
@@ -257,7 +344,7 @@ class ListingIngestionServiceImplTest {
         2, 3, 9, BigDecimal.valueOf(55.5),
         "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
         "Минск", "https://onliner.by/skip2",
-        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null
+        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null, null
     );
 
     // When
@@ -276,7 +363,7 @@ class ListingIngestionServiceImplTest {
         2, 3, 9, BigDecimal.valueOf(55.5),
         "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
         "Минск", "https://onliner.by/skip3",
-        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null
+        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null, null
     );
 
     // When
@@ -296,7 +383,7 @@ class ListingIngestionServiceImplTest {
         2, 3, 9, BigDecimal.valueOf(55.5),
         "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
         "Минск", "https://onliner.by/batch-skip",
-        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null
+        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null, null
     );
     var rawValid = buildRawListing("ext-batch-valid", BigDecimal.valueOf(500));
 
@@ -524,7 +611,7 @@ class ListingIngestionServiceImplTest {
         BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
         "Минск", "https://onliner.by/" + externalId,
         Instant.parse("2026-06-01T10:00:00Z"),
-        List.of(), null
+        List.of(), null, null
     );
   }
 

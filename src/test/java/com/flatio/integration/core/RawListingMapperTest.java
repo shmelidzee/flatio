@@ -119,7 +119,7 @@ class RawListingMapperTest {
     // When
     var listing = mapper.toEntity(raw);
 
-    // Then — source, currency, country, status, dedupHash must be set by service
+    // Then — source, currency, country, status, dedupHash, priceUnit must be set by service
     assertThat(listing.getId()).isNull();
     assertThat(listing.getSource()).isNull();
     assertThat(listing.getCurrency()).isNull();
@@ -127,6 +127,7 @@ class RawListingMapperTest {
     assertThat(listing.getStatus()).isNull();
     assertThat(listing.getDedupHash()).isNull();
     assertThat(listing.getPriceUsd()).isNull();
+    assertThat(listing.getPriceUnit()).isNull();
   }
 
   @Test
@@ -136,7 +137,7 @@ class RawListingMapperTest {
         "ext-min", "Title", null, "RENT", null,
         BigDecimal.valueOf(300), "BYN", null,
         null, null, null, null, null, null, null, null,
-        "https://example.com/ext-min", null, List.of(), null
+        "https://example.com/ext-min", null, List.of(), null, null
     );
 
     // When
@@ -181,7 +182,7 @@ class RawListingMapperTest {
         BigDecimal.valueOf(53.9006), BigDecimal.valueOf(27.5590),
         "Минск", "https://onliner.by/1",
         Instant.parse("2026-06-01T10:00:00Z"),
-        List.of("https://photo.com/1.jpg"), null
+        List.of("https://photo.com/1.jpg"), null, null
     );
   }
 }

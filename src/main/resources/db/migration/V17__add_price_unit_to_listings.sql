@@ -1,0 +1,2 @@
+ALTER TABLE listings
+  ADD COLUMN IF NOT EXISTS price_unit VARCHAR(10);

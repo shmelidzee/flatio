@@ -31,5 +31,6 @@ public record RawListing(
     String sourceUrl,
     Instant publishedAt,
     List<String> photoUrls,
-    Boolean isOwner
+    Boolean isOwner,
+    String priceUnit
 ) {}

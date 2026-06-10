@@ -267,7 +267,8 @@ public class OnlinerConnector implements ListingConnector {
         apartment.url(),
         publishedAt,
         photos,
-        isOwner
+        isOwner,
+        null
     );
   }
 

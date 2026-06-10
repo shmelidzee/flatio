@@ -36,6 +36,7 @@ public interface RawListingMapper {
   @Mapping(target = "createdAt", ignore = true)
   @Mapping(target = "updatedAt", ignore = true)
   @Mapping(source = "dealType", target = "dealType")
+  @Mapping(target = "priceUnit", ignore = true)
   Listing toEntity(RawListing raw);
 
   /**
@@ -43,7 +44,8 @@ public interface RawListingMapper {
    *
    * <p>Identity ({@code id}), ownership ({@code source}, {@code country}),
    * financial ({@code currency}), and computed ({@code status}, {@code dedupHash},
-   * {@code missedSyncsCount}) fields are not touched — the caller is responsible for them.
+   * {@code missedSyncsCount}, {@code priceUnit}) fields are not touched — the caller
+   * is responsible for them.
    * {@code priceUsd} is mapped directly from the raw listing.
    *
    * @param raw     updated raw listing data from a connector, must not be null
@@ -62,6 +64,7 @@ public interface RawListingMapper {
   @Mapping(target = "createdAt", ignore = true)
   @Mapping(target = "updatedAt", ignore = true)
   @Mapping(source = "dealType", target = "dealType")
+  @Mapping(target = "priceUnit", ignore = true)
   void updateEntity(RawListing raw, @MappingTarget Listing listing);
 
   /**
