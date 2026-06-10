@@ -54,10 +54,11 @@ com.flatio
 │   ├── currency/        # Currency entity — currency reference data
 │   ├── source/          # Source entity — listing source (site) registry
 │   ├── listing/         # Core listing domain
-│   │   ├── Listing      # Main JPA entity (24 fields, incl. dedup_hash)
+│   │   ├── Listing      # Main JPA entity (27 fields, incl. dedup_hash, repost fields)
 │   │   ├── PriceHistory # Append-only price history entity
-│   │   ├── DealType     # Enum: RENT | SELL
-│   │   └── ListingStatus # Enum: ACTIVE | INACTIVE
+│   │   ├── DealType     # Enum: RENT | RENT_DAILY | SELL
+│   │   ├── ListingStatus # Enum: ACTIVE | INACTIVE | REPOSTED
+│   │   └── PriceUnit    # Enum: PER_MONTH | PER_DAY
 │   └── user/            # User authentication domain
 │       ├── User         # User entity: displayName, email, active, role
 │       ├── UserAuthProvider # Auth provider link: provider enum + externalId
@@ -67,7 +68,7 @@ com.flatio
 │   ├── CountryRepository
 │   ├── CurrencyRepository
 │   ├── SourceRepository
-│   ├── ListingRepository      # findByExternalIdAndSourceId, findByDedupHashAndSourceNot, findByCountryCodeAndStatus, findPageByCountryCodeAndStatus
+│   ├── ListingRepository      # findByExternalIdAndSourceId, findByDedupHashAndSourceNot, findByCountryCodeAndStatus, findPageByCountryCodeAndStatus, findFirstByDedupHashAndSourceAndExternalIdNotAndStatus
 │   ├── PriceHistoryRepository # findByListingOrderByRecordedAtDesc
 │   ├── UserRepository         # findByTelegramId, findByProviderAndExternalId
 │   └── UserAuthProviderRepository
@@ -98,7 +99,7 @@ com.flatio
 │   ├── JwtService       # Token generation and validation (HMAC-SHA256)
 │   ├── JwtAuthenticationFilter # OncePerRequestFilter — extracts Bearer token, populates SecurityContext
 │   ├── JwtProperties    # @ConfigurationProperties(prefix = "flatio.jwt"): secretKey, accessTokenExpiry
-│   └── SecurityConfig   # Spring Security filter chain: stateless, JWT-based
+│   └── SecurityConfig   # Spring Security filter chain: stateless, JWT-based, anyRequest().denyAll() (fail-closed)
 └── util/                # Utilities
 ```
 
@@ -134,16 +135,20 @@ Table: `listings`
 | `country_id` | `BIGINT` FK | NOT NULL | Reference to `country` |
 | `city` | `VARCHAR(100)` | nullable | |
 | `district` | `VARCHAR(100)` | nullable | |
-| `status` | `VARCHAR(10)` | NOT NULL | Default `ACTIVE` |
+| `price_unit` | `VARCHAR(10)` | nullable | `PER_MONTH` or `PER_DAY`; null for `SELL`; derived from `deal_type` on ingest |
+| `status` | `VARCHAR(10)` | NOT NULL | `ACTIVE`, `INACTIVE`, or `REPOSTED` |
 | `source_url` | `VARCHAR(1000)` | NOT NULL | |
 | `dedup_hash` | `VARCHAR(64)` | nullable | SHA-256 of normalised (address, rooms, areaTotalM2, dealType) |
+| `reposted_from` | `BIGINT` FK | nullable | FK to `listings.id` — original listing this is a repost of; `ON DELETE SET NULL` |
+| `last_reposted_at` | `TIMESTAMPTZ` | nullable | Set on the original listing each time a new repost is detected |
 | `published_at` | `TIMESTAMPTZ` | nullable | |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL | Auto-set on insert |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL | Auto-set on update |
 
 Unique constraint: `(external_id, source_id)` — used for deduplication during parsing.
 
-Indexes: `source_id`, `status`, `deal_type`, `price`, `published_at`, `dedup_hash`.
+Indexes: `source_id`, `status`, `deal_type`, `price`, `published_at`, `dedup_hash`,
+`(dedup_hash, source_id) WHERE dedup_hash IS NOT NULL` (partial composite — repost detection).
 
 ### PriceHistory (append-only)
 
@@ -189,6 +194,9 @@ Records are inserted only, never updated or deleted. Used to track price history
 | V14 | `V14__add_listing_missed_syncs_count.sql` | `missed_syncs_count INTEGER` column on `listings` |
 | V15 | `V15__add_listings_search_vector.sql` | FTS `search_vector TSVECTOR` column + GIN index on `listings` |
 | V16 | `V16__add_user_role.sql` | `role VARCHAR(20) NOT NULL DEFAULT 'USER'` column on `users` |
+| V17 | `V17__add_price_unit_to_listings.sql` | `price_unit VARCHAR(10)` column on `listings` |
+| V18 | `V18__add_listing_repost_fields.sql` | `reposted_from BIGINT` + `last_reposted_at TIMESTAMPTZ` columns on `listings`; FK `fk_listing_reposted_from` with `ON DELETE SET NULL` |
+| V19 | `V19__add_index_listings_dedup_hash_source.sql` | Partial composite index `idx_listings_dedup_hash_source` on `(dedup_hash, source_id) WHERE dedup_hash IS NOT NULL` |
 
 Migration files are located in `src/main/resources/db/migration/`.
 Never edit an existing migration file — always create a new one.
@@ -269,6 +277,37 @@ or "unknown", the constraint is documented and escalated to the product owner.
 
 ---
 
+## Security
+
+JWT-based stateless authentication via Spring Security. Sessions are disabled.
+
+### Access rules
+
+| Path | Access |
+|------|--------|
+| `/api/v1/admin/**` | `ADMIN` role required |
+| `/api/v1/**` | Any authenticated user |
+| `/swagger-ui/**`, `/v3/api-docs/**`, `/actuator/health/**`, `/actuator/info` | Public |
+| Everything else | Denied — HTTP 403 (fail-closed) |
+
+`anyRequest().denyAll()` ensures no route is accidentally left open.
+
+### CORS
+
+Allowed origins are configured via `flatio.cors.allowed-origins`
+(environment variable: `CORS_ALLOWED_ORIGINS`). Accepts a comma-separated list.
+Defaults to `http://localhost:3000`. Wildcard `*` is never accepted.
+
+### Environment variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `JWT_SECRET_KEY` | HMAC-SHA256 signing key — **required**, no default | — |
+| `JWT_ACCESS_TOKEN_EXPIRY` | Access token lifetime in seconds | `3600` |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated list of allowed CORS origins | `http://localhost:3000` |
+
+---
+
 ## REST API Conventions
 
 - Base path: `/api/v1/`
@@ -276,4 +315,4 @@ or "unknown", the constraint is documented and escalated to the product owner.
 - Swagger UI: `/swagger-ui.html`
 - OpenAPI spec: `/v3/api-docs`
 
-See `docs/api.md` for endpoint reference (to be created).
+See `docs/api.md` for endpoint reference.

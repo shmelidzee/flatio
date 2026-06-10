@@ -7,6 +7,47 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **PR #131 — Поле `price_unit` в `Listing` (issue #90)**
+  - `com.flatio.domain.listing.PriceUnit` — новый enum: `PER_MONTH` | `PER_DAY`
+  - `Listing.priceUnit` — новое поле `@Enumerated(EnumType.STRING)`, nullable; автоматически
+    выводится из `dealType` при инжесте: `RENT`→`PER_MONTH`, `RENT_DAILY`→`PER_DAY`, `SELL`→`null`
+  - `ListingResponse.priceUnit` — поле добавлено в DTO с `@Schema(nullable = true)`
+  - `RawListing.priceUnit` — поле-расширение для будущих коннекторов (Realt, Kufar);
+    Javadoc документирует что `OnlinerConnector` поле не заполняет — значение всегда выводится из `dealType`
+  - Flyway V17 — `ALTER TABLE listings ADD COLUMN IF NOT EXISTS price_unit VARCHAR(10)`
+  - `ListingIngestionServiceImpl.derivePriceUnit(DealType)` — приватный метод вывода единицы цены
+
+- **PR #134 — Детектирование повторных объявлений REPOSTED (issue #44)**
+  - `ListingStatus.REPOSTED` — новый статус для объявлений, признанных репостами
+  - `Listing.repostedFrom` — новое nullable поле `BIGINT`; ссылка на `id` оригинального объявления
+  - `Listing.lastRepostedAt` — новое nullable поле `TIMESTAMPTZ`; проставляется на оригинале
+    при каждом обнаружении нового репоста
+  - `ListingRepository.findFirstByDedupHashAndSourceAndExternalIdNotAndStatus(...)` — новый метод
+    для поиска оригинала внутри одного источника по хэшу дедупликации
+  - `ListingIngestionServiceImpl.detectRepost(Listing, Source)` — логика детектирования:
+    при совпадении `dedupHash` у нового объявления статус устанавливается `REPOSTED`,
+    заполняется `repostedFrom`; у оригинала обновляется `lastRepostedAt`
+  - Flyway V18 — два новых столбца `reposted_from BIGINT` и `last_reposted_at TIMESTAMPTZ`
+    + FK constraint `fk_listing_reposted_from` с `ON DELETE SET NULL`
+  - Flyway V19 — составной частичный индекс `idx_listings_dedup_hash_source`
+    на `(dedup_hash, source_id) WHERE dedup_hash IS NOT NULL`
+
+### Security
+- **PR #133 — Ужесточение Spring Security + CORS из env (issues #128, #129, #132)**
+  - `SecurityConfig` — добавлен `anyRequest().denyAll()`: все маршруты, не объявленные явно,
+    возвращают HTTP 403 (fail-closed политика)
+  - `SecurityConfig.corsConfigurationSource()` — CORS origins теперь читаются из
+    `flatio.cors.allowed-origins` (env: `CORS_ALLOWED_ORIGINS`); поддерживается
+    comma-separated список; wildcard `*` не принимается; default `http://localhost:3000`
+  - `application.yml` — добавлено `flatio.cors.allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}`
+  - `RawListing.priceUnit` — добавлен Javadoc: поясняет что поле является точкой расширения
+    для будущих коннекторов; `OnlinerConnector` его не заполняет
+
+### Added
+- **PR #130 — Документация Telegram /start (docs/post-pr-127)**
+  - Обновлена документация после merge PR #127 (Telegram /start, issue #27)
+
 ### Security
 - **PR #127 — ADMIN роль и Spring Security с JWT (issue #32)**
   - `com.flatio.security.JwtService` — генерация и валидация JWT токенов (HMAC-SHA256);
