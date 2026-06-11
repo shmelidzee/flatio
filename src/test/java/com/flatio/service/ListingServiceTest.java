@@ -21,6 +21,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -28,6 +29,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 
 import org.springframework.test.util.ReflectionTestUtils;
@@ -355,6 +357,44 @@ class ListingServiceTest {
     verify(listingRepository).fullTextSearch(
         any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(Boolean.TRUE), any()
     );
+  }
+
+  // -------------------------------------------------------------------------
+  // toNativePageable — sort field conversion and injection guard
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_convert_camel_case_sort_to_snake_case_for_fts_native_query() {
+    // Given — sort by Java field name "createdAt" (camelCase)
+    var pageableWithCamelSort = PageRequest.of(0, 5, Sort.by(Sort.Direction.DESC, "createdAt"));
+    Page<Listing> emptyPage = Page.empty();
+    when(listingRepository.fullTextSearch(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+        .thenReturn(emptyPage);
+
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, "квартира", null);
+
+    // When
+    listingService.search(criteria, pageableWithCamelSort);
+
+    // Then — fullTextSearch receives snake_case "created_at", not camelCase "createdAt"
+    var pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+    verify(listingRepository).fullTextSearch(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), pageableCaptor.capture());
+
+    Sort.Order capturedOrder = pageableCaptor.getValue().getSort().getOrderFor("created_at");
+    assertThat(capturedOrder).isNotNull();
+    assertThat(capturedOrder.getDirection()).isEqualTo(Sort.Direction.DESC);
+  }
+
+  @Test
+  void should_throw_when_fts_sort_field_is_not_in_allowed_list() {
+    // Given — attempt to sort by a field not in the whitelist
+    var maliciousPageable = PageRequest.of(0, 5, Sort.by("title;DROP TABLE listings;--"));
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, "квартира", null);
+
+    // When / Then — rejected before reaching the repository
+    assertThatThrownBy(() -> listingService.search(criteria, maliciousPageable))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("not allowed");
   }
 
   @Test

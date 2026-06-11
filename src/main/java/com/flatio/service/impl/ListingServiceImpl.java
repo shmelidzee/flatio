@@ -16,6 +16,7 @@ import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -32,6 +33,11 @@ import org.springframework.transaction.annotation.Transactional;
 @Slf4j
 @RequiredArgsConstructor
 public class ListingServiceImpl implements ListingService {
+
+  private static final Set<String> ALLOWED_NATIVE_SORT_COLUMNS = Set.of(
+      "id", "price", "price_usd", "rooms", "area_total_m2",
+      "created_at", "updated_at", "published_at"
+  );
 
   @Value("${flatio.search.fts-language:russian}")
   private String ftsLanguage;
@@ -83,7 +89,8 @@ public class ListingServiceImpl implements ListingService {
   }
 
   /**
-   * Converts a Pageable's sort from Java camelCase field names to SQL snake_case column names.
+   * Converts a Pageable's sort from Java camelCase field names to SQL snake_case column names,
+   * validating each column against an explicit allowlist to prevent ORDER BY injection.
    *
    * <p>Spring Data JPA does not apply the physical naming strategy to ORDER BY clauses in native
    * queries — sort properties are appended literally, so {@code createdAt} becomes
@@ -92,6 +99,7 @@ public class ListingServiceImpl implements ListingService {
    *
    * @param pageable the original pageable, never null
    * @return pageable with sort properties converted to snake_case
+   * @throws IllegalArgumentException if a sort property is not in {@link #ALLOWED_NATIVE_SORT_COLUMNS}
    */
   private static Pageable toNativePageable(Pageable pageable) {
     if (!pageable.getSort().isSorted()) {
@@ -99,7 +107,14 @@ public class ListingServiceImpl implements ListingService {
     }
     Sort nativeSort = Sort.by(
         pageable.getSort().stream()
-            .map(order -> order.withProperty(camelToSnake(order.getProperty())))
+            .map(order -> {
+              String column = camelToSnake(order.getProperty());
+              if (!ALLOWED_NATIVE_SORT_COLUMNS.contains(column)) {
+                throw new IllegalArgumentException(
+                    "Sort by '" + order.getProperty() + "' is not allowed in native queries");
+              }
+              return order.withProperty(column);
+            })
             .toList()
     );
     return PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), nativeSort);
