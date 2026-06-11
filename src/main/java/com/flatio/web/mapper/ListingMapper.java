@@ -33,15 +33,12 @@ public interface ListingMapper {
   /**
    * Converts a Listing entity to a summary response DTO for list displays.
    *
-   * <p>The {@code photoUrl} field is not populated by this mapper; photo retrieval
-   * requires a separate query and is handled by the calling service.
-   *
    * @param listing the listing entity, must not be null
    * @return summary listing response DTO, never null
    */
   @Mapping(source = "source.code", target = "sourceId")
   @Mapping(source = "currency.code", target = "currency")
-  @Mapping(target = "photoUrl", ignore = true)
+  @Mapping(source = "photoUrl", target = "photoUrl")
   @Mapping(source = "priceUsd", target = "priceUsd")
   @Mapping(source = "propertyType", target = "propertyType")
   ListingSummaryResponse toSummaryResponse(Listing listing);

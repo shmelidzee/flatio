@@ -39,6 +39,7 @@ public interface RawListingMapper {
   @Mapping(target = "priceUnit", ignore = true)
   @Mapping(target = "repostedFrom", ignore = true)
   @Mapping(target = "lastRepostedAt", ignore = true)
+  @Mapping(target = "photoUrl", expression = "java(extractFirstPhotoUrl(raw))")
   Listing toEntity(RawListing raw);
 
   /**
@@ -69,7 +70,18 @@ public interface RawListingMapper {
   @Mapping(target = "priceUnit", ignore = true)
   @Mapping(target = "repostedFrom", ignore = true)
   @Mapping(target = "lastRepostedAt", ignore = true)
+  @Mapping(target = "photoUrl", expression = "java(extractFirstPhotoUrl(raw))")
   void updateEntity(RawListing raw, @MappingTarget Listing listing);
+
+  /**
+   * Returns the first photo URL from the raw listing's photo list, or null if none available.
+   *
+   * @param raw the raw listing, must not be null
+   * @return first photo URL, or null
+   */
+  default String extractFirstPhotoUrl(RawListing raw) {
+    return raw.photoUrls() != null && !raw.photoUrls().isEmpty() ? raw.photoUrls().get(0) : null;
+  }
 
   /**
    * Converts a deal type string from a connector to the {@link DealType} enum.

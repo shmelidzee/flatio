@@ -203,7 +203,8 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
                  l.area_kitchen_m2, l.address, l.latitude, l.longitude, l.country_id,
                  l.city, l.district, l.status, l.source_url, l.dedup_hash,
                  l.is_owner, l.reposted_from, l.last_reposted_at,
-                 l.missed_syncs_count, l.published_at, l.created_at, l.updated_at
+                 l.missed_syncs_count, l.published_at, l.created_at, l.updated_at,
+                 l.photo_url
           FROM listings l
           WHERE l.search_vector @@ websearch_to_tsquery(CAST(:ftsLanguage AS regconfig), :query)
             AND l.status = :status
