@@ -161,8 +161,7 @@ public class SearchResultSender {
   private void sendCard(String chatId, ListingSummaryResponse listing) {
     String caption = listingFormatter.buildCaption(listing);
     var keyboard = listingFormatter.buildKeyboard(listing.sourceUrl());
-    String photoUrl = listing.photoUrl() != null && !listing.photoUrl().isBlank()
-        ? listing.photoUrl() : noPhotoUrl;
+    String photoUrl = resolvePhotoUrl(listing);
 
     try {
       telegramClient.execute(SendPhoto.builder()
@@ -176,6 +175,17 @@ public class SearchResultSender {
       log.warn("Failed to send photo card, falling back to text: listingId={}, url={}", listing.id(), photoUrl, e);
       sendTextCard(chatId, caption, keyboard);
     }
+  }
+
+  private String resolvePhotoUrl(ListingSummaryResponse listing) {
+    String url = listing.photoUrl();
+    if (url != null && (url.startsWith("http://") || url.startsWith("https://"))) {
+      return url;
+    }
+    if (url != null && !url.isBlank()) {
+      log.debug("Invalid photo url, using placeholder: listingId={}, url={}", listing.id(), url);
+    }
+    return noPhotoUrl;
   }
 
   private void sendTextCard(String chatId, String caption, InlineKeyboardMarkup keyboard) {

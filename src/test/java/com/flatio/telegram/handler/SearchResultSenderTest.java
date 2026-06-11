@@ -192,6 +192,79 @@ class SearchResultSenderTest {
   }
 
   // -------------------------------------------------------------------------
+  // photo URL validation — invalid schema fallback to placeholder
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_use_placeholder_when_photo_url_has_no_http_schema() throws TelegramApiException {
+    // Given — listing with a short invalid URL "g" (seen in production: url=g causes [400] Wrong string length)
+    var listing = buildListing(10L, "g", "https://realt.by/10");
+    when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
+    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingFormatter.buildCaption(listing)).thenReturn("caption");
+    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    lenient().when(telegramClient.execute(any(EditMessageText.class))).thenReturn(mock());
+    // Simulate Telegram API rejecting the invalid URL "g"
+    when(telegramClient.execute(any(SendPhoto.class))).thenAnswer(invocation -> {
+      SendPhoto photo = invocation.getArgument(0);
+      if ("g".equals(photo.getPhoto().getAttachName())) {
+        throw new TelegramApiException("[400] Wrong string length");
+      }
+      return null;
+    });
+
+    // When
+    searchResultSender.handle(buildCallback(1L, 100L, 10));
+
+    // Then — no text card fallback: 1 SendMessage for navigation only (placeholder URL was used)
+    verify(telegramClient).execute(any(SendPhoto.class));
+    verify(telegramClient).execute(any(SendMessage.class));
+  }
+
+  @Test
+  void should_use_placeholder_when_photo_url_has_javascript_schema() throws TelegramApiException {
+    // Given
+    var listing = buildListing(11L, "javascript:void(0)", "https://realt.by/11");
+    when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
+    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingFormatter.buildCaption(listing)).thenReturn("caption");
+    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    lenient().when(telegramClient.execute(any(EditMessageText.class))).thenReturn(mock());
+    // Simulate Telegram API rejecting "javascript:void(0)"
+    when(telegramClient.execute(any(SendPhoto.class))).thenAnswer(invocation -> {
+      SendPhoto photo = invocation.getArgument(0);
+      if ("javascript:void(0)".equals(photo.getPhoto().getAttachName())) {
+        throw new TelegramApiException("[400] Wrong string length");
+      }
+      return null;
+    });
+
+    // When
+    searchResultSender.handle(buildCallback(1L, 100L, 10));
+
+    // Then — placeholder was used, no text card fallback
+    verify(telegramClient).execute(any(SendPhoto.class));
+    verify(telegramClient).execute(any(SendMessage.class));
+  }
+
+  @Test
+  void should_use_placeholder_when_photo_url_is_blank_with_spaces() throws TelegramApiException {
+    // Given — listing with a whitespace-only URL
+    var listing = buildListing(12L, "   ", "https://realt.by/12");
+    when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
+    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingFormatter.buildCaption(listing)).thenReturn("caption");
+    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+
+    // When
+    searchResultSender.handle(buildCallback(1L, 100L, 10));
+
+    // Then — photo card sent with placeholder, no text card fallback
+    verify(telegramClient).execute(any(SendPhoto.class));
+    verify(telegramClient).execute(any(SendMessage.class));
+  }
+
+  // -------------------------------------------------------------------------
   // helpers
   // -------------------------------------------------------------------------
 
