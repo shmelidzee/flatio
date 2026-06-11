@@ -50,6 +50,7 @@ public class OnlinerConnector implements ListingConnector {
   private static final String PROPERTY_TYPE_APARTMENT = "APARTMENT";
   private static final String PROPERTY_TYPE_ROOM = "ROOM";
   private static final String IMGPROXY_ONLINER_HOST = "imgproxy.onliner.by";
+  private static final int BASE64_BLOCK_SIZE = 4;
 
   /**
    * Maps Onliner {@code rent_type} to room count.
@@ -341,8 +342,8 @@ public class OnlinerConnector implements ListingConnector {
       }
       String base64 = base64Builder.toString();
 
-      // Add padding if needed — base64 length must be a multiple of 4
-      int padLen = (4 - base64.length() % 4) % 4;
+      // Add padding if needed — base64 length must be a multiple of BASE64_BLOCK_SIZE
+      int padLen = (BASE64_BLOCK_SIZE - base64.length() % BASE64_BLOCK_SIZE) % BASE64_BLOCK_SIZE;
       base64 = base64 + "=".repeat(padLen);
 
       byte[] decoded = Base64.getUrlDecoder().decode(base64);
