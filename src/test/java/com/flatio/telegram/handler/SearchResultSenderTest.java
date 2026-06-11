@@ -17,6 +17,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
@@ -57,9 +58,13 @@ class SearchResultSenderTest {
 
   private SearchFilterState defaultState;
 
+  private static final String TEST_NO_PHOTO_URL = "https://placeholder.test/no-photo.png";
+
   @BeforeEach
   void setUp() {
     defaultState = new SearchFilterState();
+    // @Value is not injected by Mockito — set the placeholder URL explicitly
+    ReflectionTestUtils.setField(searchResultSender, "noPhotoUrl", TEST_NO_PHOTO_URL);
   }
 
   // -------------------------------------------------------------------------
@@ -67,7 +72,7 @@ class SearchResultSenderTest {
   // -------------------------------------------------------------------------
 
   @Test
-  void should_send_text_message_when_no_photo_url() throws TelegramApiException {
+  void should_send_photo_with_placeholder_when_no_photo_url() throws TelegramApiException {
     // Given
     var listing = buildListing(1L, null, "https://realt.by/1");
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
@@ -78,9 +83,9 @@ class SearchResultSenderTest {
     // When
     searchResultSender.handle(buildCallback(1L, 100L, 10));
 
-    // Then — 2 SendMessage calls: 1 text card + 1 navigation message
-    verify(telegramClient, times(2)).execute(any(SendMessage.class));
-    verify(telegramClient, never()).execute(any(SendPhoto.class));
+    // Then — SendPhoto for the card (placeholder URL), SendMessage for navigation only
+    verify(telegramClient).execute(any(SendPhoto.class));
+    verify(telegramClient).execute(any(SendMessage.class));
   }
 
   @Test
@@ -150,9 +155,10 @@ class SearchResultSenderTest {
     // When
     searchResultSender.handle(buildCallback(1L, 100L, 10));
 
-    // Then — EditMessageText once (searching indicator), SendMessage twice (card + navigation)
+    // Then — EditMessageText once (searching indicator), SendPhoto for card (placeholder), SendMessage for navigation
     verify(telegramClient).execute(any(EditMessageText.class));
-    verify(telegramClient, times(2)).execute(any(SendMessage.class));
+    verify(telegramClient).execute(any(SendPhoto.class));
+    verify(telegramClient).execute(any(SendMessage.class));
   }
 
   // -------------------------------------------------------------------------
@@ -161,7 +167,7 @@ class SearchResultSenderTest {
 
   @Test
   void should_not_throw_when_telegram_api_fails_for_one_card() throws TelegramApiException {
-    // Given — three listings, telegram throws on the first send
+    // Given — three listings, telegram throws on first SendPhoto (card 1), succeeds for the rest
     var listing1 = buildListing(4L, null, "https://realt.by/4");
     var listing2 = buildListing(5L, null, "https://realt.by/5");
     var listing3 = buildListing(6L, null, "https://realt.by/6");
@@ -169,9 +175,8 @@ class SearchResultSenderTest {
     when(listingService.search(any(), any())).thenReturn(pageOf(listing1, listing2, listing3));
     when(listingFormatter.buildCaption(any())).thenReturn("caption");
     when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
-    // lenient: editMessage also calls execute(), but we only need to stub SendMessage
     lenient().when(telegramClient.execute(any(EditMessageText.class))).thenReturn(mock());
-    when(telegramClient.execute(any(SendMessage.class)))
+    when(telegramClient.execute(any(SendPhoto.class)))
         .thenThrow(new TelegramApiException("Telegram error"))
         .thenReturn(mock())
         .thenReturn(mock());
@@ -181,8 +186,9 @@ class SearchResultSenderTest {
         () -> searchResultSender.handle(buildCallback(1L, 100L, 10))
     );
 
-    // And remaining cards are still attempted (3 cards + 1 navigation = 4 SendMessage calls total)
-    verify(telegramClient, times(4)).execute(any(SendMessage.class));
+    // 3 SendPhoto attempts (1 failed + 2 succeeded); 2 SendMessage: 1 text fallback + 1 navigation
+    verify(telegramClient, times(3)).execute(any(SendPhoto.class));
+    verify(telegramClient, times(2)).execute(any(SendMessage.class));
   }
 
   // -------------------------------------------------------------------------

@@ -116,6 +116,9 @@ public class Listing {
   @Column(name = "source_url", nullable = false, length = 1000)
   private String sourceUrl;
 
+  @Column(name = "photo_url", length = 1000)
+  private String photoUrl;
+
   @Column(name = "dedup_hash", length = 64)
   private String dedupHash;
 

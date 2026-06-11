@@ -39,6 +39,7 @@ public interface RawListingMapper {
   @Mapping(target = "priceUnit", ignore = true)
   @Mapping(target = "repostedFrom", ignore = true)
   @Mapping(target = "lastRepostedAt", ignore = true)
+  @Mapping(target = "photoUrl", expression = "java(raw.photoUrls() != null && !raw.photoUrls().isEmpty() ? raw.photoUrls().get(0) : null)")
   Listing toEntity(RawListing raw);
 
   /**
@@ -69,6 +70,7 @@ public interface RawListingMapper {
   @Mapping(target = "priceUnit", ignore = true)
   @Mapping(target = "repostedFrom", ignore = true)
   @Mapping(target = "lastRepostedAt", ignore = true)
+  @Mapping(target = "photoUrl", expression = "java(raw.photoUrls() != null && !raw.photoUrls().isEmpty() ? raw.photoUrls().get(0) : null)")
   void updateEntity(RawListing raw, @MappingTarget Listing listing);
 
   /**

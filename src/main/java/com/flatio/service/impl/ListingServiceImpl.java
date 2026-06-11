@@ -20,7 +20,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -76,8 +78,35 @@ public class ListingServiceImpl implements ListingService {
         criteria.sourceId(),
         criteria.propertyType(),
         Boolean.TRUE.equals(criteria.ownerOnly()) ? Boolean.TRUE : null,
-        pageable
+        toNativePageable(pageable)
     ).map(listingMapper::toSummaryResponse);
+  }
+
+  /**
+   * Converts a Pageable's sort from Java camelCase field names to SQL snake_case column names.
+   *
+   * <p>Spring Data JPA does not apply the physical naming strategy to ORDER BY clauses in native
+   * queries — sort properties are appended literally, so {@code createdAt} becomes
+   * {@code createdat} in PostgreSQL (case-insensitive) which does not match {@code created_at}.
+   * This method must be used whenever a Pageable is passed to a {@code nativeQuery = true} method.
+   *
+   * @param pageable the original pageable, never null
+   * @return pageable with sort properties converted to snake_case
+   */
+  private static Pageable toNativePageable(Pageable pageable) {
+    if (!pageable.getSort().isSorted()) {
+      return pageable;
+    }
+    Sort nativeSort = Sort.by(
+        pageable.getSort().stream()
+            .map(order -> order.withProperty(camelToSnake(order.getProperty())))
+            .toList()
+    );
+    return PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), nativeSort);
+  }
+
+  private static String camelToSnake(String camelCase) {
+    return camelCase.replaceAll("([a-z])([A-Z])", "$1_$2").toLowerCase();
   }
 
   private Specification<Listing> buildSearchSpec(ListingSearchCriteria criteria) {

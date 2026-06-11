@@ -1,0 +1,1 @@
+ALTER TABLE listings ADD COLUMN photo_url VARCHAR(1000);

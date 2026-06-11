@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
@@ -38,9 +39,10 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
  * Per-user {@link SearchSession} objects track the active criteria and current page.
  * Sessions expire after {@value #SESSION_TTL_MINUTES} minutes of inactivity.
  *
- * <p>Photo cards are sent via {@code sendPhoto}. If the photo URL is absent or
- * the Telegram API rejects it, the card falls back to a text message prefixed
- * with {@value #NO_PHOTO_TEXT} so the user always receives the listing details.
+ * <p>Photo cards are sent via {@code sendPhoto}. When the listing has no photo URL a
+ * configurable placeholder image ({@code telegram.bot.no-photo-url}) is used instead.
+ * If the Telegram API rejects both the real URL and the placeholder, the card falls back
+ * to a plain text message so the user always receives the listing details.
  */
 @Component
 @Slf4j
@@ -65,7 +67,9 @@ public class SearchResultSender {
       "Пожалуйста, сначала настройте фильтры поиска.";
   private static final String SESSION_EXPIRED_TEXT =
       "Поиск устарел. Начните новый поиск.";
-  private static final String NO_PHOTO_TEXT = "📷 Фото не добавлено";
+
+  @Value("${telegram.bot.no-photo-url:https://placehold.co/800x600/e2e8f0/94a3b8.png}")
+  private String noPhotoUrl;
 
   private final SearchFilterWizard wizard;
   private final ListingService listingService;
@@ -157,31 +161,28 @@ public class SearchResultSender {
   private void sendCard(String chatId, ListingSummaryResponse listing) {
     String caption = listingFormatter.buildCaption(listing);
     var keyboard = listingFormatter.buildKeyboard(listing.sourceUrl());
-    String photoUrl = listing.photoUrl();
+    String photoUrl = listing.photoUrl() != null && !listing.photoUrl().isBlank()
+        ? listing.photoUrl() : noPhotoUrl;
 
-    if (photoUrl != null && !photoUrl.isBlank()) {
-      try {
-        telegramClient.execute(SendPhoto.builder()
-            .chatId(chatId)
-            .photo(new InputFile(photoUrl))
-            .caption(caption)
-            .parseMode("HTML")
-            .replyMarkup(keyboard)
-            .build());
-        return;
-      } catch (TelegramApiException e) {
-        log.warn("Photo unavailable, falling back to text card: listingId={}, url={}", listing.id(), photoUrl, e);
-      }
+    try {
+      telegramClient.execute(SendPhoto.builder()
+          .chatId(chatId)
+          .photo(new InputFile(photoUrl))
+          .caption(caption)
+          .parseMode("HTML")
+          .replyMarkup(keyboard)
+          .build());
+    } catch (TelegramApiException e) {
+      log.warn("Failed to send photo card, falling back to text: listingId={}, url={}", listing.id(), photoUrl, e);
+      sendTextCard(chatId, caption, keyboard);
     }
-    sendTextCard(chatId, caption, keyboard);
   }
 
   private void sendTextCard(String chatId, String caption, InlineKeyboardMarkup keyboard) {
-    String text = NO_PHOTO_TEXT + "\n\n" + caption;
     try {
       telegramClient.execute(SendMessage.builder()
           .chatId(chatId)
-          .text(text)
+          .text(caption)
           .parseMode("HTML")
           .replyMarkup(keyboard)
           .build());
