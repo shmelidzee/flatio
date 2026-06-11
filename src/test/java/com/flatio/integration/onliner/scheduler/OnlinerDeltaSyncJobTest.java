@@ -171,6 +171,18 @@ class OnlinerDeltaSyncJobTest {
   }
 
   @Test
+  void should_not_propagate_exception_when_db_unavailable_during_ingest() {
+    // Given — ingestBatch throws DataAccessException (DB down)
+    var raw = buildRawListing("ext-db-err");
+    when(onlinerConnector.fetchDelta(any())).thenReturn(List.of(raw));
+    when(listingIngestionService.ingestBatch(any(), eq(source)))
+        .thenThrow(new org.springframework.dao.DataAccessResourceFailureException("DB connection lost"));
+
+    // When / Then — DataAccessException must not propagate; job absorbs it gracefully
+    assertThatNoException().isThrownBy(() -> deltaSyncJob.runDeltaSync());
+  }
+
+  @Test
   void should_not_update_cursor_when_fetch_throws() {
     // Given — first call throws, second call returns empty; both must receive EPOCH
     doThrow(new RuntimeException("Timeout"))

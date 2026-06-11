@@ -113,7 +113,7 @@ public class ListingFormatter {
    * @param listing the listing to build a title for, never null
    * @return display title, never null
    */
-  String buildTitle(ListingSummaryResponse listing) {
+  private String buildTitle(ListingSummaryResponse listing) {
     String prefix = buildRoomTypePrefix(listing.rooms(), listing.propertyType());
     if (prefix.isEmpty()) {
       return listing.title();
@@ -173,7 +173,7 @@ public class ListingFormatter {
    * @param priceUsd original USD price, null if not applicable
    * @return formatted HTML price string, never null
    */
-  String formatPrice(BigDecimal price, String currency, BigDecimal priceUsd) {
+  private String formatPrice(BigDecimal price, String currency, BigDecimal priceUsd) {
     if (priceUsd != null) {
       return "<b>$" + formatNumber(priceUsd) + " (" + formatNumber(price) + " BYN)</b>";
     }

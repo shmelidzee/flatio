@@ -203,6 +203,7 @@ class ListingServiceTest {
         isNull(),
         isNull(),
         isNull(),
+        isNull(),
         eq(pageable)
     )).thenReturn(page);
     when(listingMapper.toSummaryResponse(listing)).thenReturn(summary);
@@ -218,6 +219,7 @@ class ListingServiceTest {
         eq("двухкомнатная квартира"),
         eq("russian"),
         eq("ACTIVE"),
+        isNull(),
         isNull(),
         isNull(),
         isNull(),
@@ -245,7 +247,7 @@ class ListingServiceTest {
 
     // Then
     verify(listingRepository).findAll(any(Specification.class), eq(pageable));
-    verify(listingRepository, never()).fullTextSearch(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+    verify(listingRepository, never()).fullTextSearch(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
   }
 
   @Test
@@ -263,7 +265,7 @@ class ListingServiceTest {
 
     // Then
     verify(listingRepository).findAll(any(Specification.class), eq(pageable));
-    verify(listingRepository, never()).fullTextSearch(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+    verify(listingRepository, never()).fullTextSearch(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
   }
 
   @Test
@@ -273,7 +275,7 @@ class ListingServiceTest {
     Page<Listing> emptyPage = new PageImpl<>(Collections.emptyList(), pageable, 0);
 
     when(listingRepository.fullTextSearch(
-        any(), any(), eq("ACTIVE"), any(), any(), any(), any(), any(), any(), any(), any()
+        any(), any(), eq("ACTIVE"), any(), any(), any(), any(), any(), any(), any(), any(), any()
     )).thenReturn(emptyPage);
 
     // criteria.status() == null → effectiveStatus должен стать ACTIVE
@@ -284,7 +286,7 @@ class ListingServiceTest {
 
     // Then
     verify(listingRepository).fullTextSearch(
-        any(), any(), eq("ACTIVE"), any(), any(), any(), any(), any(), any(), any(), any()
+        any(), any(), eq("ACTIVE"), any(), any(), any(), any(), any(), any(), any(), any(), any()
     );
   }
 
@@ -305,6 +307,7 @@ class ListingServiceTest {
         eq("%минск%"),
         eq("onliner"),
         eq("APARTMENT"),
+        isNull(),
         eq(pageable)
     )).thenReturn(emptyPage);
 
@@ -328,7 +331,29 @@ class ListingServiceTest {
         eq("%минск%"),
         eq("onliner"),
         eq("APARTMENT"),
+        isNull(),
         eq(pageable)
+    );
+  }
+
+  @Test
+  void should_pass_owner_only_true_to_fts_when_set_in_criteria() {
+    // Given — ownerOnly filter must be forwarded to FTS query (#147)
+    var pageable = PageRequest.of(0, 20);
+    Page<Listing> emptyPage = new PageImpl<>(Collections.emptyList(), pageable, 0);
+
+    when(listingRepository.fullTextSearch(
+        any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(Boolean.TRUE), any()
+    )).thenReturn(emptyPage);
+
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, "квартира", Boolean.TRUE);
+
+    // When
+    listingService.search(criteria, pageable);
+
+    // Then — ownerOnly=true passed as non-null to fullTextSearch
+    verify(listingRepository).fullTextSearch(
+        any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(Boolean.TRUE), any()
     );
   }
 
@@ -339,7 +364,7 @@ class ListingServiceTest {
     Page<Listing> emptyPage = new PageImpl<>(Collections.emptyList(), pageable, 0);
 
     when(listingRepository.fullTextSearch(
-        any(), any(), any(), any(), any(), any(), any(), eq("%минск%"), any(), any(), any()
+        any(), any(), any(), any(), any(), any(), any(), eq("%минск%"), any(), any(), any(), any()
     )).thenReturn(emptyPage);
 
     var criteria = new ListingSearchCriteria(null, null, null, "Минск", null, null, null, null, "квартира", null);
@@ -349,7 +374,7 @@ class ListingServiceTest {
 
     // Then
     verify(listingRepository).fullTextSearch(
-        any(), any(), any(), any(), any(), any(), any(), eq("%минск%"), any(), any(), any()
+        any(), any(), any(), any(), any(), any(), any(), eq("%минск%"), any(), any(), any(), any()
     );
   }
 

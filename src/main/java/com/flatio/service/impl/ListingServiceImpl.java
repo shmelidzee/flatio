@@ -75,6 +75,7 @@ public class ListingServiceImpl implements ListingService {
         cityPattern,
         criteria.sourceId(),
         criteria.propertyType(),
+        Boolean.TRUE.equals(criteria.ownerOnly()) ? Boolean.TRUE : null,
         pageable
     ).map(listingMapper::toSummaryResponse);
   }

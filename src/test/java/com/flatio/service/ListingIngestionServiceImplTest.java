@@ -362,6 +362,85 @@ class ListingIngestionServiceImplTest {
     verify(priceHistoryRepository, never()).save(any());
   }
 
+  // -------------------------------------------------------------------------
+  // isPriceChanged — USD source price comparison (#139)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_not_record_price_history_when_usd_price_unchanged_despite_byn_change() {
+    // Given — seller kept USD price = $500; BYN equivalent changed due to exchange rate
+    var raw = new RawListing(
+        "ext-usd-1", "Test apartment", null, "RENT", "APARTMENT",
+        BigDecimal.valueOf(1650), "BYN", BigDecimal.valueOf(500),
+        2, 3, 9, BigDecimal.valueOf(55.5),
+        "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
+        "Минск", "https://onliner.by/usd-1",
+        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null, null
+    );
+    var existing = buildExistingListing("ext-usd-1", BigDecimal.valueOf(1600));
+    existing.setPriceUsd(BigDecimal.valueOf(500)); // same USD price
+
+    when(currencyRepository.findByCode("BYN")).thenReturn(Optional.of(byn));
+    when(listingRepository.findByExternalIdAndSourceId("ext-usd-1", 1L)).thenReturn(Optional.of(existing));
+    when(dedupHashService.computeDedupHash(any(), any(), any(), any())).thenReturn("hash-usd-1");
+
+    // When
+    ingestionService.ingest(raw, source);
+
+    // Then — USD unchanged → no false price_history
+    verify(priceHistoryRepository, never()).save(any());
+  }
+
+  @Test
+  void should_record_price_history_when_usd_price_actually_changed() {
+    // Given — seller reduced USD price from $500 to $450
+    var raw = new RawListing(
+        "ext-usd-2", "Test apartment", null, "RENT", "APARTMENT",
+        BigDecimal.valueOf(1440), "BYN", BigDecimal.valueOf(450),
+        2, 3, 9, BigDecimal.valueOf(55.5),
+        "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
+        "Минск", "https://onliner.by/usd-2",
+        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null, null
+    );
+    var existing = buildExistingListing("ext-usd-2", BigDecimal.valueOf(1600));
+    existing.setPriceUsd(BigDecimal.valueOf(500)); // old USD price
+
+    when(currencyRepository.findByCode("BYN")).thenReturn(Optional.of(byn));
+    when(listingRepository.findByExternalIdAndSourceId("ext-usd-2", 1L)).thenReturn(Optional.of(existing));
+    when(dedupHashService.computeDedupHash(any(), any(), any(), any())).thenReturn("hash-usd-2");
+
+    // When
+    ingestionService.ingest(raw, source);
+
+    // Then — USD changed → price_history is recorded
+    verify(priceHistoryRepository).save(any(PriceHistory.class));
+  }
+
+  @Test
+  void should_fall_back_to_byn_comparison_when_existing_has_no_usd_price() {
+    // Given — raw has priceUsd but existing doesn't → fall back to BYN comparison; BYN unchanged
+    var raw = new RawListing(
+        "ext-usd-3", "Test apartment", null, "RENT", "APARTMENT",
+        BigDecimal.valueOf(1600), "BYN", BigDecimal.valueOf(500),
+        2, 3, 9, BigDecimal.valueOf(55.5),
+        "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
+        "Минск", "https://onliner.by/usd-3",
+        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null, null
+    );
+    var existing = buildExistingListing("ext-usd-3", BigDecimal.valueOf(1600));
+    // existing.priceUsd stays null — source didn't provide it historically
+
+    when(currencyRepository.findByCode("BYN")).thenReturn(Optional.of(byn));
+    when(listingRepository.findByExternalIdAndSourceId("ext-usd-3", 1L)).thenReturn(Optional.of(existing));
+    when(dedupHashService.computeDedupHash(any(), any(), any(), any())).thenReturn("hash-usd-3");
+
+    // When
+    ingestionService.ingest(raw, source);
+
+    // Then — falls back to BYN comparison; BYN = 1600 = 1600 → no price_history
+    verify(priceHistoryRepository, never()).save(any());
+  }
+
   @Test
   void should_not_call_mapper_toEntity_on_update_path() {
     // Given — update uses existing entity, not the mapper
