@@ -1,6 +1,7 @@
 package com.flatio.telegram.handler;
 
 import com.flatio.telegram.callback.FilterCallbackHandler;
+import com.flatio.telegram.command.HelpCommandHandler;
 import com.flatio.telegram.command.StartCommandHandler;
 import com.flatio.telegram.config.BotConfig;
 import com.flatio.telegram.state.SearchFilterWizard;
@@ -23,6 +24,18 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
  * {@code telegrambots-springboot-longpolling-starter} auto-configuration discovers and registers
  * it automatically. Implements {@link LongPollingUpdateConsumer} to process incoming updates
  * in the same class.
+ *
+ * <p>Routing rules:
+ * <ul>
+ *   <li>{@code /start} — {@link StartCommandHandler}</li>
+ *   <li>{@code /search} — starts the filter wizard via {@link FilterCallbackHandler}</li>
+ *   <li>{@code /help} — {@link HelpCommandHandler}</li>
+ *   <li>Free text while wizard is at KEYWORD step — forwarded to {@link FilterCallbackHandler}</li>
+ *   <li>{@code action:search}, {@code FILTER:*} callbacks — {@link FilterCallbackHandler}</li>
+ *   <li>{@code action:help} callback — {@link HelpCommandHandler}</li>
+ *   <li>{@code FILTER:SEARCH} callback — {@link SearchResultSender}</li>
+ *   <li>{@code PAGE:*} callbacks — {@link SearchResultSender}</li>
+ * </ul>
  */
 @Component
 @Slf4j
@@ -31,10 +44,12 @@ public class FlatioBot implements SpringLongPollingBot, LongPollingUpdateConsume
 
   private static final String FILTER_CALLBACK_PREFIX = SearchFilterWizard.CALLBACK_PREFIX + ":";
   private static final String FILTER_SEARCH_CALLBACK = SearchFilterWizard.CALLBACK_PREFIX + ":SEARCH";
+  private static final String ACTION_HELP = "action:help";
 
   private final BotConfig botConfig;
   private final TelegramClient telegramClient;
   private final StartCommandHandler startCommandHandler;
+  private final HelpCommandHandler helpCommandHandler;
   private final FilterCallbackHandler filterCallbackHandler;
   private final SearchResultSender searchResultSender;
 
@@ -79,15 +94,42 @@ public class FlatioBot implements SpringLongPollingBot, LongPollingUpdateConsume
 
   private void handleTextMessage(Update update) {
     String text = update.getMessage().getText();
+    Long userId = update.getMessage().getFrom().getId();
+    String chatId = String.valueOf(update.getMessage().getChatId());
+
     if (text.startsWith("/start")) {
       try {
         telegramClient.execute(startCommandHandler.handle(update));
       } catch (TelegramApiException e) {
-        log.error("Failed to send /start reply: chatId={}", update.getMessage().getChatId(), e);
+        log.error("Failed to send /start reply: chatId={}", chatId, e);
       } catch (Exception e) {
-        log.error("Unexpected error handling /start: chatId={}, updateId={}",
-            update.getMessage().getChatId(), update.getUpdateId(), e);
+        log.error("Unexpected error handling /start: chatId={}, updateId={}", chatId, update.getUpdateId(), e);
       }
+    } else if (text.startsWith("/search")) {
+      try {
+        telegramClient.execute(filterCallbackHandler.startWizardMessage(userId, chatId));
+      } catch (TelegramApiException e) {
+        log.error("Failed to send search wizard: chatId={}", chatId, e);
+      }
+    } else if (text.startsWith("/help")) {
+      try {
+        telegramClient.execute(helpCommandHandler.handle(update));
+      } catch (TelegramApiException e) {
+        log.error("Failed to send /help reply: chatId={}", chatId, e);
+      }
+    } else {
+      handleFreeText(userId, chatId, text);
+    }
+  }
+
+  private void handleFreeText(Long userId, String chatId, String text) {
+    if (!filterCallbackHandler.isAtKeywordStep(userId)) {
+      return;
+    }
+    try {
+      telegramClient.execute(filterCallbackHandler.handleKeywordText(userId, chatId, text));
+    } catch (TelegramApiException e) {
+      log.error("Failed to send DONE step after keyword input: chatId={}", chatId, e);
     }
   }
 
@@ -97,6 +139,14 @@ public class FlatioBot implements SpringLongPollingBot, LongPollingUpdateConsume
 
     if (FILTER_SEARCH_CALLBACK.equals(data)) {
       searchResultSender.handle(callbackQuery);
+    } else if (data.startsWith(SearchResultSender.PAGE_CALLBACK_PREFIX)) {
+      searchResultSender.handlePageCallback(callbackQuery);
+    } else if (ACTION_HELP.equals(data)) {
+      try {
+        telegramClient.execute(helpCommandHandler.handleCallback(callbackQuery));
+      } catch (TelegramApiException e) {
+        log.error("Failed to send help message: chatId={}", callbackQuery.getMessage().getChatId(), e);
+      }
     } else if (FilterCallbackHandler.ACTION_SEARCH.equals(data) || data.startsWith(FILTER_CALLBACK_PREFIX)) {
       try {
         telegramClient.execute(filterCallbackHandler.handle(callbackQuery));

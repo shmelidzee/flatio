@@ -2,11 +2,18 @@ package com.flatio.telegram.handler;
 
 import com.flatio.domain.listing.ListingStatus;
 import com.flatio.service.ListingService;
+import com.flatio.telegram.callback.FilterCallbackHandler;
 import com.flatio.telegram.formatter.ListingFormatter;
 import com.flatio.telegram.state.SearchFilterState;
+import com.flatio.telegram.state.SearchSession;
 import com.flatio.telegram.state.SearchFilterWizard;
 import com.flatio.web.dto.ListingSearchCriteria;
 import com.flatio.web.dto.ListingSummaryResponse;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -17,43 +24,63 @@ import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.InputFile;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardRow;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 
 /**
- * Handles the search execution triggered by the {@code FILTER:SEARCH} callback.
+ * Handles search execution and paginated result delivery.
  *
- * <p>Converts the current wizard state into {@link ListingSearchCriteria}, queries
- * {@link ListingService}, and sends formatted listing cards to the user.
- * Photo cards are sent via {@code sendPhoto} when a photo URL is available;
- * text cards via {@code sendMessage} otherwise.
+ * <p>Triggered by the {@code FILTER:SEARCH} callback (initial search) and
+ * {@code PAGE:NEXT} / {@code PAGE:PREV} callbacks (pagination).
+ * Per-user {@link SearchSession} objects track the active criteria and current page.
+ * Sessions expire after {@value #SESSION_TTL_MINUTES} minutes of inactivity.
  *
- * <p>Note: pagination navigation is not yet implemented — only the first page of results
- * is shown. Navigation will be added in issue #30.
+ * <p>Photo cards are sent via {@code sendPhoto}. If the photo URL is absent or
+ * the Telegram API rejects it, the card falls back to a text message prefixed
+ * with {@value #NO_PHOTO_TEXT} so the user always receives the listing details.
  */
 @Component
 @Slf4j
 @RequiredArgsConstructor
 public class SearchResultSender {
 
+  /** Callback prefix for pagination navigation. */
+  public static final String PAGE_CALLBACK_PREFIX = "PAGE:";
+  /** Callback data for advancing to the next page. */
+  public static final String PAGE_NEXT = "PAGE:NEXT";
+  /** Callback data for going back to the previous page. */
+  public static final String PAGE_PREV = "PAGE:PREV";
+
   private static final int PAGE_SIZE = 5;
+  private static final long SESSION_TTL_MINUTES = 30;
+  private static final Duration SESSION_TTL = Duration.ofMinutes(SESSION_TTL_MINUTES);
+
   private static final String SEARCHING_TEXT = "🔍 Ищу объявления...";
   private static final String NO_RESULTS_TEXT =
       "По вашим фильтрам объявлений не найдено.\nПопробуйте изменить параметры поиска.";
   private static final String NO_FILTERS_TEXT =
       "Пожалуйста, сначала настройте фильтры поиска.";
+  private static final String SESSION_EXPIRED_TEXT =
+      "Поиск устарел. Начните новый поиск.";
+  private static final String NO_PHOTO_TEXT = "📷 Фото не добавлено";
 
   private final SearchFilterWizard wizard;
   private final ListingService listingService;
   private final ListingFormatter listingFormatter;
   private final TelegramClient telegramClient;
 
+  private final Map<Long, SearchSession> sessions = new ConcurrentHashMap<>();
+
   /**
    * Executes the search flow for a {@code FILTER:SEARCH} callback.
    *
    * <p>Reads the current wizard state, replaces the wizard message with a "searching" indicator,
-   * fetches the first page of results, and sends a formatted card per listing.
-   * If no state exists the user receives a prompt to configure filters first.
+   * fetches the first page of results, and sends a formatted card per listing followed by
+   * a pagination navigation message.
+   * If no wizard state exists the user receives a prompt to configure filters first.
    *
    * @param callbackQuery the incoming callback query, never null
    */
@@ -80,33 +107,119 @@ public class SearchResultSender {
       return;
     }
 
-    log.debug("Sending {} result cards: telegramId={}", page.getNumberOfElements(), telegramId);
+    sessions.put(telegramId, new SearchSession(criteria, 0, page.getTotalPages()));
+    log.debug("Sending {} result cards: telegramId={}, totalPages={}", page.getNumberOfElements(), telegramId, page.getTotalPages());
     page.getContent().forEach(listing -> sendCard(chatId, listing));
+    sendNavigationMessage(chatId, 0, page.getTotalPages());
+  }
+
+  /**
+   * Handles a {@code PAGE:NEXT} or {@code PAGE:PREV} callback.
+   *
+   * <p>Looks up the active session for the user, computes the new page index,
+   * fetches the corresponding results, and sends cards with an updated navigation message.
+   * If the session has expired the user is prompted to start a new search.
+   *
+   * @param callbackQuery the incoming callback query, never null
+   */
+  public void handlePageCallback(CallbackQuery callbackQuery) {
+    Long telegramId = callbackQuery.getFrom().getId();
+    String chatId = String.valueOf(callbackQuery.getMessage().getChatId());
+    String data = callbackQuery.getData();
+
+    var session = getActiveSession(telegramId);
+    if (session == null) {
+      sendText(chatId, SESSION_EXPIRED_TEXT);
+      return;
+    }
+
+    int newPage = PAGE_NEXT.equals(data)
+        ? Math.min(session.getCurrentPage() + 1, session.getTotalPages() - 1)
+        : Math.max(session.getCurrentPage() - 1, 0);
+
+    var pageable = PageRequest.of(newPage, PAGE_SIZE, Sort.by(Sort.Direction.DESC, "createdAt"));
+    var page = listingService.search(session.getCriteria(), pageable);
+
+    if (page.isEmpty()) {
+      sendText(chatId, NO_RESULTS_TEXT);
+      return;
+    }
+
+    session.setCurrentPage(newPage);
+    session.setTotalPages(page.getTotalPages());
+    session.touch();
+
+    log.debug("Sending page {} of {}: telegramId={}", newPage + 1, page.getTotalPages(), telegramId);
+    page.getContent().forEach(listing -> sendCard(chatId, listing));
+    sendNavigationMessage(chatId, newPage, page.getTotalPages());
   }
 
   private void sendCard(String chatId, ListingSummaryResponse listing) {
-    try {
-      String caption = listingFormatter.buildCaption(listing);
-      var keyboard = listingFormatter.buildKeyboard(listing.sourceUrl());
-      if (listing.photoUrl() != null) {
+    String caption = listingFormatter.buildCaption(listing);
+    var keyboard = listingFormatter.buildKeyboard(listing.sourceUrl());
+    String photoUrl = listing.photoUrl();
+
+    if (photoUrl != null && !photoUrl.isBlank()) {
+      try {
         telegramClient.execute(SendPhoto.builder()
             .chatId(chatId)
-            .photo(new InputFile(listing.photoUrl()))
+            .photo(new InputFile(photoUrl))
             .caption(caption)
             .parseMode("HTML")
             .replyMarkup(keyboard)
             .build());
-      } else {
-        telegramClient.execute(SendMessage.builder()
-            .chatId(chatId)
-            .text(caption)
-            .parseMode("HTML")
-            .replyMarkup(keyboard)
-            .build());
+        return;
+      } catch (TelegramApiException e) {
+        log.warn("Photo unavailable, falling back to text card: listingId={}, url={}", listing.id(), photoUrl, e);
       }
-    } catch (TelegramApiException e) {
-      log.error("Failed to send listing card: listingId={}, chatId={}", listing.id(), chatId, e);
     }
+    sendTextCard(chatId, caption, keyboard);
+  }
+
+  private void sendTextCard(String chatId, String caption, InlineKeyboardMarkup keyboard) {
+    String text = NO_PHOTO_TEXT + "\n\n" + caption;
+    try {
+      telegramClient.execute(SendMessage.builder()
+          .chatId(chatId)
+          .text(text)
+          .parseMode("HTML")
+          .replyMarkup(keyboard)
+          .build());
+    } catch (TelegramApiException e) {
+      log.error("Failed to send text card: chatId={}", chatId, e);
+    }
+  }
+
+  private void sendNavigationMessage(String chatId, int currentPage, int totalPages) {
+    String pageText = "📄 Страница " + (currentPage + 1) + " из " + totalPages;
+    var navButtons = new ArrayList<InlineKeyboardButton>();
+    if (currentPage > 0) {
+      navButtons.add(navBtn("← Предыдущие", PAGE_PREV));
+    }
+    if (currentPage < totalPages - 1) {
+      navButtons.add(navBtn("Ещё →", PAGE_NEXT));
+    }
+    var newSearchBtn = navBtn("🔍 Новый поиск", FilterCallbackHandler.ACTION_SEARCH);
+
+    var markupBuilder = InlineKeyboardMarkup.builder();
+    if (!navButtons.isEmpty()) {
+      markupBuilder.keyboardRow(new InlineKeyboardRow(navButtons));
+    }
+    markupBuilder.keyboardRow(new InlineKeyboardRow(newSearchBtn));
+
+    try {
+      telegramClient.execute(SendMessage.builder()
+          .chatId(chatId)
+          .text(pageText)
+          .replyMarkup(markupBuilder.build())
+          .build());
+    } catch (TelegramApiException e) {
+      log.error("Failed to send navigation message: chatId={}", chatId, e);
+    }
+  }
+
+  private InlineKeyboardButton navBtn(String text, String callbackData) {
+    return InlineKeyboardButton.builder().text(text).callbackData(callbackData).build();
   }
 
   private void editMessage(String chatId, Integer messageId, String text) {
@@ -132,6 +245,19 @@ public class SearchResultSender {
     }
   }
 
+  private SearchSession getActiveSession(Long telegramId) {
+    var session = sessions.get(telegramId);
+    if (session == null) {
+      return null;
+    }
+    if (session.getLastAccessedAt().plus(SESSION_TTL).isBefore(Instant.now())) {
+      sessions.remove(telegramId);
+      log.debug("Search session expired: telegramId={}", telegramId);
+      return null;
+    }
+    return session;
+  }
+
   private ListingSearchCriteria buildCriteria(SearchFilterState state) {
     return new ListingSearchCriteria(
         state.getDealType(),
@@ -142,7 +268,7 @@ public class SearchResultSender {
         state.getPriceMax(),
         state.getRooms(),
         ListingStatus.ACTIVE,
-        null,
+        state.getQuery(),
         state.getOwnerOnly()
     );
   }

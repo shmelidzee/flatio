@@ -7,6 +7,7 @@ import com.flatio.telegram.state.SearchFilterWizard;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 
@@ -48,6 +49,60 @@ public class FilterCallbackHandler {
     return EditMessageText.builder()
         .chatId(chatId)
         .messageId(messageId)
+        .text(keyboardFactory.getStepText(state))
+        .replyMarkup(keyboardFactory.buildForStep(state))
+        .build();
+  }
+
+  /**
+   * Starts the wizard for a {@code /search} command (text message context).
+   *
+   * <p>Returns a {@link SendMessage} rather than {@link EditMessageText} because
+   * text commands have no existing wizard message to edit.
+   *
+   * @param telegramId Telegram user identifier, never null
+   * @param chatId     target chat identifier, never null
+   * @return SendMessage displaying the first wizard step, never null
+   */
+  public SendMessage startWizardMessage(Long telegramId, String chatId) {
+    var state = wizard.start(telegramId);
+    log.debug("Wizard started via /search: telegramId={}", telegramId);
+    return SendMessage.builder()
+        .chatId(chatId)
+        .text(keyboardFactory.getStepText(state))
+        .replyMarkup(keyboardFactory.buildForStep(state))
+        .build();
+  }
+
+  /**
+   * Checks whether the user's wizard is currently waiting for keyword text input.
+   *
+   * @param telegramId Telegram user identifier, never null
+   * @return true if the wizard is at the KEYWORD step
+   */
+  public boolean isAtKeywordStep(Long telegramId) {
+    return wizard.getState(telegramId)
+        .map(s -> s.getCurrentStep() == FilterStep.KEYWORD)
+        .orElse(false);
+  }
+
+  /**
+   * Applies free-text keyword input and returns the DONE step as a new message.
+   *
+   * <p>Called when the user types a message while the wizard is at the KEYWORD step.
+   * Returns a {@link SendMessage} because the incoming update is a text message,
+   * not a callback — there is no existing wizard message to edit.
+   *
+   * @param telegramId Telegram user identifier, never null
+   * @param chatId     target chat identifier, never null
+   * @param text       user-provided keyword text, may be blank (treated as "skip")
+   * @return SendMessage displaying the DONE wizard step with search button, never null
+   */
+  public SendMessage handleKeywordText(Long telegramId, String chatId, String text) {
+    var state = wizard.applyKeyword(telegramId, text);
+    log.debug("Keyword text applied: telegramId={}, text={}", telegramId, text);
+    return SendMessage.builder()
+        .chatId(chatId)
         .text(keyboardFactory.getStepText(state))
         .replyMarkup(keyboardFactory.buildForStep(state))
         .build();

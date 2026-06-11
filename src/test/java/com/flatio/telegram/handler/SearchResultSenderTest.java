@@ -78,8 +78,8 @@ class SearchResultSenderTest {
     // When
     searchResultSender.handle(buildCallback(1L, 100L, 10));
 
-    // Then
-    verify(telegramClient).execute(any(SendMessage.class));
+    // Then — 2 SendMessage calls: 1 text card + 1 navigation message
+    verify(telegramClient, times(2)).execute(any(SendMessage.class));
     verify(telegramClient, never()).execute(any(SendPhoto.class));
   }
 
@@ -95,9 +95,9 @@ class SearchResultSenderTest {
     // When
     searchResultSender.handle(buildCallback(1L, 100L, 10));
 
-    // Then
+    // Then — SendPhoto for the card + 1 SendMessage for navigation
     verify(telegramClient).execute(any(SendPhoto.class));
-    verify(telegramClient, never()).execute(any(SendMessage.class));
+    verify(telegramClient).execute(any(SendMessage.class));
   }
 
   // -------------------------------------------------------------------------
@@ -150,9 +150,9 @@ class SearchResultSenderTest {
     // When
     searchResultSender.handle(buildCallback(1L, 100L, 10));
 
-    // Then — EditMessageText called once (searching indicator), SendMessage called once (card)
+    // Then — EditMessageText once (searching indicator), SendMessage twice (card + navigation)
     verify(telegramClient).execute(any(EditMessageText.class));
-    verify(telegramClient).execute(any(SendMessage.class));
+    verify(telegramClient, times(2)).execute(any(SendMessage.class));
   }
 
   // -------------------------------------------------------------------------
@@ -181,8 +181,8 @@ class SearchResultSenderTest {
         () -> searchResultSender.handle(buildCallback(1L, 100L, 10))
     );
 
-    // And remaining cards are still attempted (3 SendMessage calls total)
-    verify(telegramClient, times(3)).execute(any(SendMessage.class));
+    // And remaining cards are still attempted (3 cards + 1 navigation = 4 SendMessage calls total)
+    verify(telegramClient, times(4)).execute(any(SendMessage.class));
   }
 
   // -------------------------------------------------------------------------

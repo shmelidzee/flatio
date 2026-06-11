@@ -306,9 +306,9 @@ class SearchFilterWizardTest {
     // When
     var state = wizard.applySelection(1L, FilterStep.OWNER_ONLY, "true");
 
-    // Then
+    // Then — OWNER_ONLY now advances to KEYWORD, not DONE (#140)
     assertThat(state.getOwnerOnly()).isTrue();
-    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.DONE);
+    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.KEYWORD);
   }
 
   @Test
@@ -323,9 +323,9 @@ class SearchFilterWizardTest {
     // When
     var state = wizard.applySelection(1L, FilterStep.OWNER_ONLY, "ANY");
 
-    // Then
+    // Then — OWNER_ONLY now advances to KEYWORD, not DONE (#140)
     assertThat(state.getOwnerOnly()).isNull();
-    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.DONE);
+    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.KEYWORD);
   }
 
   @Test
