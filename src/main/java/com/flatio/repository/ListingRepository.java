@@ -208,27 +208,27 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
           FROM listings l
           WHERE l.search_vector @@ websearch_to_tsquery(CAST(:ftsLanguage AS regconfig), :query)
             AND l.status = :status
-            AND (:dealType IS NULL OR l.deal_type = :dealType)
-            AND (:priceMin IS NULL OR l.price >= CAST(:priceMin AS numeric))
-            AND (:priceMax IS NULL OR l.price <= CAST(:priceMax AS numeric))
-            AND (:rooms IS NULL OR l.rooms = :rooms)
-            AND (:cityPattern IS NULL OR LOWER(l.city) LIKE :cityPattern)
-            AND (:sourceCode IS NULL OR l.source_id = (SELECT id FROM source WHERE code = :sourceCode))
-            AND (:propertyType IS NULL OR l.property_type = :propertyType)
-            AND (:ownerOnly IS NULL OR l.is_owner IS TRUE OR l.is_owner IS NULL)
+            AND (CAST(:dealType AS varchar) IS NULL OR l.deal_type = :dealType)
+            AND (CAST(:priceMin AS numeric) IS NULL OR l.price >= CAST(:priceMin AS numeric))
+            AND (CAST(:priceMax AS numeric) IS NULL OR l.price <= CAST(:priceMax AS numeric))
+            AND (CAST(:rooms AS integer) IS NULL OR l.rooms = :rooms)
+            AND (CAST(:cityPattern AS varchar) IS NULL OR LOWER(l.city) LIKE :cityPattern)
+            AND (CAST(:sourceCode AS varchar) IS NULL OR l.source_id = (SELECT id FROM source WHERE code = :sourceCode))
+            AND (CAST(:propertyType AS varchar) IS NULL OR l.property_type = :propertyType)
+            AND (CAST(:ownerOnly AS boolean) IS NULL OR l.is_owner IS TRUE OR l.is_owner IS NULL)
           """,
       countQuery = """
           SELECT count(*) FROM listings l
           WHERE l.search_vector @@ websearch_to_tsquery(CAST(:ftsLanguage AS regconfig), :query)
             AND l.status = :status
-            AND (:dealType IS NULL OR l.deal_type = :dealType)
-            AND (:priceMin IS NULL OR l.price >= CAST(:priceMin AS numeric))
-            AND (:priceMax IS NULL OR l.price <= CAST(:priceMax AS numeric))
-            AND (:rooms IS NULL OR l.rooms = :rooms)
-            AND (:cityPattern IS NULL OR LOWER(l.city) LIKE :cityPattern)
-            AND (:sourceCode IS NULL OR l.source_id = (SELECT id FROM source WHERE code = :sourceCode))
-            AND (:propertyType IS NULL OR l.property_type = :propertyType)
-            AND (:ownerOnly IS NULL OR l.is_owner IS TRUE OR l.is_owner IS NULL)
+            AND (CAST(:dealType AS varchar) IS NULL OR l.deal_type = :dealType)
+            AND (CAST(:priceMin AS numeric) IS NULL OR l.price >= CAST(:priceMin AS numeric))
+            AND (CAST(:priceMax AS numeric) IS NULL OR l.price <= CAST(:priceMax AS numeric))
+            AND (CAST(:rooms AS integer) IS NULL OR l.rooms = :rooms)
+            AND (CAST(:cityPattern AS varchar) IS NULL OR LOWER(l.city) LIKE :cityPattern)
+            AND (CAST(:sourceCode AS varchar) IS NULL OR l.source_id = (SELECT id FROM source WHERE code = :sourceCode))
+            AND (CAST(:propertyType AS varchar) IS NULL OR l.property_type = :propertyType)
+            AND (CAST(:ownerOnly AS boolean) IS NULL OR l.is_owner IS TRUE OR l.is_owner IS NULL)
           """,
       nativeQuery = true
   )

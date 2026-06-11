@@ -398,6 +398,52 @@ class ListingServiceTest {
   }
 
   @Test
+  void should_pass_null_prices_and_owner_only_to_fts_when_keyword_with_partial_filters() {
+    // Given — exact criteria combination from issue #163 (42P18 repro)
+    var pageable = PageRequest.of(0, 20);
+    Page<Listing> emptyPage = new PageImpl<>(Collections.emptyList(), pageable, 0);
+
+    when(listingRepository.fullTextSearch(
+        eq("Копище"),
+        eq("russian"),
+        eq("ACTIVE"),
+        eq("RENT"),
+        isNull(),
+        isNull(),
+        eq(2),
+        isNull(),
+        isNull(),
+        eq("APARTMENT"),
+        eq(Boolean.TRUE),
+        eq(pageable)
+    )).thenReturn(emptyPage);
+
+    var criteria = new ListingSearchCriteria(
+        DealType.RENT, "APARTMENT", null, null,
+        null, null, 2, null, "Копище", Boolean.TRUE
+    );
+
+    // When
+    listingService.search(criteria, pageable);
+
+    // Then — null priceMin/priceMax and ownerOnly=true correctly forwarded
+    verify(listingRepository).fullTextSearch(
+        eq("Копище"),
+        eq("russian"),
+        eq("ACTIVE"),
+        eq("RENT"),
+        isNull(),
+        isNull(),
+        eq(2),
+        isNull(),
+        isNull(),
+        eq("APARTMENT"),
+        eq(Boolean.TRUE),
+        eq(pageable)
+    );
+  }
+
+  @Test
   void should_convert_city_to_like_pattern_when_routing_to_fts() {
     // Given
     var pageable = PageRequest.of(0, 20);
