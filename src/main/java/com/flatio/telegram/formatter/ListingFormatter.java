@@ -20,9 +20,16 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
  *
  * <p>Caption structure:
  * <ul>
- *   <li>Zone 1 — title and price</li>
+ *   <li>Zone 1 — title (with room-type prefix) and price</li>
  *   <li>Zone 2 — location and area (omitted on truncation)</li>
  *   <li>Zone 3 — publication time and source badge</li>
+ * </ul>
+ *
+ * <p>Price display rules:
+ * <ul>
+ *   <li>When {@code priceUsd} is present: {@code $X (Y BYN)} — USD first, BYN in brackets.</li>
+ *   <li>When price is in BYN only: {@code Y BYN}.</li>
+ *   <li>Other currencies: {@code amount CURRENCY}.</li>
  * </ul>
  */
 @Component
@@ -93,9 +100,40 @@ public class ListingFormatter {
   }
 
   private void appendZone1(StringBuilder sb, ListingSummaryResponse listing) {
-    sb.append("<b>").append(escapeHtml(listing.title())).append("</b>");
+    String title = buildTitle(listing);
+    sb.append("<b>").append(escapeHtml(title)).append("</b>");
     sb.append("\n");
-    sb.append(formatPrice(listing.price(), listing.currency()));
+    sb.append(formatPrice(listing.price(), listing.currency(), listing.priceUsd()));
+  }
+
+  /**
+   * Builds the display title, prepending a room-type prefix when the source does not already
+   * include it (i.e. the title does not start with a digit or room-count pattern).
+   *
+   * @param listing the listing to build a title for, never null
+   * @return display title, never null
+   */
+  String buildTitle(ListingSummaryResponse listing) {
+    String prefix = buildRoomTypePrefix(listing.rooms(), listing.propertyType());
+    if (prefix.isEmpty()) {
+      return listing.title();
+    }
+    String title = listing.title() != null ? listing.title() : "";
+    // Avoid double-prefixing when the title already starts with a digit (e.g. "2-комнатная ...")
+    if (!title.isEmpty() && Character.isDigit(title.charAt(0))) {
+      return title;
+    }
+    return prefix + (title.isEmpty() ? "" : ", " + title);
+  }
+
+  private String buildRoomTypePrefix(Integer rooms, String propertyType) {
+    if ("ROOM".equals(propertyType)) {
+      return "Комната";
+    }
+    if (rooms != null && rooms > 0) {
+      return rooms + "-комнатная";
+    }
+    return "";
   }
 
   private String buildZone2(ListingSummaryResponse listing) {
@@ -122,15 +160,30 @@ public class ListingFormatter {
     sb.append("🕐 ").append(time).append("  ·  ").append(badge);
   }
 
-  private String formatPrice(BigDecimal price, String currency) {
-    String formatted = formatNumber(price);
-    if ("USD".equals(currency)) {
-      return "<b>$" + formatted + "</b>";
+  /**
+   * Formats the price for display.
+   *
+   * <p>When {@code priceUsd} is provided the listing's source price is in USD:
+   * displays as {@code $X (Y BYN)} where X is USD and Y is BYN.
+   * When {@code currency} is BYN with no USD price: displays as {@code Y BYN}.
+   * Other currencies: {@code amount CURRENCY}.
+   *
+   * @param price    stored price in the main currency, never null
+   * @param currency stored currency code, may be null
+   * @param priceUsd original USD price, null if not applicable
+   * @return formatted HTML price string, never null
+   */
+  String formatPrice(BigDecimal price, String currency, BigDecimal priceUsd) {
+    if (priceUsd != null) {
+      return "<b>$" + formatNumber(priceUsd) + " (" + formatNumber(price) + " BYN)</b>";
     }
     if ("BYN".equals(currency)) {
-      return "<b>" + formatted + " BYN</b>";
+      return "<b>" + formatNumber(price) + " BYN</b>";
     }
-    return "<b>" + formatted + " " + (currency != null ? currency : "") + "</b>";
+    if ("USD".equals(currency)) {
+      return "<b>$" + formatNumber(price) + "</b>";
+    }
+    return "<b>" + formatNumber(price) + " " + (currency != null ? currency : "") + "</b>";
   }
 
   private String formatLocation(String district, String city) {

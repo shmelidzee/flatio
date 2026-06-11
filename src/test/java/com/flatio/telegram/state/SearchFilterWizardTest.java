@@ -149,7 +149,7 @@ class SearchFilterWizardTest {
   }
 
   @Test
-  void should_advance_to_done_with_low_price_range() {
+  void should_advance_to_owner_only_with_low_price_range() {
     // Given
     wizard.start(1L);
     wizard.applySelection(1L, FilterStep.DEAL_TYPE, "RENT");
@@ -162,7 +162,7 @@ class SearchFilterWizardTest {
     // Then
     assertThat(state.getPriceMin()).isNull();
     assertThat(state.getPriceMax()).isEqualByComparingTo(BigDecimal.valueOf(1_000));
-    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.DONE);
+    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.OWNER_ONLY);
   }
 
   @Test
@@ -227,7 +227,7 @@ class SearchFilterWizardTest {
     // Then
     assertThat(state.getPriceMin()).isNull();
     assertThat(state.getPriceMax()).isNull();
-    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.DONE);
+    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.OWNER_ONLY);
   }
 
   @Test
@@ -276,13 +276,14 @@ class SearchFilterWizardTest {
   }
 
   @Test
-  void should_return_to_price_when_back_pressed_at_done() {
+  void should_return_to_price_when_back_pressed_at_owner_only() {
     // Given
     wizard.start(1L);
     wizard.applySelection(1L, FilterStep.DEAL_TYPE, "RENT");
     wizard.applySelection(1L, FilterStep.PROPERTY_TYPE, "ANY");
     wizard.applySelection(1L, FilterStep.ROOMS, "ANY");
     wizard.applySelection(1L, FilterStep.PRICE, "MEDIUM");
+    // State is now at OWNER_ONLY
 
     // When
     var state = wizard.stepBack(1L);
@@ -291,6 +292,59 @@ class SearchFilterWizardTest {
     assertThat(state.getCurrentStep()).isEqualTo(FilterStep.PRICE);
     assertThat(state.getPriceMin()).isNull();
     assertThat(state.getPriceMax()).isNull();
+  }
+
+  @Test
+  void should_set_owner_only_true_when_true_selected() {
+    // Given
+    wizard.start(1L);
+    wizard.applySelection(1L, FilterStep.DEAL_TYPE, "SELL");
+    wizard.applySelection(1L, FilterStep.PROPERTY_TYPE, "ANY");
+    wizard.applySelection(1L, FilterStep.ROOMS, "ANY");
+    wizard.applySelection(1L, FilterStep.PRICE, "ANY");
+
+    // When
+    var state = wizard.applySelection(1L, FilterStep.OWNER_ONLY, "true");
+
+    // Then
+    assertThat(state.getOwnerOnly()).isTrue();
+    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.DONE);
+  }
+
+  @Test
+  void should_set_owner_only_null_when_any_selected() {
+    // Given
+    wizard.start(1L);
+    wizard.applySelection(1L, FilterStep.DEAL_TYPE, "SELL");
+    wizard.applySelection(1L, FilterStep.PROPERTY_TYPE, "ANY");
+    wizard.applySelection(1L, FilterStep.ROOMS, "ANY");
+    wizard.applySelection(1L, FilterStep.PRICE, "ANY");
+
+    // When
+    var state = wizard.applySelection(1L, FilterStep.OWNER_ONLY, "ANY");
+
+    // Then
+    assertThat(state.getOwnerOnly()).isNull();
+    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.DONE);
+  }
+
+  @Test
+  void should_return_to_owner_only_when_back_pressed_at_done() {
+    // Given
+    wizard.start(1L);
+    wizard.applySelection(1L, FilterStep.DEAL_TYPE, "SELL");
+    wizard.applySelection(1L, FilterStep.PROPERTY_TYPE, "ANY");
+    wizard.applySelection(1L, FilterStep.ROOMS, "ANY");
+    wizard.applySelection(1L, FilterStep.PRICE, "ANY");
+    wizard.applySelection(1L, FilterStep.OWNER_ONLY, "true");
+    // State is now at DONE
+
+    // When
+    var state = wizard.stepBack(1L);
+
+    // Then
+    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.OWNER_ONLY);
+    assertThat(state.getOwnerOnly()).isNull();
   }
 
   @Test
@@ -356,9 +410,9 @@ class SearchFilterWizardTest {
     // When
     var state = wizard.applySelection(1L, FilterStep.PRICE, "NONEXISTENT");
 
-    // Then — price remains null, step advances to DONE
+    // Then — price remains null (graceful degradation), step advances to OWNER_ONLY
     assertThat(state.getPriceMin()).isNull();
     assertThat(state.getPriceMax()).isNull();
-    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.DONE);
+    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.OWNER_ONLY);
   }
 }

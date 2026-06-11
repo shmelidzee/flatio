@@ -10,6 +10,7 @@ import com.flatio.web.dto.ListingSummaryResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
@@ -70,7 +71,8 @@ public class SearchResultSender {
     editMessage(chatId, messageId, SEARCHING_TEXT);
 
     var criteria = buildCriteria(stateOpt.get());
-    var page = listingService.search(criteria, PageRequest.of(0, PAGE_SIZE));
+    var pageable = PageRequest.of(0, PAGE_SIZE, Sort.by(Sort.Direction.DESC, "createdAt"));
+    var page = listingService.search(criteria, pageable);
 
     if (page.isEmpty()) {
       log.debug("No results found: telegramId={}, criteria={}", telegramId, criteria);
@@ -140,7 +142,8 @@ public class SearchResultSender {
         state.getPriceMax(),
         state.getRooms(),
         ListingStatus.ACTIVE,
-        null
+        null,
+        state.getOwnerOnly()
     );
   }
 }

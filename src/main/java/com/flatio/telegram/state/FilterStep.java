@@ -6,5 +6,6 @@ public enum FilterStep {
   PROPERTY_TYPE,
   ROOMS,
   PRICE,
+  OWNER_ONLY,
   DONE
 }

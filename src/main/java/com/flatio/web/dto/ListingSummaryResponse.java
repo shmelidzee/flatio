@@ -12,14 +12,20 @@ public record ListingSummaryResponse(
     @Schema(description = "Listing title", example = "2-комнатная квартира, 52 м², Минск")
     String title,
 
-    @Schema(description = "Listed price", example = "75000.00")
+    @Schema(description = "Listed price in the stored currency", example = "75000.00")
     BigDecimal price,
 
-    @Schema(description = "Currency code", example = "USD")
+    @Schema(description = "Currency code of the stored price", example = "BYN")
     String currency,
+
+    @Schema(description = "Original price in USD when source publishes in USD; null otherwise", example = "85000.00")
+    BigDecimal priceUsd,
 
     @Schema(description = "Number of rooms", example = "2")
     Integer rooms,
+
+    @Schema(description = "Property type code", example = "APARTMENT")
+    String propertyType,
 
     @Schema(description = "Total area in square meters", example = "52.30")
     BigDecimal areaTotalM2,

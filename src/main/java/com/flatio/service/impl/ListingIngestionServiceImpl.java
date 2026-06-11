@@ -115,7 +115,7 @@ public class ListingIngestionServiceImpl implements ListingIngestionService {
   }
 
   private IngestOutcome updateListing(Listing existing, RawListing raw, Currency currency) {
-    boolean priceChanged = existing.getPrice().compareTo(raw.price()) != 0;
+    boolean priceChanged = isPriceChanged(existing, raw);
 
     rawListingMapper.updateEntity(raw, existing);
     existing.setCurrency(currency);
@@ -132,6 +132,31 @@ public class ListingIngestionServiceImpl implements ListingIngestionService {
 
     listingRepository.save(existing);
     return IngestOutcome.UPDATED;
+  }
+
+  /**
+   * Determines whether the seller's actual price has changed.
+   *
+   * <p>When a source provides a USD price ({@code priceUsd} is non-null on both sides), the
+   * comparison is done in USD — the originating currency. This prevents a false positive when
+   * only the BYN-equivalent changed due to exchange-rate fluctuation while the seller's USD
+   * price stayed the same.
+   *
+   * @param existing persisted listing state
+   * @param raw      freshly fetched raw listing
+   * @return true if the seller changed the price, false if only the exchange rate moved
+   */
+  private boolean isPriceChanged(Listing existing, RawListing raw) {
+    if (raw.priceUsd() != null && existing.getPriceUsd() != null) {
+      boolean usdUnchanged = existing.getPriceUsd().compareTo(raw.priceUsd()) == 0;
+      if (usdUnchanged) {
+        log.debug("Skipping price_history: source price unchanged, exchange rate only: externalId={}",
+            existing.getExternalId());
+        return false;
+      }
+      return true;
+    }
+    return existing.getPrice().compareTo(raw.price()) != 0;
   }
 
   private void recordPriceHistory(Listing listing, Currency currency) {
