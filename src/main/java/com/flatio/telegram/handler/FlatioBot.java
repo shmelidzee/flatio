@@ -8,6 +8,7 @@ import com.flatio.telegram.state.SearchFilterWizard;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.longpolling.interfaces.LongPollingUpdateConsumer;
 import org.telegram.telegrambots.longpolling.starter.SpringLongPollingBot;
@@ -54,6 +55,7 @@ public class FlatioBot implements SpringLongPollingBot, LongPollingUpdateConsume
   private final HelpCommandHandler helpCommandHandler;
   private final FilterCallbackHandler filterCallbackHandler;
   private final SearchResultSender searchResultSender;
+  private final ThreadPoolTaskExecutor telegramUpdateExecutor;
 
   /**
    * Returns the bot API token used for long-polling authentication.
@@ -76,13 +78,17 @@ public class FlatioBot implements SpringLongPollingBot, LongPollingUpdateConsume
   }
 
   /**
-   * Processes a batch of incoming Telegram updates.
+   * Dispatches each incoming Telegram update to the executor for concurrent processing.
+   *
+   * <p>Each update is handled in its own thread so a slow handler
+   * (e.g. search with multiple SendPhoto calls) does not block other users.
+   * Exceptions inside {@link #handleUpdate(Update)} are caught there and do not propagate.
    *
    * @param updates list of updates received from Telegram, never null
    */
   @Override
   public void consume(List<Update> updates) {
-    updates.forEach(this::handleUpdate);
+    updates.forEach(u -> telegramUpdateExecutor.execute(() -> handleUpdate(u)));
   }
 
   private void handleUpdate(Update update) {
