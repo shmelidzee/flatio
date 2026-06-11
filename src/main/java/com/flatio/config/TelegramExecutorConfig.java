@@ -1,5 +1,6 @@
 package com.flatio.config;
 
+import java.util.concurrent.ThreadPoolExecutor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -12,9 +13,18 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  * (e.g. search with multiple {@code SendPhoto} calls) do not block other users.
  * Pool size and queue depth are tunable via {@code telegram.bot.executor.*} in
  * {@code application.yml}.
+ *
+ * <p>Uses {@link ThreadPoolExecutor.CallerRunsPolicy} to provide natural back-pressure:
+ * when all threads and the queue are full the long-polling thread itself processes the
+ * update instead of dropping it or throwing {@link java.util.concurrent.RejectedExecutionException}.
  */
 @Configuration
 public class TelegramExecutorConfig {
+
+  private static final int DEFAULT_CORE_POOL_SIZE = 10;
+  private static final int DEFAULT_MAX_POOL_SIZE = 20;
+  private static final int DEFAULT_QUEUE_CAPACITY = 100;
+  private static final int AWAIT_TERMINATION_SECONDS = 30;
 
   /**
    * Creates the executor bean for Telegram update dispatch.
@@ -26,14 +36,17 @@ public class TelegramExecutorConfig {
    */
   @Bean
   public ThreadPoolTaskExecutor telegramUpdateExecutor(
-      @Value("${telegram.bot.executor.core-pool-size:10}") int corePoolSize,
-      @Value("${telegram.bot.executor.max-pool-size:20}") int maxPoolSize,
-      @Value("${telegram.bot.executor.queue-capacity:100}") int queueCapacity) {
+      @Value("${telegram.bot.executor.core-pool-size:" + DEFAULT_CORE_POOL_SIZE + "}") int corePoolSize,
+      @Value("${telegram.bot.executor.max-pool-size:" + DEFAULT_MAX_POOL_SIZE + "}") int maxPoolSize,
+      @Value("${telegram.bot.executor.queue-capacity:" + DEFAULT_QUEUE_CAPACITY + "}") int queueCapacity) {
     var executor = new ThreadPoolTaskExecutor();
     executor.setCorePoolSize(corePoolSize);
     executor.setMaxPoolSize(maxPoolSize);
     executor.setQueueCapacity(queueCapacity);
     executor.setThreadNamePrefix("tg-update-");
+    executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+    executor.setWaitForTasksToCompleteOnShutdown(true);
+    executor.setAwaitTerminationSeconds(AWAIT_TERMINATION_SECONDS);
     executor.initialize();
     return executor;
   }

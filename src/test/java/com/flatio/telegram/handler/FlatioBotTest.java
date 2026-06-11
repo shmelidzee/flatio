@@ -5,6 +5,7 @@ import com.flatio.telegram.command.HelpCommandHandler;
 import com.flatio.telegram.command.StartCommandHandler;
 import com.flatio.telegram.config.BotConfig;
 import java.util.List;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -24,12 +25,16 @@ import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-class FlatiBotTest {
+class FlatioBotTest {
+
+  private static final long ASYNC_TIMEOUT_MS = 2_000;
 
   private FlatioBot flatioBot;
+  private ThreadPoolTaskExecutor executor;
 
   @BeforeEach
   void setUp() {
+    executor = buildExecutor();
     var config = new BotConfig("test_token:123", "test_bot");
     flatioBot = new FlatioBot(
         config,
@@ -38,8 +43,13 @@ class FlatiBotTest {
         mock(HelpCommandHandler.class),
         mock(FilterCallbackHandler.class),
         mock(SearchResultSender.class),
-        buildExecutor()
+        executor
     );
+  }
+
+  @AfterEach
+  void tearDown() {
+    executor.shutdown();
   }
 
   @Test
@@ -65,6 +75,7 @@ class FlatiBotTest {
     // Given — two FILTER:SEARCH callbacks; handle() throws on first call, succeeds on second
     var telegramClient = mock(TelegramClient.class);
     var searchResultSender = mock(SearchResultSender.class);
+    var localExecutor = buildExecutor();
     var bot = new FlatioBot(
         new BotConfig("t:1", "bot"),
         telegramClient,
@@ -72,7 +83,7 @@ class FlatiBotTest {
         mock(HelpCommandHandler.class),
         mock(FilterCallbackHandler.class),
         searchResultSender,
-        buildExecutor()
+        localExecutor
     );
     doThrow(new RuntimeException("Handler failure"))
         .doNothing()
@@ -85,7 +96,8 @@ class FlatiBotTest {
     assertThatNoException().isThrownBy(() -> bot.consume(List.of(update1, update2)));
 
     // Both updates reached the search handler (timeout accounts for async dispatch)
-    verify(searchResultSender, timeout(2000).times(2)).handle(any());
+    verify(searchResultSender, timeout(ASYNC_TIMEOUT_MS).times(2)).handle(any());
+    localExecutor.shutdown();
   }
 
   @Test
@@ -93,6 +105,7 @@ class FlatiBotTest {
     // Given
     var telegramClient = mock(TelegramClient.class);
     var searchResultSender = mock(SearchResultSender.class);
+    var localExecutor = buildExecutor();
     var bot = new FlatioBot(
         new BotConfig("t:1", "bot"),
         telegramClient,
@@ -100,7 +113,7 @@ class FlatiBotTest {
         mock(HelpCommandHandler.class),
         mock(FilterCallbackHandler.class),
         searchResultSender,
-        buildExecutor()
+        localExecutor
     );
     doThrow(new RuntimeException("Handler failure")).when(searchResultSender).handle(any());
 
@@ -110,13 +123,15 @@ class FlatiBotTest {
     bot.consume(List.of(update));
 
     // Then — user receives an error notification (timeout accounts for async dispatch)
-    verify(telegramClient, timeout(2000)).execute(any(SendMessage.class));
+    verify(telegramClient, timeout(ASYNC_TIMEOUT_MS)).execute(any(SendMessage.class));
+    localExecutor.shutdown();
   }
 
   @Test
   void should_dispatch_updates_concurrently_via_executor() {
     // Given — three updates submitted at once
     var searchResultSender = mock(SearchResultSender.class);
+    var localExecutor = buildExecutor();
     var bot = new FlatioBot(
         new BotConfig("t:1", "bot"),
         mock(TelegramClient.class),
@@ -124,7 +139,7 @@ class FlatiBotTest {
         mock(HelpCommandHandler.class),
         mock(FilterCallbackHandler.class),
         searchResultSender,
-        buildExecutor()
+        localExecutor
     );
     var updates = List.of(
         buildCallbackUpdate(1, 100L, "FILTER:SEARCH"),
@@ -136,7 +151,8 @@ class FlatiBotTest {
     assertThatNoException().isThrownBy(() -> bot.consume(updates));
 
     // Then — all three updates processed without blocking consume()
-    verify(searchResultSender, timeout(2000).times(3)).handle(any());
+    verify(searchResultSender, timeout(ASYNC_TIMEOUT_MS).times(3)).handle(any());
+    localExecutor.shutdown();
   }
 
   private static Update buildCallbackUpdate(int updateId, long chatId, String data) {
