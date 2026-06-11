@@ -235,6 +235,63 @@ class OnlinerConnectorTest {
     assertThat(result.get(1).photoUrls()).isEmpty();
   }
 
+  // -------------------------------------------------------------------------
+  // imgproxy URL decoding (#160)
+  // -------------------------------------------------------------------------
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_decode_imgproxy_url_when_photo_is_wrapped_in_imgproxy() {
+    // Given
+    String originalUrl = "https://content.onliner.by/mini/2025/01/14/apartment_123456.jpg";
+    String base64 = Base64.getUrlEncoder().withoutPadding()
+        .encodeToString(originalUrl.getBytes(StandardCharsets.UTF_8));
+    String imgproxyUrl = "https://imgproxy.onliner.by/unsafe/rs:fit/w:860/h:645/plain/" + base64;
+    var response = buildResponseWithPhoto(imgproxyUrl);
+    mockRestClientReturning(response);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then — imgproxy URL decoded to original content URL
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).photoUrls()).hasSize(1);
+    assertThat(result.get(0).photoUrls().get(0)).isEqualTo(originalUrl);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_return_empty_photo_list_when_imgproxy_base64_is_invalid() {
+    // Given — imgproxy URL with non-decodable last segment
+    String imgproxyUrl = "https://imgproxy.onliner.by/unsafe/rs:fit/w:860/h:645/plain/!!!invalid-base64!!!";
+    var response = buildResponseWithPhoto(imgproxyUrl);
+    mockRestClientReturning(response);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then — decoding failed → photo omitted, listing still returned (graceful degradation)
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).photoUrls()).isEmpty();
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_use_photo_url_as_is_when_not_imgproxy() {
+    // Given — regular CDN URL (not imgproxy)
+    String directUrl = "https://content.onliner.by/image/1001.jpg";
+    var response = buildResponseWithPhoto(directUrl);
+    mockRestClientReturning(response);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then — non-imgproxy URL returned unchanged
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).photoUrls()).hasSize(1);
+    assertThat(result.get(0).photoUrls().get(0)).isEqualTo(directUrl);
+  }
+
   @Test
   @SuppressWarnings("unchecked")
   void should_use_last_time_up_as_published_at_when_present() {
@@ -776,6 +833,31 @@ class OnlinerConnectorTest {
         new OnlinerContact(owner),
         OffsetDateTime.parse("2026-06-06T09:00:00+03:00"),
         OffsetDateTime.parse("2026-06-06T09:00:00+03:00")
+    );
+    return new OnlinerSearchResponse(
+        List.of(apt), 1,
+        new OnlinerPage(50, 1, 1, 1)
+    );
+  }
+
+  private OnlinerSearchResponse buildResponseWithPhoto(String photoUrl) {
+    var price = new OnlinerPrice("400.00", "USD",
+        Map.of("BYN", new OnlinerConvertedPrice("1305.00", "BYN")));
+    var location = new OnlinerLocation(
+        "Минск, ул. Ленина, 1",
+        new BigDecimal("53.9040"),
+        new BigDecimal("27.5620")
+    );
+    var apt = new OnlinerApartment(
+        6001L,
+        "https://r.onliner.by/ak/apartments/6001",
+        "2_rooms",
+        photoUrl,
+        price,
+        location,
+        new OnlinerContact(true),
+        OffsetDateTime.parse("2026-06-05T12:00:00+03:00"),
+        OffsetDateTime.parse("2026-06-05T12:00:00+03:00")
     );
     return new OnlinerSearchResponse(
         List.of(apt), 1,
