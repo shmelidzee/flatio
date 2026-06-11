@@ -133,11 +133,11 @@ public class SearchResultSender {
       return;
     }
 
-    long newPage = PAGE_NEXT.equals(data)
+    int newPage = PAGE_NEXT.equals(data)
         ? Math.min(session.getCurrentPage() + 1, session.getTotalPages() - 1)
         : Math.max(session.getCurrentPage() - 1, 0);
 
-    var pageable = PageRequest.of((int) newPage, PAGE_SIZE, Sort.by(Sort.Direction.DESC, "createdAt"));
+    var pageable = PageRequest.of(newPage, PAGE_SIZE, Sort.by(Sort.Direction.DESC, "createdAt"));
     var page = listingService.search(session.getCriteria(), pageable);
 
     if (page.isEmpty()) {
@@ -190,7 +190,7 @@ public class SearchResultSender {
     }
   }
 
-  private void sendNavigationMessage(String chatId, long currentPage, long totalPages) {
+  private void sendNavigationMessage(String chatId, int currentPage, int totalPages) {
     String pageText = "📄 Страница " + (currentPage + 1) + " из " + totalPages;
     var navButtons = new ArrayList<InlineKeyboardButton>();
     if (currentPage > 0) {

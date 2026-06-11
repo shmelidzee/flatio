@@ -127,7 +127,7 @@ public class FlatioBot implements SpringLongPollingBot, LongPollingUpdateConsume
       return;
     }
     try {
-      telegramClient.execute(filterCallbackHandler.handleKeywordText(userId, chatId, text.trim()));
+      telegramClient.execute(filterCallbackHandler.handleKeywordText(userId, chatId, text));
     } catch (TelegramApiException e) {
       log.error("Failed to send DONE step after keyword input: chatId={}", chatId, e);
     }

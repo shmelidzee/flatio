@@ -161,7 +161,7 @@ public class SearchFilterWizard {
     var state = states.computeIfAbsent(telegramId, id -> new SearchFilterState());
     state.setQuery(text == null || text.isBlank() ? null : text.strip());
     state.setCurrentStep(FilterStep.DONE);
-    log.debug("Keyword applied: telegramId={}, query={}", telegramId, text);
+    log.debug("Keyword applied: telegramId={}, hasQuery={}", telegramId, state.getQuery() != null);
     return state;
   }
 

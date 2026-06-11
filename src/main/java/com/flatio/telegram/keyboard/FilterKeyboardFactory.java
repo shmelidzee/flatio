@@ -154,9 +154,13 @@ public class FilterKeyboardFactory {
         .append("Цена: ").append(priceLabel(state.getPriceMin(), state.getPriceMax())).append("\n")
         .append("Продавец: ").append(ownerOnlyLabel(state.getOwnerOnly()));
     if (state.getQuery() != null && !state.getQuery().isBlank()) {
-      sb.append("\nКлючевые слова: «").append(state.getQuery()).append("»");
+      sb.append("\nКлючевые слова: «").append(escapeHtml(state.getQuery())).append("»");
     }
     return sb.toString();
+  }
+
+  private String escapeHtml(String text) {
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
   }
 
   private String dealTypeLabel(DealType dealType) {

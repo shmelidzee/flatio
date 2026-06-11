@@ -16,11 +16,11 @@ import lombok.Setter;
 public class SearchSession {
 
   private final ListingSearchCriteria criteria;
-  private long currentPage;
-  private long totalPages;
+  private int currentPage;
+  private int totalPages;
   private Instant lastAccessedAt;
 
-  public SearchSession(ListingSearchCriteria criteria, long currentPage, long totalPages) {
+  public SearchSession(ListingSearchCriteria criteria, int currentPage, int totalPages) {
     this.criteria = criteria;
     this.currentPage = currentPage;
     this.totalPages = totalPages;
