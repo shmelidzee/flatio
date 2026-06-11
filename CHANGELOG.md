@@ -8,6 +8,38 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **PR #151 — Пагинация, полнотекстовый поиск, /help, меню бота, фото-fallback (issues #30, #31, #140, #148, #149)**
+  - `com.flatio.telegram.config.BotCommandsRegistrar` — `@PostConstruct` bean; регистрирует команды
+    `/start`, `/search`, `/help` через `SetMyCommands` при старте приложения
+  - `com.flatio.telegram.command.HelpCommandHandler` — обработчик команды `/help` и callback `action:help`;
+    возвращает пользователю справочное сообщение
+  - `com.flatio.telegram.state.SearchSession` — in-memory сессия результатов поиска пользователя;
+    хранит страницы результатов, TTL 30 минут; поддерживает `PAGE:NEXT` / `PAGE:PREV` callbacks
+  - Пагинация результатов поиска — 5 карточек на страницу; навигация через inline-кнопки
+    `PAGE:NEXT` и `PAGE:PREV`; состояние сессии хранится в `SearchSession`
+  - Шаг `KEYWORD` в `SearchFilterWizard` — свободный текстовый ввод ключевого слова поиска
+    (или кнопка «Пропустить»); введённое значение передаётся в FTS-запрос через `search_vector`
+  - Photo fallback в `SearchResultSender` — при ошибке отправки фото или отсутствии `photoUrl`
+    карточка отправляется как текстовое сообщение с заглушкой «📷 Фото не добавлено»
+
+### Fixed
+- **PR #150 — Исправление 6 проблем (#137, #138, #139, #145, #146, #147)**
+  - **#137** — `com.flatio.telegram.config.TelegramStartupValidator` — `@PostConstruct` bean;
+    валидирует токен бота и регистрацию вебхука при старте приложения; блокирует запуск при
+    некорректной конфигурации
+  - **#138** — `SearchFilterWizard`: шаг `ROOMS` пропускается в обоих направлениях (вперёд и назад)
+    если выбранный `propertyType` — `ROOM`; пользователь переходит сразу к шагу `PRICE`
+  - **#139** — `ListingIngestionServiceImpl.isPriceChanged()` — сравнивает `priceUsd` вместо BYN-цены,
+    чтобы не записывать ложные записи в `price_history` при изменении курса валют
+  - **#145** — `ListingSummaryResponse` расширен двумя полями: `priceUsd` и `propertyType`;
+    `ListingFormatter` теперь отображает формат `$USD (BYN)` при наличии `priceUsd`;
+    `SearchResultSender` сортирует результаты по `createdAt DESC`
+  - **#146** — `OnlinerDeltaSyncJob`: добавлен отдельный `catch (DataAccessException)` с уровнем
+    логирования WARN вместо общего `catch (Exception)` для ошибок работы с БД
+  - **#147** — шаг `OWNER_ONLY` добавлен в `SearchFilterWizard`; предикат `ownerOnly` добавлен
+    в `buildSearchSpec()` для фильтрации объявлений только от собственников
+
+### Added
 - **PR #143 — Карточка объявления: форматирование и отправка результатов поиска (issue #29)**
   - `com.flatio.telegram.formatter.ListingFormatter` — форматирует `ListingSummaryResponse` в HTML-caption
     и `InlineKeyboardMarkup`; caption состоит из трёх зон: заголовок + цены (BYN и USD), геолокация + площадь,

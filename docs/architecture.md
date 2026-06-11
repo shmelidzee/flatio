@@ -91,13 +91,13 @@ com.flatio
 │       ├── dto/         # OnlinerSearchResponse, OnlinerApartment, OnlinerPrice, OnlinerLocation, OnlinerArea, OnlinerPage
 │       └── scheduler/   # OnlinerDeltaSyncJob (every 10 min), OnlinerFullSyncJob (daily 02:00)
 ├── telegram/            # Telegram Bot
-│   ├── handler/         # FlatioBot — TelegramLongPollingBot Spring bean; SearchResultSender — отправка карточек
-│   ├── command/         # StartCommandHandler — /start command
+│   ├── handler/         # FlatioBot — TelegramLongPollingBot Spring bean; SearchResultSender — отправка карточек (с photo fallback)
+│   ├── command/         # StartCommandHandler — /start; HelpCommandHandler — /help и action:help callback
 │   ├── callback/        # FilterCallbackHandler — обработка callback FILTER:*
 │   ├── keyboard/        # FilterKeyboardFactory — InlineKeyboardMarkup для шагов wizard
-│   ├── state/           # FSM и пользовательские сценарии: FilterStep (enum шагов), SearchFilterState (in-memory состояние), SearchFilterWizard (управление переходами)
+│   ├── state/           # FSM и пользовательские сценарии: FilterStep (enum шагов), SearchFilterState (in-memory состояние), SearchFilterWizard (управление переходами); SearchSession (пагинация результатов, TTL 30 мин)
 │   ├── formatter/       # ListingFormatter — форматирование ListingSummaryResponse в HTML-caption и InlineKeyboardMarkup
-│   └── config/          # BotConfig (@ConfigurationProperties) + BotConfiguration (@EnableConfigurationProperties)
+│   └── config/          # BotConfig (@ConfigurationProperties) + BotConfiguration (@EnableConfigurationProperties); BotCommandsRegistrar (@PostConstruct, регистрирует /start, /search, /help); TelegramStartupValidator (@PostConstruct, валидирует токен и вебхук)
 ├── scheduler/           # Generic scheduled tasks (currently empty; source-specific jobs live in integration/)
 ├── security/            # JWT authentication
 │   ├── JwtService       # Token generation and validation (HMAC-SHA256)
