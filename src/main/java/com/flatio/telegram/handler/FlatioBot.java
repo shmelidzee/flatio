@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.longpolling.interfaces.LongPollingUpdateConsumer;
 import org.telegram.telegrambots.longpolling.starter.SpringLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.AnswerCallbackQuery;
+import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
@@ -45,6 +46,7 @@ public class FlatioBot implements SpringLongPollingBot, LongPollingUpdateConsume
   private static final String FILTER_CALLBACK_PREFIX = SearchFilterWizard.CALLBACK_PREFIX + ":";
   private static final String FILTER_SEARCH_CALLBACK = SearchFilterWizard.CALLBACK_PREFIX + ":SEARCH";
   private static final String ACTION_HELP = "action:help";
+  private static final String ERROR_TEXT = "Произошла ошибка, попробуйте позже";
 
   private final BotConfig botConfig;
   private final TelegramClient telegramClient;
@@ -85,10 +87,39 @@ public class FlatioBot implements SpringLongPollingBot, LongPollingUpdateConsume
 
   private void handleUpdate(Update update) {
     log.debug("Update received: updateId={}", update.getUpdateId());
-    if (update.hasMessage() && update.getMessage().hasText()) {
-      handleTextMessage(update);
-    } else if (update.hasCallbackQuery()) {
-      handleCallbackQuery(update.getCallbackQuery());
+    try {
+      if (update.hasMessage() && update.getMessage().hasText()) {
+        handleTextMessage(update);
+      } else if (update.hasCallbackQuery()) {
+        handleCallbackQuery(update.getCallbackQuery());
+      }
+    } catch (Exception e) {
+      String chatId = extractChatId(update);
+      log.error("Unhandled exception processing update: updateId={}, chatId={}", update.getUpdateId(), chatId, e);
+      if (chatId != null) {
+        sendErrorMessage(chatId);
+      }
+    }
+  }
+
+  private String extractChatId(Update update) {
+    if (update.hasMessage() && update.getMessage() != null) {
+      return String.valueOf(update.getMessage().getChatId());
+    }
+    if (update.hasCallbackQuery() && update.getCallbackQuery().getMessage() != null) {
+      return String.valueOf(update.getCallbackQuery().getMessage().getChatId());
+    }
+    return null;
+  }
+
+  private void sendErrorMessage(String chatId) {
+    try {
+      telegramClient.execute(SendMessage.builder()
+          .chatId(chatId)
+          .text(ERROR_TEXT)
+          .build());
+    } catch (TelegramApiException e) {
+      log.warn("Failed to send error message to user: chatId={}", chatId, e);
     }
   }
 
