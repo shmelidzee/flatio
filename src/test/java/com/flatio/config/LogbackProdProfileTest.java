@@ -8,6 +8,7 @@ import com.flatio.repository.PriceHistoryRepository;
 import com.flatio.repository.SourceRepository;
 import com.flatio.repository.UserAuthProviderRepository;
 import com.flatio.repository.UserRepository;
+import com.flatio.repository.UserSavedSearchRepository;
 import com.flatio.service.ListingIngestionService;
 import net.logstash.logback.encoder.LogstashEncoder;
 import org.junit.jupiter.api.Test;
@@ -60,6 +61,9 @@ class LogbackProdProfileTest {
 
   @MockBean
   PriceHistoryRepository priceHistoryRepository;
+
+  @MockBean
+  UserSavedSearchRepository userSavedSearchRepository;
 
   @Test
   void should_configure_logstash_encoder_on_root_logger_when_prod_profile_active() {
