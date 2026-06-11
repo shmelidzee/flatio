@@ -18,8 +18,10 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
@@ -47,6 +49,7 @@ public class OnlinerConnector implements ListingConnector {
   private static final String DEAL_TYPE_RENT = "RENT";
   private static final String PROPERTY_TYPE_APARTMENT = "APARTMENT";
   private static final String PROPERTY_TYPE_ROOM = "ROOM";
+  private static final String IMGPROXY_ONLINER_HOST = "imgproxy.onliner.by";
 
   /**
    * Maps Onliner {@code rent_type} to room count.
@@ -242,7 +245,8 @@ public class OnlinerConnector implements ListingConnector {
     BigDecimal lat = apartment.location() != null ? apartment.location().latitude() : null;
     BigDecimal lon = apartment.location() != null ? apartment.location().longitude() : null;
     String address = apartment.location() != null ? apartment.location().address() : null;
-    List<String> photos = apartment.photo() != null ? List.of(apartment.photo()) : List.of();
+    String resolvedPhoto = resolvePhotoUrl(apartment.photo());
+    List<String> photos = resolvedPhoto != null ? List.of(resolvedPhoto) : List.of();
     Instant publishedAt = apartment.lastTimeUp() != null ? apartment.lastTimeUp().toInstant() : null;
     Integer rooms = mapRentTypeToRooms(apartment.rentType());
     Boolean isOwner = apartment.contact() != null ? apartment.contact().owner() : null;
@@ -293,6 +297,33 @@ public class OnlinerConnector implements ListingConnector {
       return PROPERTY_TYPE_ROOM;
     }
     return PROPERTY_TYPE_APARTMENT;
+  }
+
+  /**
+   * Resolves the original photo URL from an Onliner imgproxy-wrapped URL.
+   *
+   * <p>Onliner serves photos via imgproxy with the original URL base64-encoded as the last
+   * path segment (e.g. {@code https://imgproxy.onliner.by/unsafe/.../plain/<base64>}).
+   * Telegram Bot API cannot load imgproxy URLs directly, so the original URL must be extracted.
+   *
+   * @param photoUrl raw photo URL from Onliner API, may be null
+   * @return decoded original URL, the input URL unchanged if not an imgproxy URL, or null on failure
+   */
+  private String resolvePhotoUrl(String photoUrl) {
+    if (photoUrl == null) {
+      return null;
+    }
+    if (!photoUrl.contains(IMGPROXY_ONLINER_HOST)) {
+      return photoUrl;
+    }
+    try {
+      String lastSegment = photoUrl.substring(photoUrl.lastIndexOf('/') + 1);
+      byte[] decoded = Base64.getUrlDecoder().decode(lastSegment);
+      return new String(decoded, StandardCharsets.UTF_8);
+    } catch (Exception e) {
+      log.warn("Failed to decode imgproxy photo URL: url={}, error={}", photoUrl, e.getMessage());
+      return null;
+    }
   }
 
   private String buildTitle(String address) {
