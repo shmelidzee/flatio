@@ -60,6 +60,10 @@ telegram:
     token: ${TELEGRAM_BOT_TOKEN}
     username: ${TELEGRAM_BOT_USERNAME}
     no-photo-url: ${TELEGRAM_NO_PHOTO_URL:https://placehold.co/800x600/e2e8f0/94a3b8.png}
+    executor:
+      core-pool-size: ${TELEGRAM_EXECUTOR_CORE_POOL_SIZE:10}
+      max-pool-size: ${TELEGRAM_EXECUTOR_MAX_POOL_SIZE:20}
+      queue-capacity: ${TELEGRAM_EXECUTOR_QUEUE_CAPACITY:100}
 
 nominatim:
   base-url: ${NOMINATIM_BASE_URL:https://nominatim.openstreetmap.org}

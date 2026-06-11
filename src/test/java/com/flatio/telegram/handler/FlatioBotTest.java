@@ -7,6 +7,7 @@ import com.flatio.telegram.config.BotConfig;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Update;
@@ -19,7 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -36,7 +37,8 @@ class FlatiBotTest {
         mock(StartCommandHandler.class),
         mock(HelpCommandHandler.class),
         mock(FilterCallbackHandler.class),
-        mock(SearchResultSender.class)
+        mock(SearchResultSender.class),
+        buildExecutor()
     );
   }
 
@@ -69,7 +71,8 @@ class FlatiBotTest {
         mock(StartCommandHandler.class),
         mock(HelpCommandHandler.class),
         mock(FilterCallbackHandler.class),
-        searchResultSender
+        searchResultSender,
+        buildExecutor()
     );
     doThrow(new RuntimeException("Handler failure"))
         .doNothing()
@@ -81,8 +84,8 @@ class FlatiBotTest {
     // When / Then — exception from first update must not propagate to consume()
     assertThatNoException().isThrownBy(() -> bot.consume(List.of(update1, update2)));
 
-    // Both updates reached the search handler
-    verify(searchResultSender, times(2)).handle(any());
+    // Both updates reached the search handler (timeout accounts for async dispatch)
+    verify(searchResultSender, timeout(2000).times(2)).handle(any());
   }
 
   @Test
@@ -96,7 +99,8 @@ class FlatiBotTest {
         mock(StartCommandHandler.class),
         mock(HelpCommandHandler.class),
         mock(FilterCallbackHandler.class),
-        searchResultSender
+        searchResultSender,
+        buildExecutor()
     );
     doThrow(new RuntimeException("Handler failure")).when(searchResultSender).handle(any());
 
@@ -105,8 +109,34 @@ class FlatiBotTest {
     // When
     bot.consume(List.of(update));
 
-    // Then — user receives an error notification
-    verify(telegramClient).execute(any(SendMessage.class));
+    // Then — user receives an error notification (timeout accounts for async dispatch)
+    verify(telegramClient, timeout(2000)).execute(any(SendMessage.class));
+  }
+
+  @Test
+  void should_dispatch_updates_concurrently_via_executor() {
+    // Given — three updates submitted at once
+    var searchResultSender = mock(SearchResultSender.class);
+    var bot = new FlatioBot(
+        new BotConfig("t:1", "bot"),
+        mock(TelegramClient.class),
+        mock(StartCommandHandler.class),
+        mock(HelpCommandHandler.class),
+        mock(FilterCallbackHandler.class),
+        searchResultSender,
+        buildExecutor()
+    );
+    var updates = List.of(
+        buildCallbackUpdate(1, 100L, "FILTER:SEARCH"),
+        buildCallbackUpdate(2, 200L, "FILTER:SEARCH"),
+        buildCallbackUpdate(3, 300L, "FILTER:SEARCH")
+    );
+
+    // When
+    assertThatNoException().isThrownBy(() -> bot.consume(updates));
+
+    // Then — all three updates processed without blocking consume()
+    verify(searchResultSender, timeout(2000).times(3)).handle(any());
   }
 
   private static Update buildCallbackUpdate(int updateId, long chatId, String data) {
@@ -123,5 +153,14 @@ class FlatiBotTest {
     when(update.hasCallbackQuery()).thenReturn(true);
     when(update.getCallbackQuery()).thenReturn(callbackQuery);
     return update;
+  }
+
+  private static ThreadPoolTaskExecutor buildExecutor() {
+    var executor = new ThreadPoolTaskExecutor();
+    executor.setCorePoolSize(5);
+    executor.setMaxPoolSize(10);
+    executor.setQueueCapacity(100);
+    executor.initialize();
+    return executor;
   }
 }
