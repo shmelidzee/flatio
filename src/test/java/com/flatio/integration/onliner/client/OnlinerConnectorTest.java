@@ -236,17 +236,17 @@ class OnlinerConnectorTest {
   }
 
   // -------------------------------------------------------------------------
-  // imgproxy URL decoding (#160)
+  // imgproxy URL decoding (#170)
   // -------------------------------------------------------------------------
 
   @Test
   @SuppressWarnings("unchecked")
-  void should_decode_imgproxy_url_when_photo_is_wrapped_in_imgproxy() {
-    // Given
+  void should_decode_imgproxy_url_when_base64_is_single_segment() {
+    // Given — production format: {sig}/w:860/h:645/dpr:2/{base64}
     String originalUrl = "https://content.onliner.by/mini/2025/01/14/apartment_123456.jpg";
     String base64 = Base64.getUrlEncoder().withoutPadding()
         .encodeToString(originalUrl.getBytes(StandardCharsets.UTF_8));
-    String imgproxyUrl = "https://imgproxy.onliner.by/unsafe/rs:fit/w:860/h:645/plain/" + base64;
+    String imgproxyUrl = "https://imgproxy.onliner.by/sig123/w:860/h:645/dpr:2/" + base64;
     var response = buildResponseWithPhoto(imgproxyUrl);
     mockRestClientReturning(response);
 
@@ -261,9 +261,38 @@ class OnlinerConnectorTest {
 
   @Test
   @SuppressWarnings("unchecked")
+  void should_decode_imgproxy_url_when_base64_is_split_across_multiple_path_segments() {
+    // Given — real production URL: Onliner imgproxy splits base64 into 16-char segments
+    // Source URL from production causing the bug (url=g in logs before fix)
+    String imgproxyUrl = "https://imgproxy.onliner.by/2jqDY0cGpVp8eHktwsfBkJ5dJxBdzPHDLk2V107UPmk"
+        + "/w:600/h:400/dpr:2"
+        + "/aHR0cHM6Ly9jb250"
+        + "/ZW50Lm9ubGluZXIu"
+        + "/YnkvYXBhcnRtZW50"
+        + "/c19waG90by8yMTgw"
+        + "/MDYzL29yaWdpbmFs"
+        + "/LzMwMzMxYzJjYjFi"
+        + "/OWE1M2JkMTE3ZjM4"
+        + "/ODNmZjYxNTEzLmpw"
+        + "/Zw";
+    var response = buildResponseWithPhoto(imgproxyUrl);
+    mockRestClientReturning(response);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then — all 9 base64 segments joined and decoded to valid content URL
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).photoUrls()).hasSize(1);
+    assertThat(result.get(0).photoUrls().get(0))
+        .isEqualTo("https://content.onliner.by/apartments_photo/2180063/original/30331c2cb1b9a53bd117f3883ff61513.jpg");
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
   void should_return_empty_photo_list_when_imgproxy_base64_is_invalid() {
-    // Given — imgproxy URL with non-decodable last segment
-    String imgproxyUrl = "https://imgproxy.onliner.by/unsafe/rs:fit/w:860/h:645/plain/!!!invalid-base64!!!";
+    // Given — imgproxy URL with non-decodable segment after transform params
+    String imgproxyUrl = "https://imgproxy.onliner.by/sig/w:860/h:645/dpr:2/!!!invalid-base64!!!";
     var response = buildResponseWithPhoto(imgproxyUrl);
     mockRestClientReturning(response);
 
@@ -271,6 +300,22 @@ class OnlinerConnectorTest {
     List<RawListing> result = connector.fetch();
 
     // Then — decoding failed → photo omitted, listing still returned (graceful degradation)
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).photoUrls()).isEmpty();
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_return_null_photo_when_imgproxy_url_has_no_transform_params() {
+    // Given — imgproxy host but no segment with ':' after it (unexpected format)
+    String imgproxyUrl = "https://imgproxy.onliner.by/aHR0cHM6Ly9jb250ZW50";
+    var response = buildResponseWithPhoto(imgproxyUrl);
+    mockRestClientReturning(response);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then — format unrecognised → photo omitted gracefully
     assertThat(result).hasSize(1);
     assertThat(result.get(0).photoUrls()).isEmpty();
   }

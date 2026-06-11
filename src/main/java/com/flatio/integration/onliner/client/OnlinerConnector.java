@@ -50,6 +50,7 @@ public class OnlinerConnector implements ListingConnector {
   private static final String PROPERTY_TYPE_APARTMENT = "APARTMENT";
   private static final String PROPERTY_TYPE_ROOM = "ROOM";
   private static final String IMGPROXY_ONLINER_HOST = "imgproxy.onliner.by";
+  private static final int BASE64_BLOCK_SIZE = 4;
 
   /**
    * Maps Onliner {@code rent_type} to room count.
@@ -302,9 +303,11 @@ public class OnlinerConnector implements ListingConnector {
   /**
    * Resolves the original photo URL from an Onliner imgproxy-wrapped URL.
    *
-   * <p>Onliner serves photos via imgproxy with the original URL base64-encoded as the last
-   * path segment (e.g. {@code https://imgproxy.onliner.by/unsafe/.../plain/<base64>}).
-   * Telegram Bot API cannot load imgproxy URLs directly, so the original URL must be extracted.
+   * <p>Onliner imgproxy splits the base64-encoded original URL across multiple path segments
+   * of 16 characters each (e.g. {@code /aHR0cHM6Ly9jb250/ZW50Lm9ubGluZXIu/...}).
+   * Transform parameters such as {@code w:600}, {@code h:400}, {@code dpr:2} always contain
+   * a colon and appear before the base64 chunks. All segments after the last colon-containing
+   * segment are joined and decoded as a single base64 string.
    *
    * @param photoUrl raw photo URL from Onliner API, may be null
    * @return decoded original URL, the input URL unchanged if not an imgproxy URL, or null on failure
@@ -317,8 +320,33 @@ public class OnlinerConnector implements ListingConnector {
       return photoUrl;
     }
     try {
-      String lastSegment = photoUrl.substring(photoUrl.lastIndexOf('/') + 1);
-      byte[] decoded = Base64.getUrlDecoder().decode(lastSegment);
+      String[] segments = photoUrl.split("/", -1);
+
+      // Transform params (w:600, h:400, dpr:2) always contain ':'; base64 chunks never do.
+      // Find the last transform param — everything after it forms the base64 payload.
+      int lastTransformIdx = -1;
+      for (int i = 0; i < segments.length; i++) {
+        if (segments[i].contains(":")) {
+          lastTransformIdx = i;
+        }
+      }
+
+      if (lastTransformIdx < 0 || lastTransformIdx >= segments.length - 1) {
+        log.warn("Unexpected imgproxy URL format, cannot extract base64 segments: url={}", photoUrl);
+        return null;
+      }
+
+      StringBuilder base64Builder = new StringBuilder();
+      for (int i = lastTransformIdx + 1; i < segments.length; i++) {
+        base64Builder.append(segments[i]);
+      }
+      String base64 = base64Builder.toString();
+
+      // Add padding if needed — base64 length must be a multiple of BASE64_BLOCK_SIZE
+      int padLen = (BASE64_BLOCK_SIZE - base64.length() % BASE64_BLOCK_SIZE) % BASE64_BLOCK_SIZE;
+      base64 = base64 + "=".repeat(padLen);
+
+      byte[] decoded = Base64.getUrlDecoder().decode(base64);
       return new String(decoded, StandardCharsets.UTF_8);
     } catch (Exception e) {
       log.warn("Failed to decode imgproxy photo URL: url={}, error={}", photoUrl, e.getMessage());
