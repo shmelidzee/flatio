@@ -9,14 +9,22 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.Instant;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
+/**
+ * Stores the last search filter a Telegram user applied.
+ *
+ * <p>One row per user (enforced by unique constraint on {@code telegram_user_id}).
+ * All filter fields are nullable — a null value means the dimension was not restricted.
+ */
 @Entity
 @Table(name = "user_saved_searches")
 @Getter
 @Setter
+@NoArgsConstructor
 public class UserSavedSearch {
 
   @Id

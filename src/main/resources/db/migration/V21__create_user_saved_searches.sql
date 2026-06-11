@@ -13,5 +13,3 @@ CREATE TABLE user_saved_searches (
   updated_at       TIMESTAMP WITH TIME ZONE    NOT NULL DEFAULT NOW(),
   CONSTRAINT uq_user_saved_searches_telegram_user_id UNIQUE (telegram_user_id)
 );
-
-CREATE INDEX idx_user_saved_searches_telegram_user_id ON user_saved_searches (telegram_user_id);
