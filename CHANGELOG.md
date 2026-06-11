@@ -7,6 +7,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **PR #172 — Исправление декодирования URL фото Onliner (issue #170)**
+  - `OnlinerConnector.resolvePhotoUrl()` — исправлено декодирование imgproxy URL:
+    Onliner разбивает base64-закодированный оригинальный URL на несколько сегментов пути
+    по 16 символов (разделитель `/`); теперь все сегменты после трансформаций (`w:`, `h:`, `dpr:`)
+    объединяются перед декодированием; ранее брался только последний сегмент (`Zw` → `"g"`)
+  - Результат после исправления: `https://content.onliner.by/...` — валидный прямой URL изображения
+
+- **PR #171 — Параллельная обработка Telegram апдейтов (issue #167)**
+  - `com.flatio.config.TelegramExecutorConfig` — новый `@Configuration` бин `ThreadPoolTaskExecutor`
+    с именем `telegramUpdateExecutor`; `CallerRunsPolicy` обеспечивает back-pressure при перегрузке;
+    graceful shutdown: ожидает завершения задач до 30 секунд
+  - `FlatioBot.consume()` — каждый апдейт отправляется в `telegramUpdateExecutor` через
+    `executor.execute()`; апдейты разных пользователей обрабатываются независимо и параллельно
+  - `application.yml` — новая секция `telegram.bot.executor.*` с env-переменными:
+    `TELEGRAM_EXECUTOR_CORE_POOL_SIZE` (default 10), `TELEGRAM_EXECUTOR_MAX_POOL_SIZE` (default 20),
+    `TELEGRAM_EXECUTOR_QUEUE_CAPACITY` (default 100)
+
+- **PR #169 — Валидация URL фото перед отправкой в Telegram (issue #166)**
+  - `SearchResultSender.sendCard()` — перед вызовом `SendPhoto` проверяется, что `photoUrl`
+    начинается с `http://` или `https://`; невалидный URL (например, `"g"`) заменяется
+    на `noPhotoUrl` (placeholder) без лишнего вызова Telegram API
+
+- **PR #168 — Глобальный обработчик исключений в боте (issue #165)**
+  - `FlatioBot.handleUpdate()` — добавлен `try-catch (Exception)` верхнего уровня;
+    непойманное исключение в любом обработчике больше не останавливает обработку всех
+    последующих апдейтов; ошибка логируется с `updateId` и не пробрасывается наверх
+
 ### Added
 - **PR #151 — Пагинация, полнотекстовый поиск, /help, меню бота, фото-fallback (issues #30, #31, #140, #148, #149)**
   - `com.flatio.telegram.config.BotCommandsRegistrar` — `@PostConstruct` bean; регистрирует команды

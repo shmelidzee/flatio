@@ -47,8 +47,9 @@ Root package: `com.flatio`
 ```
 com.flatio
 ├── config/              # Spring configuration and beans
-│   ├── OpenApiConfig    # springdoc/Swagger setup
-│   └── SchedulerConfig  # @EnableScheduling — activates Spring scheduled task execution
+│   ├── OpenApiConfig           # springdoc/Swagger setup
+│   ├── SchedulerConfig         # @EnableScheduling — activates Spring scheduled task execution
+│   └── TelegramExecutorConfig  # ThreadPoolTaskExecutor for concurrent Telegram update dispatch (core=10, max=20, queue=100)
 ├── domain/              # JPA entities (domain model)
 │   ├── country/         # Country entity — ISO country reference data
 │   ├── currency/        # Currency entity — currency reference data
@@ -91,7 +92,7 @@ com.flatio
 │       ├── dto/         # OnlinerSearchResponse, OnlinerApartment, OnlinerPrice, OnlinerLocation, OnlinerArea, OnlinerPage
 │       └── scheduler/   # OnlinerDeltaSyncJob (every 10 min), OnlinerFullSyncJob (daily 02:00)
 ├── telegram/            # Telegram Bot
-│   ├── handler/         # FlatioBot — TelegramLongPollingBot Spring bean; SearchResultSender — отправка карточек (с photo fallback)
+│   ├── handler/         # FlatioBot — диспетчер апдейтов (глобальный try-catch, параллельный dispatch через TelegramExecutorConfig); SearchResultSender — отправка карточек с валидацией URL и photo/text fallback
 │   ├── command/         # StartCommandHandler — /start; HelpCommandHandler — /help и action:help callback
 │   ├── callback/        # FilterCallbackHandler — обработка callback FILTER:*
 │   ├── keyboard/        # FilterKeyboardFactory — InlineKeyboardMarkup для шагов wizard
@@ -309,6 +310,9 @@ Defaults to `http://localhost:3000`. Wildcard `*` is never accepted.
 | `JWT_SECRET_KEY` | HMAC-SHA256 signing key — **required**, no default | — |
 | `JWT_ACCESS_TOKEN_EXPIRY` | Access token lifetime in seconds | `3600` |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated list of allowed CORS origins | `http://localhost:3000` |
+| `TELEGRAM_EXECUTOR_CORE_POOL_SIZE` | Core threads in Telegram update executor | `10` |
+| `TELEGRAM_EXECUTOR_MAX_POOL_SIZE` | Max threads in Telegram update executor | `20` |
+| `TELEGRAM_EXECUTOR_QUEUE_CAPACITY` | Task queue capacity before extra threads spawn | `100` |
 
 ---
 
