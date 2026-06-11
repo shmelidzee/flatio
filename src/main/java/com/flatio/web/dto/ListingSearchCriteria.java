@@ -42,5 +42,12 @@ public record ListingSearchCriteria(
             "Supports quoted phrases (\\\"двухкомнатная квартира\\\") and minus-word exclusion (-гараж).",
         example = "двухкомнатная квартира Минск"
     )
-    String query
+    String query,
+
+    @Schema(
+        description = "When true, only listings from direct owners are returned. " +
+            "Listings from sources that do not provide seller type are always included.",
+        example = "true"
+    )
+    Boolean ownerOnly
 ) {}

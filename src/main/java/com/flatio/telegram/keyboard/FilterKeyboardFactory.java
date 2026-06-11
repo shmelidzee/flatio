@@ -30,6 +30,7 @@ public class FilterKeyboardFactory {
       case PROPERTY_TYPE -> buildPropertyTypeKeyboard();
       case ROOMS -> buildRoomsKeyboard();
       case PRICE -> buildPriceKeyboard();
+      case OWNER_ONLY -> buildOwnerOnlyKeyboard();
       case DONE -> buildDoneKeyboard();
     };
   }
@@ -46,6 +47,7 @@ public class FilterKeyboardFactory {
       case PROPERTY_TYPE -> "🏢 Тип недвижимости:";
       case ROOMS -> "🛏 Количество комнат:";
       case PRICE -> "💰 Диапазон цены (BYN/мес):";
+      case OWNER_ONLY -> "👤 Тип продавца:";
       case DONE -> buildSummaryText(state);
     };
   }
@@ -100,6 +102,16 @@ public class FilterKeyboardFactory {
         .build();
   }
 
+  private InlineKeyboardMarkup buildOwnerOnlyKeyboard() {
+    var ownerOnly = btn("Только собственник", P + ":OWNER_ONLY:true");
+    var any = btn("Не важно", P + ":OWNER_ONLY:ANY");
+    return InlineKeyboardMarkup.builder()
+        .keyboardRow(new InlineKeyboardRow(ownerOnly))
+        .keyboardRow(new InlineKeyboardRow(any))
+        .keyboardRow(navRow())
+        .build();
+  }
+
   private InlineKeyboardMarkup buildDoneKeyboard() {
     var search = btn("🔍 Найти", P + ":SEARCH");
     var reset = btn("🔄 Изменить фильтр", P + ":RESET");
@@ -129,7 +141,8 @@ public class FilterKeyboardFactory {
         + "Сделка: " + dealTypeLabel(state.getDealType()) + "\n"
         + "Тип: " + propertyTypeLabel(state.getPropertyType()) + "\n"
         + "Комнат: " + roomsLabel(state.getRooms()) + "\n"
-        + "Цена: " + priceLabel(state.getPriceMin(), state.getPriceMax());
+        + "Цена: " + priceLabel(state.getPriceMin(), state.getPriceMax()) + "\n"
+        + "Продавец: " + ownerOnlyLabel(state.getOwnerOnly());
   }
 
   private String dealTypeLabel(DealType dealType) {
@@ -161,5 +174,10 @@ public class FilterKeyboardFactory {
     if (priceMin == null) return "до " + priceMax.toPlainString() + " BYN";
     if (priceMax == null) return "от " + priceMin.toPlainString() + " BYN";
     return priceMin.toPlainString() + "–" + priceMax.toPlainString() + " BYN";
+  }
+
+  private String ownerOnlyLabel(Boolean ownerOnly) {
+    if (ownerOnly == null) return "Не важно";
+    return ownerOnly ? "Только собственник" : "Не важно";
   }
 }

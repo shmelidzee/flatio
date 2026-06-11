@@ -22,4 +22,6 @@ public class SearchFilterState {
   private Integer rooms;
   private BigDecimal priceMin;
   private BigDecimal priceMax;
+  /** True = only owner listings; null = no filter (show all). */
+  private Boolean ownerOnly;
 }

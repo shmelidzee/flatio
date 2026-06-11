@@ -66,6 +66,9 @@ public class SearchFilterWizard {
   /**
    * Applies the selected value to the current wizard step and advances to the next step.
    *
+   * <p>When the user selects property type {@code ROOM}, the ROOMS step is skipped because
+   * a room is an indivisible unit — asking for room count is not applicable.
+   *
    * @param telegramId Telegram user identifier, never null
    * @param step       step that was answered, never null
    * @param value      selected option value, never null
@@ -79,8 +82,10 @@ public class SearchFilterWizard {
         state.setCurrentStep(FilterStep.PROPERTY_TYPE);
       }
       case PROPERTY_TYPE -> {
-        state.setPropertyType(VALUE_ANY.equals(value) ? null : parsePropertyType(value));
-        state.setCurrentStep(FilterStep.ROOMS);
+        String propertyType = VALUE_ANY.equals(value) ? null : parsePropertyType(value);
+        state.setPropertyType(propertyType);
+        // ROOM is indivisible — skip the ROOMS step
+        state.setCurrentStep("ROOM".equals(propertyType) ? FilterStep.PRICE : FilterStep.ROOMS);
       }
       case ROOMS -> {
         state.setRooms(VALUE_ANY.equals(value) ? null : parseRooms(value));
@@ -88,6 +93,10 @@ public class SearchFilterWizard {
       }
       case PRICE -> {
         applyPriceRange(state, value);
+        state.setCurrentStep(FilterStep.OWNER_ONLY);
+      }
+      case OWNER_ONLY -> {
+        state.setOwnerOnly(VALUE_ANY.equals(value) ? null : Boolean.parseBoolean(value));
         state.setCurrentStep(FilterStep.DONE);
       }
       default -> log.warn("Unexpected step in applySelection: step={}", step);
@@ -99,6 +108,9 @@ public class SearchFilterWizard {
   /**
    * Moves the wizard one step back and clears the previously selected value.
    *
+   * <p>When stepping back from PRICE with property type ROOM, the wizard jumps to
+   * PROPERTY_TYPE (skipping ROOMS, consistent with the forward direction).
+   *
    * @param telegramId Telegram user identifier, never null
    * @return updated state after stepping back; restarts the wizard if already at the first step
    */
@@ -108,11 +120,20 @@ public class SearchFilterWizard {
       case DEAL_TYPE -> { return start(telegramId); }
       case PROPERTY_TYPE -> { state.setDealType(null); state.setCurrentStep(FilterStep.DEAL_TYPE); }
       case ROOMS -> { state.setPropertyType(null); state.setCurrentStep(FilterStep.PROPERTY_TYPE); }
-      case PRICE -> { state.setRooms(null); state.setCurrentStep(FilterStep.ROOMS); }
-      case DONE -> {
+      case PRICE -> {
+        state.setRooms(null);
+        // ROOM type skips ROOMS step in both directions
+        boolean wasRoom = "ROOM".equals(state.getPropertyType());
+        state.setCurrentStep(wasRoom ? FilterStep.PROPERTY_TYPE : FilterStep.ROOMS);
+      }
+      case OWNER_ONLY -> {
         state.setPriceMin(null);
         state.setPriceMax(null);
         state.setCurrentStep(FilterStep.PRICE);
+      }
+      case DONE -> {
+        state.setOwnerOnly(null);
+        state.setCurrentStep(FilterStep.OWNER_ONLY);
       }
     }
     return state;
@@ -164,7 +185,7 @@ public class SearchFilterWizard {
       case "HIGH" -> { state.setPriceMin(PRICE_HIGH_MIN); state.setPriceMax(PRICE_HIGH_MAX); }
       case "PREMIUM" -> { state.setPriceMin(PRICE_PREMIUM_MIN); state.setPriceMax(null); }
       case VALUE_ANY -> { state.setPriceMin(null); state.setPriceMax(null); }
-      // Unknown value: price stays null (no filter), step still advances to DONE — intentional graceful degradation
+      // Unknown value: price stays null (no filter), step still advances — intentional graceful degradation
       default -> log.warn("Unknown price range value in callback: {}", value);
     }
   }

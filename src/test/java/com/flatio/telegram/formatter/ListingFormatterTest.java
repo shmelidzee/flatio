@@ -360,7 +360,8 @@ class ListingFormatterTest {
       String sourceUrl
   ) {
     return new ListingSummaryResponse(
-        id, title, price, currency, null,
+        id, title, price, currency,
+        null, null, null,
         areaTotalM2, city, district,
         sourceId, publishedAt, photoUrl, sourceUrl
     );

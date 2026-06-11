@@ -75,6 +75,7 @@ public class ListingServiceImpl implements ListingService {
         cityPattern,
         criteria.sourceId(),
         criteria.propertyType(),
+        Boolean.TRUE.equals(criteria.ownerOnly()) ? Boolean.TRUE : null,
         pageable
     ).map(listingMapper::toSummaryResponse);
   }
@@ -113,6 +114,13 @@ public class ListingServiceImpl implements ListingService {
       }
       if (criteria.sourceId() != null) {
         predicates.add(cb.equal(root.get("source").get("code"), criteria.sourceId()));
+      }
+      if (Boolean.TRUE.equals(criteria.ownerOnly())) {
+        // Sources without owner info (isOwner IS NULL) are always included per FR
+        predicates.add(cb.or(
+            cb.isTrue(root.get("isOwner")),
+            cb.isNull(root.get("isOwner"))
+        ));
       }
 
       return cb.and(predicates.toArray(new Predicate[0]));

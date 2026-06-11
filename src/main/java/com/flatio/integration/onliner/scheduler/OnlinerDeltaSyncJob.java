@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataAccessException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -72,8 +73,11 @@ public class OnlinerDeltaSyncJob {
       lastRunAt.set(runStart);
     } catch (CallNotPermittedException e) {
       log.warn("Onliner delta sync skipped: circuit breaker OPEN");
+    } catch (DataAccessException e) {
+      log.warn("Onliner delta sync: DB unavailable, will retry on next schedule: source={}, error={}",
+          onlinerConnector.getSourceId(), e.getMessage());
     } catch (Exception e) {
-      log.error("Onliner delta sync failed: error={}", e.getMessage(), e);
+      log.error("Onliner delta sync failed: source={}, error={}", onlinerConnector.getSourceId(), e.getMessage(), e);
     }
   }
 }

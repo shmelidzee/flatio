@@ -214,6 +214,7 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
             AND (:cityPattern IS NULL OR LOWER(l.city) LIKE :cityPattern)
             AND (:sourceCode IS NULL OR l.source_id = (SELECT id FROM source WHERE code = :sourceCode))
             AND (:propertyType IS NULL OR l.property_type = :propertyType)
+            AND (:ownerOnly IS NULL OR l.is_owner IS TRUE OR l.is_owner IS NULL)
           """,
       countQuery = """
           SELECT count(*) FROM listings l
@@ -226,6 +227,7 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
             AND (:cityPattern IS NULL OR LOWER(l.city) LIKE :cityPattern)
             AND (:sourceCode IS NULL OR l.source_id = (SELECT id FROM source WHERE code = :sourceCode))
             AND (:propertyType IS NULL OR l.property_type = :propertyType)
+            AND (:ownerOnly IS NULL OR l.is_owner IS TRUE OR l.is_owner IS NULL)
           """,
       nativeQuery = true
   )
@@ -240,6 +242,7 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
       @Param("cityPattern") String cityPattern,
       @Param("sourceCode") String sourceCode,
       @Param("propertyType") String propertyType,
+      @Param("ownerOnly") Boolean ownerOnly,
       Pageable pageable
   );
 }
