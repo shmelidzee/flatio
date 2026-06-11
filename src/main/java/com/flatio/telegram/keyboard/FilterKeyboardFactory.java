@@ -31,6 +31,7 @@ public class FilterKeyboardFactory {
       case ROOMS -> buildRoomsKeyboard();
       case PRICE -> buildPriceKeyboard();
       case OWNER_ONLY -> buildOwnerOnlyKeyboard();
+      case KEYWORD -> buildKeywordKeyboard();
       case DONE -> buildDoneKeyboard();
     };
   }
@@ -48,6 +49,7 @@ public class FilterKeyboardFactory {
       case ROOMS -> "🛏 Количество комнат:";
       case PRICE -> "💰 Диапазон цены (BYN/мес):";
       case OWNER_ONLY -> "👤 Тип продавца:";
+      case KEYWORD -> "🔍 Введите ключевые слова для поиска\nили нажмите «Пропустить»:";
       case DONE -> buildSummaryText(state);
     };
   }
@@ -112,6 +114,14 @@ public class FilterKeyboardFactory {
         .build();
   }
 
+  private InlineKeyboardMarkup buildKeywordKeyboard() {
+    var skip = btn("Пропустить", P + ":KEYWORD:ANY");
+    return InlineKeyboardMarkup.builder()
+        .keyboardRow(new InlineKeyboardRow(skip))
+        .keyboardRow(navRow())
+        .build();
+  }
+
   private InlineKeyboardMarkup buildDoneKeyboard() {
     var search = btn("🔍 Найти", P + ":SEARCH");
     var reset = btn("🔄 Изменить фильтр", P + ":RESET");
@@ -137,12 +147,16 @@ public class FilterKeyboardFactory {
   }
 
   private String buildSummaryText(SearchFilterState state) {
-    return "✅ Фильтр настроен:\n"
-        + "Сделка: " + dealTypeLabel(state.getDealType()) + "\n"
-        + "Тип: " + propertyTypeLabel(state.getPropertyType()) + "\n"
-        + "Комнат: " + roomsLabel(state.getRooms()) + "\n"
-        + "Цена: " + priceLabel(state.getPriceMin(), state.getPriceMax()) + "\n"
-        + "Продавец: " + ownerOnlyLabel(state.getOwnerOnly());
+    var sb = new StringBuilder("✅ Фильтр настроен:\n")
+        .append("Сделка: ").append(dealTypeLabel(state.getDealType())).append("\n")
+        .append("Тип: ").append(propertyTypeLabel(state.getPropertyType())).append("\n")
+        .append("Комнат: ").append(roomsLabel(state.getRooms())).append("\n")
+        .append("Цена: ").append(priceLabel(state.getPriceMin(), state.getPriceMax())).append("\n")
+        .append("Продавец: ").append(ownerOnlyLabel(state.getOwnerOnly()));
+    if (state.getQuery() != null && !state.getQuery().isBlank()) {
+      sb.append("\nКлючевые слова: «").append(state.getQuery()).append("»");
+    }
+    return sb.toString();
   }
 
   private String dealTypeLabel(DealType dealType) {

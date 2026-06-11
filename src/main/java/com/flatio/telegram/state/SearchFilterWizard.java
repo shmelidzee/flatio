@@ -97,6 +97,10 @@ public class SearchFilterWizard {
       }
       case OWNER_ONLY -> {
         state.setOwnerOnly(VALUE_ANY.equals(value) ? null : Boolean.parseBoolean(value));
+        state.setCurrentStep(FilterStep.KEYWORD);
+      }
+      case KEYWORD -> {
+        state.setQuery(VALUE_ANY.equals(value) ? null : value);
         state.setCurrentStep(FilterStep.DONE);
       }
       default -> log.warn("Unexpected step in applySelection: step={}", step);
@@ -131,11 +135,33 @@ public class SearchFilterWizard {
         state.setPriceMax(null);
         state.setCurrentStep(FilterStep.PRICE);
       }
-      case DONE -> {
+      case KEYWORD -> {
         state.setOwnerOnly(null);
         state.setCurrentStep(FilterStep.OWNER_ONLY);
       }
+      case DONE -> {
+        state.setQuery(null);
+        state.setCurrentStep(FilterStep.KEYWORD);
+      }
     }
+    return state;
+  }
+
+  /**
+   * Applies free-text keyword input from the user and advances the wizard to DONE.
+   *
+   * <p>Called when the user types a message while the wizard is at the KEYWORD step.
+   * Blank text is treated as "no filter" (same as pressing "Пропустить").
+   *
+   * @param telegramId Telegram user identifier, never null
+   * @param text       user-provided text, may be blank
+   * @return updated state positioned at DONE
+   */
+  public SearchFilterState applyKeyword(Long telegramId, String text) {
+    var state = states.computeIfAbsent(telegramId, id -> new SearchFilterState());
+    state.setQuery(text == null || text.isBlank() ? null : text.strip());
+    state.setCurrentStep(FilterStep.DONE);
+    log.debug("Keyword applied: telegramId={}, query={}", telegramId, text);
     return state;
   }
 
