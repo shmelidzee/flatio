@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -13,6 +14,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -113,5 +115,38 @@ class CityAliasRepositoryIT {
     // Then
     assertThat(result).isPresent();
     assertThat(result.get().getCity().getNameRu()).isEqualTo("Брест");
+  }
+
+  @Test
+  void should_throw_when_duplicate_alias_source_inserted() {
+    // Given — alias «Минск» / source «realt» already seeded by V24
+    var minsk = cityRepository.findByNameRu("Минск").orElseThrow();
+    var duplicate = new CityAlias();
+    duplicate.setCity(minsk);
+    duplicate.setAlias("Минск");
+    duplicate.setSourceId("realt");
+
+    // When / Then — UNIQUE constraint uq_city_alias_source must reject the duplicate
+    assertThatThrownBy(() -> {
+      cityAliasRepository.saveAndFlush(duplicate);
+    }).isInstanceOf(DataIntegrityViolationException.class);
+  }
+
+  @Test
+  void should_allow_same_alias_for_different_sources() {
+    // Given — alias «Минск» exists for «realt», adding same alias for a new source is allowed
+    var minsk = cityRepository.findByNameRu("Минск").orElseThrow();
+    var alias = new CityAlias();
+    alias.setCity(minsk);
+    alias.setAlias("Минск");
+    alias.setSourceId("new_source");
+
+    // When
+    cityAliasRepository.saveAndFlush(alias);
+
+    // Then
+    var result = cityAliasRepository.findByAliasAndSourceId("Минск", "new_source");
+    assertThat(result).isPresent();
+    assertThat(result.get().getCity().getNameRu()).isEqualTo("Минск");
   }
 }
