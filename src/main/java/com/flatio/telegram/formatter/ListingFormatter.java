@@ -20,10 +20,13 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
  *
  * <p>Caption structure:
  * <ul>
- *   <li>Zone 1 — title (with room-type prefix) and price</li>
- *   <li>Zone 2 — location and area (omitted on truncation)</li>
+ *   <li>Zone 1 — room-count prefix with price on the first line, address on the second line</li>
+ *   <li>Zone 2 — area (omitted on truncation)</li>
  *   <li>Zone 3 — publication time and source badge</li>
  * </ul>
+ *
+ * <p>First-line format: {@code {N}-комнатная за $X (Y BYN)} when USD price is available,
+ * otherwise {@code {N}-комнатная за Y BYN} or {@code {N}-комнатная за Z CURRENCY}.
  *
  * <p>Price display rules:
  * <ul>
@@ -48,8 +51,8 @@ public class ListingFormatter {
   /**
    * Builds the HTML caption for a listing card.
    *
-   * <p>If the full caption exceeds 1 024 characters the location/area zone is omitted
-   * to ensure the title, price, and meta zone always fit.
+   * <p>If the full caption exceeds 1 024 characters the area zone is omitted
+   * to ensure the first line, address, and meta zone always fit.
    *
    * @param listing the listing summary to format, never null
    * @return HTML-formatted caption, at most 1 024 characters, never null
@@ -99,31 +102,32 @@ public class ListingFormatter {
     return sb.toString().strip();
   }
 
-  private void appendZone1(StringBuilder sb, ListingSummaryResponse listing) {
-    String title = buildTitle(listing);
-    sb.append("<b>").append(escapeHtml(title)).append("</b>");
-    sb.append("\n");
-    sb.append(formatPrice(listing.price(), listing.currency(), listing.priceUsd()));
-  }
-
   /**
-   * Builds the display title, prepending a room-type prefix when the source does not already
-   * include it (i.e. the title does not start with a digit or room-count pattern).
+   * Appends zone 1 to the caption builder.
    *
-   * @param listing the listing to build a title for, never null
-   * @return display title, never null
+   * <p>Zone 1 always occupies two lines:
+   * <ol>
+   *   <li>Room-count prefix + price: {@code {N}-комнатная за $USD (BYN BYN)}</li>
+   *   <li>Address (district and/or city), omitted when both are absent</li>
+   * </ol>
+   *
+   * @param sb      the caption builder to append to, never null
+   * @param listing the listing data source, never null
    */
-  private String buildTitle(ListingSummaryResponse listing) {
-    String prefix = buildRoomTypePrefix(listing.rooms(), listing.propertyType());
-    if (prefix.isEmpty()) {
-      return listing.title();
+  private void appendZone1(StringBuilder sb, ListingSummaryResponse listing) {
+    String roomPrefix = buildRoomTypePrefix(listing.rooms(), listing.propertyType());
+    String priceFormatted = formatPrice(listing.price(), listing.currency(), listing.priceUsd());
+
+    if (roomPrefix.isEmpty()) {
+      sb.append(priceFormatted);
+    } else {
+      sb.append(escapeHtml(roomPrefix)).append(" за ").append(priceFormatted);
     }
-    String title = listing.title() != null ? listing.title() : "";
-    // Avoid double-prefixing when the title already starts with a digit (e.g. "2-комнатная ...")
-    if (!title.isEmpty() && Character.isDigit(title.charAt(0))) {
-      return title;
+
+    String address = formatLocation(listing.district(), listing.city());
+    if (!address.isEmpty()) {
+      sb.append("\n").append(escapeHtml(address));
     }
-    return prefix + (title.isEmpty() ? "" : ", " + title);
   }
 
   private String buildRoomTypePrefix(Integer rooms, String propertyType) {
@@ -137,18 +141,10 @@ public class ListingFormatter {
   }
 
   private String buildZone2(ListingSummaryResponse listing) {
-    var sb = new StringBuilder();
-    String location = formatLocation(listing.district(), listing.city());
-    if (!location.isEmpty()) {
-      sb.append("📍 ").append(escapeHtml(location));
+    if (listing.areaTotalM2() == null) {
+      return "";
     }
-    if (listing.areaTotalM2() != null) {
-      if (sb.length() > 0) {
-        sb.append("\n");
-      }
-      sb.append("📐 ").append(formatArea(listing.areaTotalM2()));
-    }
-    return sb.toString();
+    return "📐 " + formatArea(listing.areaTotalM2());
   }
 
   private void appendZone3(StringBuilder sb, ListingSummaryResponse listing) {
