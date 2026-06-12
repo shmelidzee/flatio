@@ -5,7 +5,9 @@ import com.flatio.integration.core.RawListing;
 import com.flatio.integration.onliner.client.OnlinerConnector;
 import com.flatio.repository.SourceRepository;
 import com.flatio.service.ListingIngestionService;
+import com.flatio.service.SyncRunService;
 import com.flatio.service.domain.BatchIngestResult;
+import com.flatio.service.domain.SyncRunRequest;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import java.math.BigDecimal;
@@ -23,6 +25,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -37,6 +40,7 @@ class OnlinerDeltaSyncJobTest {
   @Mock private OnlinerConnector onlinerConnector;
   @Mock private SourceRepository sourceRepository;
   @Mock private ListingIngestionService listingIngestionService;
+  @Mock private SyncRunService syncRunService;
 
   @InjectMocks
   private OnlinerDeltaSyncJob deltaSyncJob;
@@ -195,6 +199,57 @@ class OnlinerDeltaSyncJobTest {
 
     // Then — cursor was not advanced: both calls received EPOCH
     verify(onlinerConnector, times(2)).fetchDelta(Instant.EPOCH);
+  }
+
+  // -------------------------------------------------------------------------
+  // sync run recording
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_record_success_run_when_delta_sync_completes_with_listings() {
+    // Given
+    var raw = buildRawListing("ext-rec-1");
+    when(onlinerConnector.fetchDelta(any())).thenReturn(List.of(raw));
+    when(listingIngestionService.ingestBatch(any(), eq(source)))
+        .thenReturn(new BatchIngestResult(1, 0, 0));
+
+    // When
+    deltaSyncJob.runDeltaSync();
+
+    // Then — a SUCCESS run is recorded
+    verify(syncRunService).record(argThat(r ->
+        r.status() == com.flatio.domain.source.SyncRunStatus.SUCCESS
+            && r.syncType() == com.flatio.domain.source.SyncType.DELTA
+            && r.listingsFetched() == 1));
+  }
+
+  @Test
+  void should_record_success_run_when_delta_returns_empty_list() {
+    // Given — empty response is still a successful run (no new listings)
+    when(onlinerConnector.fetchDelta(any())).thenReturn(List.of());
+
+    // When
+    deltaSyncJob.runDeltaSync();
+
+    // Then — run is still recorded as SUCCESS
+    verify(syncRunService).record(argThat(r ->
+        r.status() == com.flatio.domain.source.SyncRunStatus.SUCCESS
+            && r.listingsFetched() == 0));
+  }
+
+  @Test
+  void should_record_failure_run_when_fetch_throws() {
+    // Given — fetchDelta throws an unexpected exception
+    when(onlinerConnector.fetchDelta(any())).thenThrow(new RuntimeException("Connection refused"));
+
+    // When
+    deltaSyncJob.runDeltaSync();
+
+    // Then — a FAILURE run is recorded so the health indicator can detect the gap
+    verify(syncRunService).record(argThat(r ->
+        r.status() == com.flatio.domain.source.SyncRunStatus.FAILURE
+            && r.syncType() == com.flatio.domain.source.SyncType.DELTA
+            && r.listingsFetched() == 0));
   }
 
   // -------------------------------------------------------------------------

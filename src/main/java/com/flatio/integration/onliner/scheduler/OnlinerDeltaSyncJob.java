@@ -91,6 +91,8 @@ public class OnlinerDeltaSyncJob {
           onlinerConnector.getSourceId(), e.getMessage());
     } catch (Exception e) {
       log.error("Onliner delta sync failed: source={}, error={}", onlinerConnector.getSourceId(), e.getMessage(), e);
+      syncRunService.record(SyncRunRequest.failure(
+          onlinerConnector.getSourceId(), SyncType.DELTA, runStart, Instant.now()));
     }
   }
 }

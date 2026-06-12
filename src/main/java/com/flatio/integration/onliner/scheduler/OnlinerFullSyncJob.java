@@ -74,12 +74,15 @@ public class OnlinerFullSyncJob {
   @Scheduled(cron = "${flatio.sync.onliner.full.cron}")
   public void runFullSync() {
     log.info("Onliner full sync started (scheduled)");
+    Instant start = Instant.now();
     try {
       performFullSync(resolveSource());
     } catch (CallNotPermittedException e) {
       log.warn("Onliner full sync skipped: circuit breaker OPEN");
     } catch (Exception e) {
       log.error("Onliner full sync failed: error={}", e.getMessage(), e);
+      syncRunService.record(SyncRunRequest.failure(
+          onlinerConnector.getSourceId(), SyncType.FULL, start, Instant.now()));
     }
   }
 
