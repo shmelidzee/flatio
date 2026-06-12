@@ -275,6 +275,7 @@ public class SearchResultSender {
         state.getPropertyType(),
         null,
         null,
+        state.getCityId(),
         state.getPriceMin(),
         state.getPriceMax(),
         state.getRooms(),

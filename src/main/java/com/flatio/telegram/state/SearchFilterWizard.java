@@ -1,11 +1,13 @@
 package com.flatio.telegram.state;
 
 import com.flatio.domain.listing.DealType;
+import com.flatio.repository.CityRepository;
 import java.math.BigDecimal;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -21,6 +23,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @Slf4j
+@RequiredArgsConstructor
 public class SearchFilterWizard {
 
   /** Callback prefix used by all filter-related keyboard buttons. */
@@ -37,6 +40,8 @@ public class SearchFilterWizard {
   static final BigDecimal PRICE_HIGH_MIN = BigDecimal.valueOf(2_000);
   static final BigDecimal PRICE_HIGH_MAX = BigDecimal.valueOf(4_000);
   static final BigDecimal PRICE_PREMIUM_MIN = BigDecimal.valueOf(4_000);
+
+  private final CityRepository cityRepository;
 
   private final Map<Long, SearchFilterState> states = new ConcurrentHashMap<>();
 
@@ -97,6 +102,10 @@ public class SearchFilterWizard {
       }
       case OWNER_ONLY -> {
         state.setOwnerOnly(VALUE_ANY.equals(value) ? null : Boolean.parseBoolean(value));
+        state.setCurrentStep(FilterStep.CITY);
+      }
+      case CITY -> {
+        state.setCityId(VALUE_ANY.equals(value) ? null : parseCityId(value));
         state.setCurrentStep(FilterStep.KEYWORD);
       }
       case KEYWORD -> {
@@ -135,15 +144,45 @@ public class SearchFilterWizard {
         state.setPriceMax(null);
         state.setCurrentStep(FilterStep.PRICE);
       }
-      case KEYWORD -> {
+      case CITY -> {
         state.setOwnerOnly(null);
         state.setCurrentStep(FilterStep.OWNER_ONLY);
+      }
+      case KEYWORD -> {
+        state.setCityId(null);
+        state.setCurrentStep(FilterStep.CITY);
       }
       case DONE -> {
         state.setQuery(null);
         state.setCurrentStep(FilterStep.KEYWORD);
       }
     }
+    return state;
+  }
+
+  /**
+   * Applies city selection by geographic coordinates and advances the wizard to KEYWORD.
+   *
+   * <p>Finds the nearest city from the database using the provided coordinates.
+   * If no city is found (empty database), the city filter is left as null (no filter).
+   *
+   * @param telegramId Telegram user identifier, never null
+   * @param latitude   latitude from Telegram location, never null
+   * @param longitude  longitude from Telegram location, never null
+   * @return updated state positioned at KEYWORD with cityId set to the nearest city
+   */
+  public SearchFilterState applyCityByLocation(Long telegramId, BigDecimal latitude, BigDecimal longitude) {
+    var state = states.computeIfAbsent(telegramId, id -> new SearchFilterState());
+    var nearest = cityRepository.findNearestCity(latitude, longitude);
+    nearest.ifPresentOrElse(
+        city -> {
+          state.setCityId(city.getId());
+          log.debug("City resolved by geolocation: telegramId={}, cityId={}, nameRu={}",
+              telegramId, city.getId(), city.getNameRu());
+        },
+        () -> log.debug("No city found by geolocation, skipping city filter: telegramId={}", telegramId)
+    );
+    state.setCurrentStep(FilterStep.KEYWORD);
     return state;
   }
 
@@ -173,6 +212,15 @@ public class SearchFilterWizard {
   public void reset(Long telegramId) {
     states.remove(telegramId);
     log.debug("Filter wizard reset: telegramId={}", telegramId);
+  }
+
+  private Long parseCityId(String value) {
+    try {
+      return Long.parseLong(value);
+    } catch (NumberFormatException e) {
+      log.warn("Unparseable city id value in callback: {}", value);
+      return null;
+    }
   }
 
   private String parsePropertyType(String value) {

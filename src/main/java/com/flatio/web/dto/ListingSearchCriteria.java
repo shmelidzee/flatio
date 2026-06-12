@@ -25,6 +25,9 @@ public record ListingSearchCriteria(
     @Schema(description = "City name filter (case-insensitive)", example = "Минск")
     String city,
 
+    @Schema(description = "City ID filter (from cities reference table)", example = "1")
+    Long cityId,
+
     @Schema(description = "Minimum price (inclusive)", example = "500")
     BigDecimal priceMin,
 

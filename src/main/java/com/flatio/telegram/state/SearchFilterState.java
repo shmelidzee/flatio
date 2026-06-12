@@ -24,6 +24,8 @@ public class SearchFilterState {
   private BigDecimal priceMax;
   /** True = only owner listings; null = no filter (show all). */
   private Boolean ownerOnly;
+  /** Selected city ID from the cities reference table; null means no filter. */
+  private Long cityId;
   /** Free-text keyword query; null means no text filter. */
   private String query;
 }
