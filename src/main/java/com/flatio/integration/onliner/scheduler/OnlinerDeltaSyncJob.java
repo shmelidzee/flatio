@@ -1,11 +1,14 @@
 package com.flatio.integration.onliner.scheduler;
 
 import com.flatio.domain.source.Source;
+import com.flatio.domain.source.SyncType;
 import com.flatio.integration.core.RawListing;
 import com.flatio.integration.onliner.client.OnlinerConnector;
 import com.flatio.repository.SourceRepository;
 import com.flatio.service.ListingIngestionService;
+import com.flatio.service.SyncRunService;
 import com.flatio.service.domain.BatchIngestResult;
+import com.flatio.service.domain.SyncRunRequest;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import java.time.Duration;
 import java.time.Instant;
@@ -36,6 +39,7 @@ public class OnlinerDeltaSyncJob {
   private final OnlinerConnector onlinerConnector;
   private final SourceRepository sourceRepository;
   private final ListingIngestionService listingIngestionService;
+  private final SyncRunService syncRunService;
 
   private final AtomicReference<Instant> lastRunAt = new AtomicReference<>(Instant.EPOCH);
 
@@ -61,11 +65,20 @@ public class OnlinerDeltaSyncJob {
       if (rawListings.isEmpty()) {
         log.info("Onliner delta sync: no new listings since={}", since);
         lastRunAt.set(runStart);
+        Instant finish = Instant.now();
+        syncRunService.record(SyncRunRequest.success(
+            onlinerConnector.getSourceId(), SyncType.DELTA, runStart, finish, 0,
+            new BatchIngestResult(0, 0, 0)));
         return;
       }
 
       BatchIngestResult result = listingIngestionService.ingestBatch(rawListings, source);
-      long durationMs = Duration.between(runStart, Instant.now()).toMillis();
+      Instant finish = Instant.now();
+      long durationMs = Duration.between(runStart, finish).toMillis();
+
+      syncRunService.record(SyncRunRequest.success(
+          onlinerConnector.getSourceId(), SyncType.DELTA, runStart, finish,
+          rawListings.size(), result));
 
       log.info("Onliner delta sync completed: fetched={}, added={}, updated={}, errors={}, durationMs={}",
           rawListings.size(), result.added(), result.updated(), result.errors(), durationMs);
