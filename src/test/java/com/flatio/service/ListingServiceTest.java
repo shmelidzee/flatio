@@ -134,7 +134,7 @@ class ListingServiceTest {
     when(listingRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(page);
     when(listingMapper.toSummaryResponse(listing)).thenReturn(summary);
 
-    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null);
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
 
     // When
     var result = listingService.search(criteria, pageable);
@@ -153,7 +153,7 @@ class ListingServiceTest {
 
     when(listingRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(emptyPage);
 
-    var criteria = new ListingSearchCriteria(DealType.SELL, null, null, "Гомель", null, null, null, null, null, null);
+    var criteria = new ListingSearchCriteria(DealType.SELL, null, null, "Гомель", null, null, null, null, null, null, null);
 
     // When
     var result = listingService.search(criteria, pageable);
@@ -173,7 +173,7 @@ class ListingServiceTest {
 
     var criteria = new ListingSearchCriteria(
         DealType.RENT, "APARTMENT", "onliner", "Минск",
-        BigDecimal.valueOf(500), BigDecimal.valueOf(1500), 2, ListingStatus.ACTIVE, null, null
+        null, BigDecimal.valueOf(500), BigDecimal.valueOf(1500), 2, ListingStatus.ACTIVE, null, null
     );
 
     // When
@@ -193,7 +193,7 @@ class ListingServiceTest {
     when(listingRepository.findAll(any(Specification.class), pageableCaptor.capture()))
         .thenReturn(emptyPage);
 
-    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null);
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
 
     // When
     listingService.search(criteria, pageable);
@@ -215,7 +215,7 @@ class ListingServiceTest {
     when(listingRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
     when(listingMapper.toSummaryResponse(listing)).thenReturn(buildListingSummary(1L));
 
-    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null);
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
     var pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
 
     // When — call search twice simulating pagination
@@ -261,7 +261,7 @@ class ListingServiceTest {
     )).thenReturn(page);
     when(listingMapper.toSummaryResponse(listing)).thenReturn(summary);
 
-    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, "двухкомнатная квартира", null);
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, "двухкомнатная квартира", null);
 
     // When
     var result = listingService.search(criteria, pageable);
@@ -293,7 +293,7 @@ class ListingServiceTest {
 
     when(listingRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(emptyPage);
 
-    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null);
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
 
     // When
     listingService.search(criteria, pageable);
@@ -311,7 +311,7 @@ class ListingServiceTest {
 
     when(listingRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(emptyPage);
 
-    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, "   ", null);
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, "   ", null);
 
     // When
     listingService.search(criteria, pageable);
@@ -332,7 +332,7 @@ class ListingServiceTest {
     )).thenReturn(emptyPage);
 
     // criteria.status() == null → effectiveStatus должен стать ACTIVE
-    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, "квартира", null);
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, "квартира", null);
 
     // When
     listingService.search(criteria, pageable);
@@ -366,7 +366,7 @@ class ListingServiceTest {
 
     var criteria = new ListingSearchCriteria(
         DealType.RENT, "APARTMENT", "onliner", "Минск",
-        BigDecimal.valueOf(500), BigDecimal.valueOf(1500), 2, null, "квартира", null
+        null, BigDecimal.valueOf(500), BigDecimal.valueOf(1500), 2, null, "квартира", null
     );
 
     // When
@@ -399,7 +399,7 @@ class ListingServiceTest {
         any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(Boolean.TRUE), any()
     )).thenReturn(emptyPage);
 
-    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, "квартира", Boolean.TRUE);
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, "квартира", Boolean.TRUE);
 
     // When
     listingService.search(criteria, pageable);
@@ -422,7 +422,7 @@ class ListingServiceTest {
     when(listingRepository.fullTextSearch(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
         .thenReturn(emptyPage);
 
-    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, "квартира", null);
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, "квартира", null);
 
     // When
     listingService.search(criteria, pageableWithCamelSort);
@@ -440,7 +440,7 @@ class ListingServiceTest {
   void should_throw_when_fts_sort_field_is_not_in_allowed_list() {
     // Given — attempt to sort by a field not in the whitelist
     var maliciousPageable = PageRequest.of(0, 5, Sort.by("title;DROP TABLE listings;--"));
-    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, "квартира", null);
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, "квартира", null);
 
     // When / Then — rejected before reaching the repository
     assertThatThrownBy(() -> listingService.search(criteria, maliciousPageable))
@@ -471,7 +471,7 @@ class ListingServiceTest {
 
     var criteria = new ListingSearchCriteria(
         DealType.RENT, "APARTMENT", null, null,
-        null, null, 2, null, "Копище", Boolean.TRUE
+        null, null, null, 2, null, "Копище", Boolean.TRUE
     );
 
     // When
@@ -504,7 +504,7 @@ class ListingServiceTest {
         any(), any(), any(), any(), any(), any(), any(), eq("%минск%"), any(), any(), any(), any()
     )).thenReturn(emptyPage);
 
-    var criteria = new ListingSearchCriteria(null, null, null, "Минск", null, null, null, null, "квартира", null);
+    var criteria = new ListingSearchCriteria(null, null, null, "Минск", null, null, null, null, null, "квартира", null);
 
     // When
     listingService.search(criteria, pageable);
