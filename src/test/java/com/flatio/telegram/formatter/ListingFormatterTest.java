@@ -24,6 +24,288 @@ class ListingFormatterTest {
   private ListingFormatter listingFormatter;
 
   // -------------------------------------------------------------------------
+  // buildCaption — zone 1: first line format (issue #175)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_format_first_line_with_rooms_and_price_in_usd_and_byn() {
+    // Given
+    var listing = buildListingWithRooms(
+        1L,
+        1,
+        null,
+        BigDecimal.valueOf(1524.38),
+        "BYN",
+        BigDecimal.valueOf(550),
+        "Городецкая улица, 10",
+        null,
+        "onliner",
+        Instant.parse("2026-05-25T18:56:00Z"),
+        "https://onliner.by/1"
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then
+    assertThat(caption).startsWith("1-комнатная за <b>$550 (1524.38 BYN)</b>");
+  }
+
+  @Test
+  void should_format_first_line_with_one_room_usd_byn() {
+    // Given
+    var listing = buildListingWithRooms(
+        2L,
+        1,
+        null,
+        BigDecimal.valueOf(1524.38),
+        "BYN",
+        BigDecimal.valueOf(550),
+        null,
+        null,
+        "onliner",
+        null,
+        "https://onliner.by/2"
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then
+    assertThat(caption).contains("1-комнатная за");
+    assertThat(caption).contains("$550");
+    assertThat(caption).contains("1524.38 BYN");
+  }
+
+  @Test
+  void should_format_first_line_with_two_rooms_usd_byn() {
+    // Given
+    var listing = buildListingWithRooms(
+        3L,
+        2,
+        null,
+        BigDecimal.valueOf(2800.00),
+        "BYN",
+        BigDecimal.valueOf(1000),
+        null,
+        null,
+        "realt",
+        null,
+        "https://realt.by/1"
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then
+    assertThat(caption).contains("2-комнатная за");
+    assertThat(caption).containsPattern("\\$1.000");
+  }
+
+  @Test
+  void should_format_first_line_with_three_rooms_usd_byn() {
+    // Given
+    var listing = buildListingWithRooms(
+        4L,
+        3,
+        null,
+        BigDecimal.valueOf(4200.00),
+        "BYN",
+        BigDecimal.valueOf(1500),
+        null,
+        null,
+        "kufar",
+        null,
+        "https://kufar.by/1"
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then
+    assertThat(caption).contains("3-комнатная за");
+    assertThat(caption).containsPattern("\\$1.500");
+  }
+
+  @Test
+  void should_place_address_on_second_line_when_district_present() {
+    // Given
+    var listing = buildListingWithRooms(
+        5L,
+        1,
+        null,
+        BigDecimal.valueOf(1524.38),
+        "BYN",
+        BigDecimal.valueOf(550),
+        "Городецкая улица, 10",
+        null,
+        "onliner",
+        null,
+        "https://onliner.by/3"
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then — second line is address without 📍 icon
+    String[] lines = caption.split("\n");
+    assertThat(lines[0]).contains("1-комнатная за");
+    assertThat(lines[1]).isEqualTo("Городецкая улица, 10");
+    assertThat(caption).doesNotContain("📍");
+  }
+
+  @Test
+  void should_not_change_zone3_format_when_zone1_is_fixed() {
+    // Given
+    var listing = buildListingWithRooms(
+        6L,
+        1,
+        null,
+        BigDecimal.valueOf(1524.38),
+        "BYN",
+        BigDecimal.valueOf(550),
+        null,
+        null,
+        "onliner",
+        Instant.parse("2026-05-25T18:56:00Z"),
+        "https://onliner.by/4"
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then — zone3 unchanged: clock icon, time, source badge
+    assertThat(caption).contains("🕐");
+    assertThat(caption).contains("Onliner");
+    assertThat(caption).contains("21:56, 25.05.2026");
+  }
+
+  @Test
+  void should_format_first_line_correctly_for_onliner_source() {
+    // Given
+    var listing = buildListingWithRooms(
+        7L,
+        1,
+        null,
+        BigDecimal.valueOf(1524.38),
+        "BYN",
+        BigDecimal.valueOf(550),
+        null,
+        null,
+        "onliner",
+        null,
+        "https://onliner.by/5"
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then
+    assertThat(caption).contains("1-комнатная за <b>$550 (1524.38 BYN)</b>");
+    assertThat(caption).contains("Onliner");
+  }
+
+  @Test
+  void should_format_first_line_correctly_for_realt_source() {
+    // Given
+    var listing = buildListingWithRooms(
+        8L,
+        2,
+        null,
+        BigDecimal.valueOf(2800.00),
+        "BYN",
+        BigDecimal.valueOf(1000),
+        null,
+        null,
+        "realt",
+        null,
+        "https://realt.by/2"
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then
+    assertThat(caption).contains("2-комнатная за");
+    assertThat(caption).contains("Realt.by");
+  }
+
+  @Test
+  void should_format_first_line_correctly_for_kufar_source() {
+    // Given
+    var listing = buildListingWithRooms(
+        9L,
+        3,
+        null,
+        BigDecimal.valueOf(4200.00),
+        "BYN",
+        BigDecimal.valueOf(1500),
+        null,
+        null,
+        "kufar",
+        null,
+        "https://kufar.by/2"
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then
+    assertThat(caption).contains("3-комнатная за");
+    assertThat(caption).contains("Kufar");
+  }
+
+  @Test
+  void should_omit_room_prefix_when_rooms_null() {
+    // Given — no rooms count, no propertyType
+    var listing = buildListingWithRooms(
+        10L,
+        null,
+        null,
+        BigDecimal.valueOf(50000),
+        "BYN",
+        null,
+        null,
+        null,
+        "realt",
+        null,
+        "https://realt.by/3"
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then — starts with price, no "за" prefix
+    assertThat(caption).doesNotContain("-комнатная");
+    assertThat(caption).doesNotContain(" за ");
+    assertThat(caption).contains("BYN");
+  }
+
+  @Test
+  void should_use_komnat_prefix_for_room_property_type() {
+    // Given
+    var listing = buildListingWithRooms(
+        11L,
+        null,
+        "ROOM",
+        BigDecimal.valueOf(800),
+        "BYN",
+        null,
+        null,
+        null,
+        "realt",
+        null,
+        "https://realt.by/4"
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then
+    assertThat(caption).contains("Комната за");
+  }
+
+  // -------------------------------------------------------------------------
   // buildCaption — full caption with all fields
   // -------------------------------------------------------------------------
 
@@ -31,8 +313,7 @@ class ListingFormatterTest {
   void should_format_caption_with_all_zones_when_all_fields_present() {
     // Given
     var listing = buildListing(
-        1L,
-        "2-комнатная квартира, Минск",
+        12L,
         BigDecimal.valueOf(50000),
         "BYN",
         "Советский район",
@@ -47,13 +328,12 @@ class ListingFormatterTest {
     // When
     var caption = listingFormatter.buildCaption(listing);
 
-    // Then
-    assertThat(caption).contains("2-комнатная квартира, Минск");
-    assertThat(caption).contains("50" + NBSP + "000 BYN");
-    assertThat(caption).contains("📍"); // 📍
+    // Then — zone1 contains price, zone1 second line contains address without 📍, zone2 has area, zone3 has time
+    assertThat(caption).containsPattern("50.000 BYN");
     assertThat(caption).contains("Советский район, Минск");
+    assertThat(caption).doesNotContain("📍");
     assertThat(caption).contains("м²");
-    assertThat(caption).contains("🕐"); // 🕐
+    assertThat(caption).contains("🕐");
   }
 
   // -------------------------------------------------------------------------
@@ -64,8 +344,16 @@ class ListingFormatterTest {
   void should_format_usd_price_with_dollar_sign() {
     // Given
     var listing = buildListing(
-        2L, "Квартира", BigDecimal.valueOf(511), "USD",
-        null, null, null, "kufar", null, null, "https://kufar.by/1"
+        13L,
+        BigDecimal.valueOf(511),
+        "USD",
+        null,
+        null,
+        null,
+        "kufar",
+        null,
+        null,
+        "https://kufar.by/1"
     );
 
     // When
@@ -79,23 +367,39 @@ class ListingFormatterTest {
   void should_format_byn_price_with_byn_suffix() {
     // Given
     var listing = buildListing(
-        3L, "Квартира", BigDecimal.valueOf(1410), "BYN",
-        null, null, null, "kufar", null, null, "https://kufar.by/2"
+        14L,
+        BigDecimal.valueOf(1410),
+        "BYN",
+        null,
+        null,
+        null,
+        "kufar",
+        null,
+        null,
+        "https://kufar.by/2"
     );
 
     // When
     var caption = listingFormatter.buildCaption(listing);
 
     // Then — thousands separator is non-breaking space (U+00A0)
-    assertThat(caption).contains("1" + NBSP + "410 BYN");
+    assertThat(caption).containsPattern("1.410 BYN");
   }
 
   @Test
   void should_format_other_currency() {
     // Given
     var listing = buildListing(
-        4L, "Квартира", BigDecimal.valueOf(500), "EUR",
-        null, null, null, "onliner", null, null, "https://onliner.by/1"
+        15L,
+        BigDecimal.valueOf(500),
+        "EUR",
+        null,
+        null,
+        null,
+        "onliner",
+        null,
+        null,
+        "https://onliner.by/1"
     );
 
     // When
@@ -113,8 +417,16 @@ class ListingFormatterTest {
   void should_omit_area_when_null() {
     // Given
     var listing = buildListing(
-        5L, "Квартира", BigDecimal.valueOf(500), "USD",
-        "Советский район", "Минск", null, "realt", null, null, "https://realt.by/1"
+        16L,
+        BigDecimal.valueOf(500),
+        "USD",
+        "Советский район",
+        "Минск",
+        null,
+        "realt",
+        null,
+        null,
+        "https://realt.by/1"
     );
 
     // When
@@ -125,52 +437,77 @@ class ListingFormatterTest {
   }
 
   // -------------------------------------------------------------------------
-  // buildCaption — location zone
+  // buildCaption — location in zone 1 (no 📍 icon, issue #175)
   // -------------------------------------------------------------------------
 
   @Test
-  void should_omit_location_zone_when_city_and_district_null() {
+  void should_omit_address_line_when_city_and_district_null() {
     // Given
     var listing = buildListing(
-        6L, "Квартира", BigDecimal.valueOf(500), "USD",
-        null, null, null, "realt", null, null, "https://realt.by/2"
+        17L,
+        BigDecimal.valueOf(500),
+        "USD",
+        null,
+        null,
+        null,
+        "realt",
+        null,
+        null,
+        "https://realt.by/2"
     );
 
     // When
     var caption = listingFormatter.buildCaption(listing);
 
-    // Then
-    assertThat(caption).doesNotContain("📍"); // 📍
+    // Then — no location icon, no address line
+    assertThat(caption).doesNotContain("📍");
   }
 
   @Test
   void should_use_district_and_city_when_both_present() {
     // Given
     var listing = buildListing(
-        7L, "Квартира", BigDecimal.valueOf(500), "USD",
-        "Советский район", "Минск", null, "realt", null, null, "https://realt.by/3"
+        18L,
+        BigDecimal.valueOf(500),
+        "USD",
+        "Советский район",
+        "Минск",
+        null,
+        "realt",
+        null,
+        null,
+        "https://realt.by/3"
     );
 
     // When
     var caption = listingFormatter.buildCaption(listing);
 
-    // Then
+    // Then — address on second line without 📍 icon
     assertThat(caption).contains("Советский район, Минск");
+    assertThat(caption).doesNotContain("📍");
   }
 
   @Test
   void should_use_only_city_when_district_null() {
     // Given
     var listing = buildListing(
-        8L, "Квартира", BigDecimal.valueOf(500), "USD",
-        null, "Минск", null, "realt", null, null, "https://realt.by/4"
+        19L,
+        BigDecimal.valueOf(500),
+        "USD",
+        null,
+        "Минск",
+        null,
+        "realt",
+        null,
+        null,
+        "https://realt.by/4"
     );
 
     // When
     var caption = listingFormatter.buildCaption(listing);
 
-    // Then
-    assertThat(caption).contains("📍"); // 📍
+    // Then — city on second line without 📍 icon
+    assertThat(caption).doesNotContain("📍");
     assertThat(caption).contains("Минск");
     assertThat(caption).doesNotContain(", Минск");
   }
@@ -179,15 +516,23 @@ class ListingFormatterTest {
   void should_use_only_district_when_city_null() {
     // Given
     var listing = buildListing(
-        9L, "Квартира", BigDecimal.valueOf(500), "USD",
-        "Советский район", null, null, "realt", null, null, "https://realt.by/5"
+        20L,
+        BigDecimal.valueOf(500),
+        "USD",
+        "Советский район",
+        null,
+        null,
+        "realt",
+        null,
+        null,
+        "https://realt.by/5"
     );
 
     // When
     var caption = listingFormatter.buildCaption(listing);
 
-    // Then
-    assertThat(caption).contains("📍"); // 📍
+    // Then — district on second line without 📍 icon
+    assertThat(caption).doesNotContain("📍");
     assertThat(caption).contains("Советский район");
   }
 
@@ -199,8 +544,16 @@ class ListingFormatterTest {
   void should_map_kufar_source_badge() {
     // Given
     var listing = buildListing(
-        10L, "Квартира", BigDecimal.valueOf(500), "USD",
-        null, null, null, "kufar", null, null, "https://kufar.by/1"
+        21L,
+        BigDecimal.valueOf(500),
+        "USD",
+        null,
+        null,
+        null,
+        "kufar",
+        null,
+        null,
+        "https://kufar.by/1"
     );
 
     // When
@@ -214,8 +567,16 @@ class ListingFormatterTest {
   void should_map_onliner_source_badge() {
     // Given
     var listing = buildListing(
-        11L, "Квартира", BigDecimal.valueOf(500), "USD",
-        null, null, null, "onliner", null, null, "https://onliner.by/1"
+        22L,
+        BigDecimal.valueOf(500),
+        "USD",
+        null,
+        null,
+        null,
+        "onliner",
+        null,
+        null,
+        "https://onliner.by/1"
     );
 
     // When
@@ -229,8 +590,16 @@ class ListingFormatterTest {
   void should_map_realt_source_badge() {
     // Given
     var listing = buildListing(
-        12L, "Квартира", BigDecimal.valueOf(500), "USD",
-        null, null, null, "realt", null, null, "https://realt.by/1"
+        23L,
+        BigDecimal.valueOf(500),
+        "USD",
+        null,
+        null,
+        null,
+        "realt",
+        null,
+        null,
+        "https://realt.by/1"
     );
 
     // When
@@ -244,8 +613,16 @@ class ListingFormatterTest {
   void should_capitalize_unknown_source_badge() {
     // Given
     var listing = buildListing(
-        13L, "Квартира", BigDecimal.valueOf(500), "USD",
-        null, null, null, "newsource", null, null, "https://newsource.by/1"
+        24L,
+        BigDecimal.valueOf(500),
+        "USD",
+        null,
+        null,
+        null,
+        "newsource",
+        null,
+        null,
+        "https://newsource.by/1"
     );
 
     // When
@@ -261,20 +638,32 @@ class ListingFormatterTest {
 
   @Test
   void should_truncate_zone2_when_caption_exceeds_limit() {
-    // Given — title of 960 Cyrillic chars: caption with zone2 > 1024, without zone2 <= 1024
-    String longTitle = "а".repeat(960);
-    var listing = buildListing(
-        14L, longTitle, BigDecimal.valueOf(500), "USD",
-        "Советский район", "Минск", BigDecimal.valueOf(52.5),
-        "realt", Instant.parse("2026-05-01T10:30:00Z"), null, "https://realt.by/1"
+    // Given — address of 975 chars: zone1 ~981, short_ ~1017 (≤1024), full ~1031 (>1024)
+    // so zone2 (area icon 📐) gets dropped while address is preserved
+    String longAddress = "а".repeat(975);
+    var listing = new ListingSummaryResponse(
+        25L,
+        null,
+        BigDecimal.valueOf(500),
+        "USD",
+        null,
+        null,
+        null,
+        BigDecimal.valueOf(52.5),
+        null,
+        longAddress,
+        "realt",
+        Instant.parse("2026-05-01T10:30:00Z"),
+        null,
+        "https://realt.by/1"
     );
 
     // When
     var caption = listingFormatter.buildCaption(listing);
 
-    // Then
+    // Then — zone2 (area) must be dropped, caption fits within limit
     assertThat(caption.length()).isLessThanOrEqualTo(1024);
-    assertThat(caption).doesNotContain("📍"); // 📍 — zone2 must be dropped
+    assertThat(caption).doesNotContain("📐");
   }
 
   // -------------------------------------------------------------------------
@@ -282,11 +671,19 @@ class ListingFormatterTest {
   // -------------------------------------------------------------------------
 
   @Test
-  void should_escape_html_in_title() {
+  void should_escape_html_in_address() {
     // Given
     var listing = buildListing(
-        15L, "Квартира & <дом> > гараж", BigDecimal.valueOf(500), "USD",
-        null, null, null, "realt", null, null, "https://realt.by/1"
+        26L,
+        BigDecimal.valueOf(500),
+        "USD",
+        "Улица & <проспект> > дорога",
+        null,
+        null,
+        "realt",
+        null,
+        null,
+        "https://realt.by/1"
     );
 
     // When
@@ -297,7 +694,7 @@ class ListingFormatterTest {
     assertThat(caption).contains("&lt;");
     assertThat(caption).contains("&gt;");
     assertThat(caption).doesNotContain(" & ");
-    assertThat(caption).doesNotContain("<дом>");
+    assertThat(caption).doesNotContain("<проспект>");
   }
 
   // -------------------------------------------------------------------------
@@ -308,14 +705,22 @@ class ListingFormatterTest {
   void should_format_caption_without_published_at_when_null() {
     // Given
     var listing = buildListing(
-        16L, "Квартира", BigDecimal.valueOf(500), "USD",
-        null, null, null, "realt", null, null, "https://realt.by/1"
+        27L,
+        BigDecimal.valueOf(500),
+        "USD",
+        null,
+        null,
+        null,
+        "realt",
+        null,
+        null,
+        "https://realt.by/1"
     );
 
     // When / Then — no NPE, zone3 still rendered with clock icon
     assertThatNoException().isThrownBy(() -> {
       var caption = listingFormatter.buildCaption(listing);
-      assertThat(caption).contains("🕐"); // 🕐
+      assertThat(caption).contains("🕐");
     });
   }
 
@@ -346,9 +751,35 @@ class ListingFormatterTest {
   // helpers
   // -------------------------------------------------------------------------
 
+  /**
+   * Builds a listing with rooms, propertyType, and priceUsd fields for zone-1 format tests.
+   */
+  private static ListingSummaryResponse buildListingWithRooms(
+      Long id,
+      Integer rooms,
+      String propertyType,
+      BigDecimal price,
+      String currency,
+      BigDecimal priceUsd,
+      String district,
+      String city,
+      String sourceId,
+      Instant publishedAt,
+      String sourceUrl
+  ) {
+    return new ListingSummaryResponse(
+        id, null, price, currency,
+        priceUsd, rooms, propertyType,
+        null, city, district,
+        sourceId, publishedAt, null, sourceUrl
+    );
+  }
+
+  /**
+   * Builds a listing without rooms/propertyType/priceUsd for general formatting tests.
+   */
   private static ListingSummaryResponse buildListing(
       Long id,
-      String title,
       BigDecimal price,
       String currency,
       String district,
@@ -360,7 +791,7 @@ class ListingFormatterTest {
       String sourceUrl
   ) {
     return new ListingSummaryResponse(
-        id, title, price, currency,
+        id, null, price, currency,
         null, null, null,
         areaTotalM2, city, district,
         sourceId, publishedAt, photoUrl, sourceUrl
