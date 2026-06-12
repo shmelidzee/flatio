@@ -1,7 +1,7 @@
 package com.flatio.telegram.callback;
 
 import com.flatio.domain.city.City;
-import com.flatio.repository.CityRepository;
+import com.flatio.service.CityService;
 import com.flatio.telegram.keyboard.FilterKeyboardFactory;
 import com.flatio.telegram.state.FilterStep;
 import com.flatio.telegram.state.SearchFilterState;
@@ -33,7 +33,7 @@ public class FilterCallbackHandler {
 
   private final SearchFilterWizard wizard;
   private final FilterKeyboardFactory keyboardFactory;
-  private final CityRepository cityRepository;
+  private final CityService cityService;
 
   /**
    * Processes a filter callback and returns the updated wizard message.
@@ -116,7 +116,7 @@ public class FilterCallbackHandler {
    * @return SendMessage displaying the CITY step with filtered city buttons, never null
    */
   public SendMessage handleCitySearchText(Long telegramId, String chatId, String query) {
-    List<City> cities = cityRepository.findByNameRuContainingIgnoreCase(query);
+    List<City> cities = cityService.searchByName(query);
     var state = wizard.getState(telegramId).orElseGet(() -> wizard.start(telegramId));
     log.debug("City search text applied: telegramId={}, query={}, results={}", telegramId, query, cities.size());
     return SendMessage.builder()

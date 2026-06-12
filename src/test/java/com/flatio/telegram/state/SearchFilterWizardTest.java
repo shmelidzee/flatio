@@ -2,7 +2,7 @@ package com.flatio.telegram.state;
 
 import com.flatio.domain.city.City;
 import com.flatio.domain.listing.DealType;
-import com.flatio.repository.CityRepository;
+import com.flatio.service.CityService;
 import java.math.BigDecimal;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -13,19 +13,20 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class SearchFilterWizardTest {
 
   @Mock
-  private CityRepository cityRepository;
+  private CityService cityService;
 
   private SearchFilterWizard wizard;
 
   @BeforeEach
   void setUp() {
-    wizard = new SearchFilterWizard(cityRepository);
+    wizard = new SearchFilterWizard(cityService);
   }
 
   @Test
@@ -279,6 +280,7 @@ class SearchFilterWizardTest {
   @Test
   void should_set_city_id_and_advance_to_keyword_when_city_selected() {
     // Given
+    when(cityService.existsById(42L)).thenReturn(true);
     wizard.start(1L);
     wizard.applySelection(1L, FilterStep.DEAL_TYPE, "RENT");
     wizard.applySelection(1L, FilterStep.PROPERTY_TYPE, "ANY");
@@ -291,6 +293,25 @@ class SearchFilterWizardTest {
 
     // Then
     assertThat(state.getCityId()).isEqualTo(42L);
+    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.KEYWORD);
+  }
+
+  @Test
+  void should_set_city_id_null_when_city_not_found_in_db() {
+    // Given — cityService returns false for unknown id
+    when(cityService.existsById(anyLong())).thenReturn(false);
+    wizard.start(1L);
+    wizard.applySelection(1L, FilterStep.DEAL_TYPE, "RENT");
+    wizard.applySelection(1L, FilterStep.PROPERTY_TYPE, "ANY");
+    wizard.applySelection(1L, FilterStep.ROOMS, "ANY");
+    wizard.applySelection(1L, FilterStep.PRICE, "ANY");
+    wizard.applySelection(1L, FilterStep.OWNER_ONLY, "ANY");
+
+    // When
+    var state = wizard.applySelection(1L, FilterStep.CITY, "9999");
+
+    // Then — invalid id is rejected, no city filter applied
+    assertThat(state.getCityId()).isNull();
     assertThat(state.getCurrentStep()).isEqualTo(FilterStep.KEYWORD);
   }
 
@@ -318,7 +339,7 @@ class SearchFilterWizardTest {
     var city = new City();
     city.setId(5L);
     city.setNameRu("Минск");
-    when(cityRepository.findNearestCity(any(), any())).thenReturn(Optional.of(city));
+    when(cityService.findNearestCity(any(), any())).thenReturn(Optional.of(city));
     wizard.start(1L);
 
     // When
@@ -332,7 +353,7 @@ class SearchFilterWizardTest {
   @Test
   void should_leave_city_null_when_no_city_found_by_geolocation() {
     // Given
-    when(cityRepository.findNearestCity(any(), any())).thenReturn(Optional.empty());
+    when(cityService.findNearestCity(any(), any())).thenReturn(Optional.empty());
     wizard.start(1L);
 
     // When
@@ -427,6 +448,7 @@ class SearchFilterWizardTest {
   @Test
   void should_return_to_city_when_back_pressed_at_keyword() {
     // Given
+    when(cityService.existsById(1L)).thenReturn(true);
     wizard.start(1L);
     wizard.applySelection(1L, FilterStep.DEAL_TYPE, "SELL");
     wizard.applySelection(1L, FilterStep.PROPERTY_TYPE, "ANY");

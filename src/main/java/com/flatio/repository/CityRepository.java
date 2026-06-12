@@ -45,7 +45,8 @@ public interface CityRepository extends JpaRepository<City, Long> {
    * @return optional city closest to the given coordinates
    */
   @Query(value = """
-      SELECT * FROM cities
+      SELECT id, name_ru, name_be, name_en, country_id, latitude, longitude, created_at, updated_at
+      FROM cities
       ORDER BY (latitude - :lat) * (latitude - :lat) + (longitude - :lon) * (longitude - :lon)
       LIMIT 1
       """, nativeQuery = true)

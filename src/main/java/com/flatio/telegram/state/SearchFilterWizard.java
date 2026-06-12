@@ -1,7 +1,7 @@
 package com.flatio.telegram.state;
 
 import com.flatio.domain.listing.DealType;
-import com.flatio.repository.CityRepository;
+import com.flatio.service.CityService;
 import java.math.BigDecimal;
 import java.util.Map;
 import java.util.Optional;
@@ -41,7 +41,7 @@ public class SearchFilterWizard {
   static final BigDecimal PRICE_HIGH_MAX = BigDecimal.valueOf(4_000);
   static final BigDecimal PRICE_PREMIUM_MIN = BigDecimal.valueOf(4_000);
 
-  private final CityRepository cityRepository;
+  private final CityService cityService;
 
   private final Map<Long, SearchFilterState> states = new ConcurrentHashMap<>();
 
@@ -173,7 +173,7 @@ public class SearchFilterWizard {
    */
   public SearchFilterState applyCityByLocation(Long telegramId, BigDecimal latitude, BigDecimal longitude) {
     var state = states.computeIfAbsent(telegramId, id -> new SearchFilterState());
-    var nearest = cityRepository.findNearestCity(latitude, longitude);
+    var nearest = cityService.findNearestCity(latitude, longitude);
     nearest.ifPresentOrElse(
         city -> {
           state.setCityId(city.getId());
@@ -215,12 +215,18 @@ public class SearchFilterWizard {
   }
 
   private Long parseCityId(String value) {
+    long id;
     try {
-      return Long.parseLong(value);
+      id = Long.parseLong(value);
     } catch (NumberFormatException e) {
       log.warn("Unparseable city id value in callback: {}", value);
       return null;
     }
+    if (!cityService.existsById(id)) {
+      log.warn("City not found for id in callback: {}", id);
+      return null;
+    }
+    return id;
   }
 
   private String parsePropertyType(String value) {
