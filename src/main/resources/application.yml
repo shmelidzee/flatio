@@ -68,6 +68,7 @@ telegram:
 nominatim:
   base-url: ${NOMINATIM_BASE_URL:https://nominatim.openstreetmap.org}
   user-agent: ${NOMINATIM_USER_AGENT:Flatio/1.0 (cr7mks1@gmail.com)}
+  language: ${NOMINATIM_LANGUAGE:ru}
 
 flatio:
   sync:

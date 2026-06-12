@@ -1,5 +1,6 @@
 package com.flatio.integration.nominatim.client;
 
+import com.flatio.integration.nominatim.config.NominatimProperties;
 import com.flatio.integration.nominatim.dto.NominatimReverseResponse;
 import io.github.resilience4j.ratelimiter.RateLimiter;
 import io.github.resilience4j.ratelimiter.RateLimiterRegistry;
@@ -34,14 +35,17 @@ public class NominatimClient {
 
   private final RestClient restClient;
   private final RateLimiter rateLimiter;
+  private final String language;
   private final ConcurrentHashMap<String, Optional<String>> cache = new ConcurrentHashMap<>();
 
   public NominatimClient(
       @Qualifier("nominatimRestClient") RestClient restClient,
-      RateLimiterRegistry rateLimiterRegistry
+      RateLimiterRegistry rateLimiterRegistry,
+      NominatimProperties properties
   ) {
     this.restClient = restClient;
     this.rateLimiter = rateLimiterRegistry.rateLimiter("nominatim");
+    this.language = properties.language();
   }
 
   /**
@@ -73,6 +77,7 @@ public class NominatimClient {
             .queryParam("lat", latitude)
             .queryParam("lon", longitude)
             .queryParam("format", "json")
+            .queryParam("accept-language", language)
             .build())
         .retrieve()
         .body(NominatimReverseResponse.class);
