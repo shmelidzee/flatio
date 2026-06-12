@@ -1,11 +1,14 @@
 package com.flatio.integration.onliner.scheduler;
 
 import com.flatio.domain.source.Source;
+import com.flatio.domain.source.SyncType;
 import com.flatio.integration.core.RawListing;
 import com.flatio.integration.onliner.client.OnlinerConnector;
 import com.flatio.repository.SourceRepository;
 import com.flatio.service.ListingIngestionService;
+import com.flatio.service.SyncRunService;
 import com.flatio.service.domain.BatchIngestResult;
+import com.flatio.service.domain.SyncRunRequest;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import java.time.Duration;
 import java.time.Instant;
@@ -39,6 +42,7 @@ public class OnlinerFullSyncJob {
   private final OnlinerConnector onlinerConnector;
   private final SourceRepository sourceRepository;
   private final ListingIngestionService listingIngestionService;
+  private final SyncRunService syncRunService;
 
   /**
    * Triggers an immediate full sync on startup if the database is empty for this source.
@@ -70,12 +74,15 @@ public class OnlinerFullSyncJob {
   @Scheduled(cron = "${flatio.sync.onliner.full.cron}")
   public void runFullSync() {
     log.info("Onliner full sync started (scheduled)");
+    Instant start = Instant.now();
     try {
       performFullSync(resolveSource());
     } catch (CallNotPermittedException e) {
       log.warn("Onliner full sync skipped: circuit breaker OPEN");
     } catch (Exception e) {
       log.error("Onliner full sync failed: error={}", e.getMessage(), e);
+      syncRunService.record(SyncRunRequest.failure(
+          onlinerConnector.getSourceId(), SyncType.FULL, start, Instant.now()));
     }
   }
 
@@ -95,7 +102,12 @@ public class OnlinerFullSyncJob {
         .collect(Collectors.toSet());
 
     int deactivated = listingIngestionService.applyMissedSyncPenalty(source, activeExternalIds);
-    long durationMs = Duration.between(start, Instant.now()).toMillis();
+    Instant finish = Instant.now();
+    long durationMs = Duration.between(start, finish).toMillis();
+
+    syncRunService.record(SyncRunRequest.success(
+        onlinerConnector.getSourceId(), SyncType.FULL, start, finish,
+        rawListings.size(), result));
 
     log.info("Onliner full sync completed: fetched={}, added={}, updated={}, errors={}, deactivated={}, durationMs={}",
         rawListings.size(), result.added(), result.updated(), result.errors(), deactivated, durationMs);

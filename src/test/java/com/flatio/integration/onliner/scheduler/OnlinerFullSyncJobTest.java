@@ -1,10 +1,13 @@
 package com.flatio.integration.onliner.scheduler;
 
 import com.flatio.domain.source.Source;
+import com.flatio.domain.source.SyncRunStatus;
+import com.flatio.domain.source.SyncType;
 import com.flatio.integration.core.RawListing;
 import com.flatio.integration.onliner.client.OnlinerConnector;
 import com.flatio.repository.SourceRepository;
 import com.flatio.service.ListingIngestionService;
+import com.flatio.service.SyncRunService;
 import com.flatio.service.domain.BatchIngestResult;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
@@ -24,6 +27,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -35,6 +39,7 @@ class OnlinerFullSyncJobTest {
   @Mock private OnlinerConnector onlinerConnector;
   @Mock private SourceRepository sourceRepository;
   @Mock private ListingIngestionService listingIngestionService;
+  @Mock private SyncRunService syncRunService;
 
   @InjectMocks
   private OnlinerFullSyncJob fullSyncJob;
@@ -180,6 +185,45 @@ class OnlinerFullSyncJobTest {
     assertThatNoException().isThrownBy(() -> fullSyncJob.runFullSync());
     verify(listingIngestionService, never()).ingestBatch(any(), any());
     verify(listingIngestionService, never()).applyMissedSyncPenalty(any(), any());
+  }
+
+  // -------------------------------------------------------------------------
+  // sync run recording
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_record_success_run_when_full_sync_completes() {
+    // Given
+    var raw = buildRawListing("ext-full-rec-1");
+    when(onlinerConnector.fetchAll()).thenReturn(List.of(raw));
+    when(listingIngestionService.ingestBatch(any(), eq(source)))
+        .thenReturn(new BatchIngestResult(1, 0, 0));
+    when(listingIngestionService.applyMissedSyncPenalty(eq(source), any())).thenReturn(0);
+
+    // When
+    fullSyncJob.runFullSync();
+
+    // Then — a FULL SUCCESS run is recorded
+    verify(syncRunService).record(argThat(r ->
+        r.status() == SyncRunStatus.SUCCESS
+            && r.syncType() == SyncType.FULL
+            && r.listingsFetched() == 1
+            && r.listingsAdded() == 1));
+  }
+
+  @Test
+  void should_record_failure_run_when_fetchAll_throws() {
+    // Given — fetchAll throws an unexpected exception
+    when(onlinerConnector.fetchAll()).thenThrow(new RuntimeException("Timeout"));
+
+    // When
+    fullSyncJob.runFullSync();
+
+    // Then — a FAILURE run is recorded
+    verify(syncRunService).record(argThat(r ->
+        r.status() == SyncRunStatus.FAILURE
+            && r.syncType() == SyncType.FULL
+            && r.listingsFetched() == 0));
   }
 
   // -------------------------------------------------------------------------
