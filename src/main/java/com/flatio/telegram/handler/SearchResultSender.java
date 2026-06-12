@@ -102,7 +102,8 @@ public class SearchResultSender {
     editMessage(chatId, messageId, SEARCHING_TEXT);
 
     var criteria = buildCriteria(stateOpt.get());
-    var pageable = PageRequest.of(0, PAGE_SIZE, Sort.by(Sort.Direction.DESC, "createdAt"));
+    var pageable = PageRequest.of(0, PAGE_SIZE,
+        Sort.by(Sort.Order.desc("publishedAt").with(Sort.NullHandling.NULLS_LAST)));
     var page = listingService.search(criteria, pageable);
 
     if (page.isEmpty()) {
@@ -141,7 +142,8 @@ public class SearchResultSender {
         ? Math.min(session.getCurrentPage() + 1, session.getTotalPages() - 1)
         : Math.max(session.getCurrentPage() - 1, 0);
 
-    var pageable = PageRequest.of(newPage, PAGE_SIZE, Sort.by(Sort.Direction.DESC, "createdAt"));
+    var pageable = PageRequest.of(newPage, PAGE_SIZE,
+        Sort.by(Sort.Order.desc("publishedAt").with(Sort.NullHandling.NULLS_LAST)));
     var page = listingService.search(session.getCriteria(), pageable);
 
     if (page.isEmpty()) {

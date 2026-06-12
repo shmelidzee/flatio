@@ -536,6 +536,74 @@ class ListingFormatterTest {
     assertThat(caption).contains("Советский район");
   }
 
+  @Test
+  void should_use_address_field_when_present() {
+    // Given — address field set, district and city also present but should be ignored
+    var listing = new ListingSummaryResponse(
+        30L, null, BigDecimal.valueOf(500), "USD", null, 2, null, null,
+        "Минск", "Советский район", "ул. Пушкина, 5", "realt", null, null,
+        "https://realt.by/30"
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then — address field takes priority; district and city are not shown
+    assertThat(caption).contains("ул. Пушкина, 5");
+    assertThat(caption).doesNotContain("Советский район");
+    assertThat(caption).doesNotContain("Минск");
+  }
+
+  @Test
+  void should_show_address_when_district_and_city_null() {
+    // Given — only address field, no district or city
+    var listing = new ListingSummaryResponse(
+        31L, null, BigDecimal.valueOf(500), "USD", null, 2, null, null,
+        null, null, "ул. Ленина, 10", "realt", null, null,
+        "https://realt.by/31"
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then — address shown on second line
+    String[] lines = caption.split("\n");
+    assertThat(lines[1]).isEqualTo("ул. Ленина, 10");
+  }
+
+  @Test
+  void should_omit_address_line_when_address_district_city_all_null() {
+    // Given — all location fields null
+    var listing = new ListingSummaryResponse(
+        32L, null, BigDecimal.valueOf(500), "USD", null, 2, null, null,
+        null, null, null, "realt", null, null,
+        "https://realt.by/32"
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then — no location line; split("\n") yields [price, "", zone3] = 3 lines
+    assertThat(caption.split("\n")).hasSize(3);
+    assertThat(caption).doesNotContain("📍");
+  }
+
+  @Test
+  void should_fallback_to_district_and_city_when_address_null() {
+    // Given — address null, district and city present
+    var listing = new ListingSummaryResponse(
+        33L, null, BigDecimal.valueOf(500), "USD", null, 2, null, null,
+        "Минск", "Советский район", null, "realt", null, null,
+        "https://realt.by/33"
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then — falls back to "district, city"
+    assertThat(caption).contains("Советский район, Минск");
+  }
+
   // -------------------------------------------------------------------------
   // buildCaption — source badge
   // -------------------------------------------------------------------------
@@ -652,6 +720,7 @@ class ListingFormatterTest {
         BigDecimal.valueOf(52.5),
         null,
         longAddress,
+        null,
         "realt",
         Instant.parse("2026-05-01T10:30:00Z"),
         null,
@@ -771,7 +840,7 @@ class ListingFormatterTest {
         id, null, price, currency,
         priceUsd, rooms, propertyType,
         null, city, district,
-        sourceId, publishedAt, null, sourceUrl
+        null, sourceId, publishedAt, null, sourceUrl
     );
   }
 
@@ -794,7 +863,7 @@ class ListingFormatterTest {
         id, null, price, currency,
         null, null, null,
         areaTotalM2, city, district,
-        sourceId, publishedAt, photoUrl, sourceUrl
+        null, sourceId, publishedAt, photoUrl, sourceUrl
     );
   }
 }
