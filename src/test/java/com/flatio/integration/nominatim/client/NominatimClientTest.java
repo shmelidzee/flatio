@@ -1,17 +1,21 @@
 package com.flatio.integration.nominatim.client;
 
+import com.flatio.integration.nominatim.config.NominatimProperties;
 import com.flatio.integration.nominatim.dto.NominatimReverseResponse;
 import io.github.resilience4j.ratelimiter.RateLimiterConfig;
 import io.github.resilience4j.ratelimiter.RateLimiterRegistry;
 import java.math.BigDecimal;
+import java.net.URI;
 import java.time.Duration;
 import java.util.function.Function;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.util.DefaultUriBuilderFactory;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -45,7 +49,8 @@ class NominatimClientTest {
         .limitForPeriod(1_000)
         .timeoutDuration(Duration.ofSeconds(5))
         .build();
-    nominatimClient = new NominatimClient(restClient, RateLimiterRegistry.of(rateLimiterConfig));
+    var properties = new NominatimProperties("https://nominatim.test", "TestAgent/1.0", "ru");
+    nominatimClient = new NominatimClient(restClient, RateLimiterRegistry.of(rateLimiterConfig), properties);
   }
 
   // -------------------------------------------------------------------------
@@ -165,6 +170,31 @@ class NominatimClientTest {
 
     // Then
     assertThat(result).isEmpty();
+  }
+
+  // -------------------------------------------------------------------------
+  // accept-language parameter
+  // -------------------------------------------------------------------------
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_include_accept_language_in_request_uri() {
+    // Given
+    var address = new NominatimReverseResponse.NominatimAddress("Минск", null, null, null, null, null);
+    var uriCaptor = ArgumentCaptor.forClass(Function.class);
+    when(restClient.get()).thenReturn(requestHeadersUriSpec);
+    when(requestHeadersUriSpec.uri(uriCaptor.capture())).thenReturn(requestHeadersSpec);
+    when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
+    when(responseSpec.body(NominatimReverseResponse.class))
+        .thenReturn(new NominatimReverseResponse("Минск, Беларусь", address));
+
+    // When
+    nominatimClient.reverseGeocode(new BigDecimal("53.900"), new BigDecimal("27.567"));
+
+    // Then — URI must contain accept-language=ru
+    Function<org.springframework.web.util.UriBuilder, URI> uriFunction = uriCaptor.getValue();
+    URI uri = uriFunction.apply(new DefaultUriBuilderFactory().builder());
+    assertThat(uri.getQuery()).contains("accept-language=ru");
   }
 
   // -------------------------------------------------------------------------
