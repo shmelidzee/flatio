@@ -109,4 +109,43 @@ class CityRepositoryIT {
     assertThat(result.get().getLatitude()).isNotNull();
     assertThat(result.get().getLongitude()).isNotNull();
   }
+
+  @Test
+  void should_find_cities_by_partial_name_ignore_case() {
+    // Given — V24 seeds «Минск», «Могилёв» etc.
+
+    // When
+    var result = cityRepository.findByNameRuContainingIgnoreCase("мин");
+
+    // Then
+    assertThat(result).isNotEmpty();
+    assertThat(result).allMatch(c -> c.getNameRu().toLowerCase().contains("мин"));
+  }
+
+  @Test
+  void should_return_empty_when_no_city_matches_query() {
+    // Given
+    var query = "Варшава";
+
+    // When
+    var result = cityRepository.findByNameRuContainingIgnoreCase(query);
+
+    // Then
+    assertThat(result).isEmpty();
+  }
+
+  @Test
+  void should_find_nearest_city_by_coordinates() {
+    // Given — Минск is at ~53.9, 27.5; query with same coordinates
+
+    // When
+    var result = cityRepository.findNearestCity(
+        new java.math.BigDecimal("53.904841"),
+        new java.math.BigDecimal("27.561523")
+    );
+
+    // Then
+    assertThat(result).isPresent();
+    assertThat(result.get().getNameRu()).isEqualTo("Минск");
+  }
 }

@@ -3,6 +3,7 @@ package com.flatio.config;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.core.ConsoleAppender;
+import com.flatio.repository.CityRepository;
 import com.flatio.repository.ListingRepository;
 import com.flatio.repository.PriceHistoryRepository;
 import com.flatio.repository.SourceRepository;
@@ -64,6 +65,9 @@ class LogbackProdProfileTest {
 
   @MockBean
   UserSavedSearchRepository userSavedSearchRepository;
+
+  @MockBean
+  CityRepository cityRepository;
 
   @Test
   void should_configure_logstash_encoder_on_root_logger_when_prod_profile_active() {

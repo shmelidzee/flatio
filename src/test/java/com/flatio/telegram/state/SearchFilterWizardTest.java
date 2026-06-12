@@ -1,19 +1,32 @@
 package com.flatio.telegram.state;
 
+import com.flatio.domain.city.City;
 import com.flatio.domain.listing.DealType;
+import com.flatio.service.CityService;
 import java.math.BigDecimal;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.when;
 
+@ExtendWith(MockitoExtension.class)
 class SearchFilterWizardTest {
+
+  @Mock
+  private CityService cityService;
 
   private SearchFilterWizard wizard;
 
   @BeforeEach
   void setUp() {
-    wizard = new SearchFilterWizard();
+    wizard = new SearchFilterWizard(cityService);
   }
 
   @Test
@@ -231,6 +244,127 @@ class SearchFilterWizardTest {
   }
 
   @Test
+  void should_advance_to_city_step_when_owner_only_selected() {
+    // Given
+    wizard.start(1L);
+    wizard.applySelection(1L, FilterStep.DEAL_TYPE, "SELL");
+    wizard.applySelection(1L, FilterStep.PROPERTY_TYPE, "ANY");
+    wizard.applySelection(1L, FilterStep.ROOMS, "ANY");
+    wizard.applySelection(1L, FilterStep.PRICE, "ANY");
+
+    // When
+    var state = wizard.applySelection(1L, FilterStep.OWNER_ONLY, "true");
+
+    // Then
+    assertThat(state.getOwnerOnly()).isTrue();
+    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.CITY);
+  }
+
+  @Test
+  void should_set_owner_only_null_when_any_selected() {
+    // Given
+    wizard.start(1L);
+    wizard.applySelection(1L, FilterStep.DEAL_TYPE, "SELL");
+    wizard.applySelection(1L, FilterStep.PROPERTY_TYPE, "ANY");
+    wizard.applySelection(1L, FilterStep.ROOMS, "ANY");
+    wizard.applySelection(1L, FilterStep.PRICE, "ANY");
+
+    // When
+    var state = wizard.applySelection(1L, FilterStep.OWNER_ONLY, "ANY");
+
+    // Then
+    assertThat(state.getOwnerOnly()).isNull();
+    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.CITY);
+  }
+
+  @Test
+  void should_set_city_id_and_advance_to_keyword_when_city_selected() {
+    // Given
+    when(cityService.existsById(42L)).thenReturn(true);
+    wizard.start(1L);
+    wizard.applySelection(1L, FilterStep.DEAL_TYPE, "RENT");
+    wizard.applySelection(1L, FilterStep.PROPERTY_TYPE, "ANY");
+    wizard.applySelection(1L, FilterStep.ROOMS, "ANY");
+    wizard.applySelection(1L, FilterStep.PRICE, "ANY");
+    wizard.applySelection(1L, FilterStep.OWNER_ONLY, "ANY");
+
+    // When
+    var state = wizard.applySelection(1L, FilterStep.CITY, "42");
+
+    // Then
+    assertThat(state.getCityId()).isEqualTo(42L);
+    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.KEYWORD);
+  }
+
+  @Test
+  void should_set_city_id_null_when_city_not_found_in_db() {
+    // Given — cityService returns false for unknown id
+    when(cityService.existsById(anyLong())).thenReturn(false);
+    wizard.start(1L);
+    wizard.applySelection(1L, FilterStep.DEAL_TYPE, "RENT");
+    wizard.applySelection(1L, FilterStep.PROPERTY_TYPE, "ANY");
+    wizard.applySelection(1L, FilterStep.ROOMS, "ANY");
+    wizard.applySelection(1L, FilterStep.PRICE, "ANY");
+    wizard.applySelection(1L, FilterStep.OWNER_ONLY, "ANY");
+
+    // When
+    var state = wizard.applySelection(1L, FilterStep.CITY, "9999");
+
+    // Then — invalid id is rejected, no city filter applied
+    assertThat(state.getCityId()).isNull();
+    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.KEYWORD);
+  }
+
+  @Test
+  void should_skip_city_step_when_any_selected() {
+    // Given
+    wizard.start(1L);
+    wizard.applySelection(1L, FilterStep.DEAL_TYPE, "RENT");
+    wizard.applySelection(1L, FilterStep.PROPERTY_TYPE, "ANY");
+    wizard.applySelection(1L, FilterStep.ROOMS, "ANY");
+    wizard.applySelection(1L, FilterStep.PRICE, "ANY");
+    wizard.applySelection(1L, FilterStep.OWNER_ONLY, "ANY");
+
+    // When
+    var state = wizard.applySelection(1L, FilterStep.CITY, "ANY");
+
+    // Then
+    assertThat(state.getCityId()).isNull();
+    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.KEYWORD);
+  }
+
+  @Test
+  void should_set_city_by_geolocation_and_advance_to_keyword() {
+    // Given
+    var city = new City();
+    city.setId(5L);
+    city.setNameRu("Минск");
+    when(cityService.findNearestCity(any(), any())).thenReturn(Optional.of(city));
+    wizard.start(1L);
+
+    // When
+    var state = wizard.applyCityByLocation(1L, BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5));
+
+    // Then
+    assertThat(state.getCityId()).isEqualTo(5L);
+    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.KEYWORD);
+  }
+
+  @Test
+  void should_leave_city_null_when_no_city_found_by_geolocation() {
+    // Given
+    when(cityService.findNearestCity(any(), any())).thenReturn(Optional.empty());
+    wizard.start(1L);
+
+    // When
+    var state = wizard.applyCityByLocation(1L, BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5));
+
+    // Then
+    assertThat(state.getCityId()).isNull();
+    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.KEYWORD);
+  }
+
+  @Test
   void should_return_to_deal_type_when_back_pressed_at_property_type() {
     // Given
     wizard.start(1L);
@@ -283,7 +417,6 @@ class SearchFilterWizardTest {
     wizard.applySelection(1L, FilterStep.PROPERTY_TYPE, "ANY");
     wizard.applySelection(1L, FilterStep.ROOMS, "ANY");
     wizard.applySelection(1L, FilterStep.PRICE, "MEDIUM");
-    // State is now at OWNER_ONLY
 
     // When
     var state = wizard.stepBack(1L);
@@ -295,37 +428,41 @@ class SearchFilterWizardTest {
   }
 
   @Test
-  void should_set_owner_only_true_when_true_selected() {
+  void should_return_to_owner_only_when_back_pressed_at_city() {
     // Given
     wizard.start(1L);
     wizard.applySelection(1L, FilterStep.DEAL_TYPE, "SELL");
     wizard.applySelection(1L, FilterStep.PROPERTY_TYPE, "ANY");
     wizard.applySelection(1L, FilterStep.ROOMS, "ANY");
     wizard.applySelection(1L, FilterStep.PRICE, "ANY");
+    wizard.applySelection(1L, FilterStep.OWNER_ONLY, "true");
 
     // When
-    var state = wizard.applySelection(1L, FilterStep.OWNER_ONLY, "true");
+    var state = wizard.stepBack(1L);
 
-    // Then — OWNER_ONLY now advances to KEYWORD, not DONE (#140)
-    assertThat(state.getOwnerOnly()).isTrue();
-    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.KEYWORD);
+    // Then
+    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.OWNER_ONLY);
+    assertThat(state.getOwnerOnly()).isNull();
   }
 
   @Test
-  void should_set_owner_only_null_when_any_selected() {
+  void should_return_to_city_when_back_pressed_at_keyword() {
     // Given
+    when(cityService.existsById(1L)).thenReturn(true);
     wizard.start(1L);
     wizard.applySelection(1L, FilterStep.DEAL_TYPE, "SELL");
     wizard.applySelection(1L, FilterStep.PROPERTY_TYPE, "ANY");
     wizard.applySelection(1L, FilterStep.ROOMS, "ANY");
     wizard.applySelection(1L, FilterStep.PRICE, "ANY");
+    wizard.applySelection(1L, FilterStep.OWNER_ONLY, "true");
+    wizard.applySelection(1L, FilterStep.CITY, "1");
 
     // When
-    var state = wizard.applySelection(1L, FilterStep.OWNER_ONLY, "ANY");
+    var state = wizard.stepBack(1L);
 
-    // Then — OWNER_ONLY now advances to KEYWORD, not DONE (#140)
-    assertThat(state.getOwnerOnly()).isNull();
-    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.KEYWORD);
+    // Then
+    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.CITY);
+    assertThat(state.getCityId()).isNull();
   }
 
   @Test
@@ -337,14 +474,15 @@ class SearchFilterWizardTest {
     wizard.applySelection(1L, FilterStep.ROOMS, "ANY");
     wizard.applySelection(1L, FilterStep.PRICE, "ANY");
     wizard.applySelection(1L, FilterStep.OWNER_ONLY, "true");
-    // State is now at DONE
+    wizard.applySelection(1L, FilterStep.CITY, "ANY");
+    wizard.applyKeyword(1L, "тест");
 
     // When
     var state = wizard.stepBack(1L);
 
     // Then
-    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.OWNER_ONLY);
-    assertThat(state.getOwnerOnly()).isNull();
+    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.KEYWORD);
+    assertThat(state.getQuery()).isNull();
   }
 
   @Test
@@ -380,7 +518,7 @@ class SearchFilterWizardTest {
     // When
     var state = wizard.applySelection(1L, FilterStep.DEAL_TYPE, "UNKNOWN_TYPE");
 
-    // Then — dealType is null (graceful degradation), step still advances
+    // Then
     assertThat(state.getDealType()).isNull();
     assertThat(state.getCurrentStep()).isEqualTo(FilterStep.PROPERTY_TYPE);
   }
@@ -394,7 +532,7 @@ class SearchFilterWizardTest {
     // When
     var state = wizard.applySelection(1L, FilterStep.PROPERTY_TYPE, "UNKNOWN_TYPE");
 
-    // Then — unknown value silently falls back to null, step still advances
+    // Then
     assertThat(state.getPropertyType()).isNull();
     assertThat(state.getCurrentStep()).isEqualTo(FilterStep.ROOMS);
   }
@@ -410,7 +548,7 @@ class SearchFilterWizardTest {
     // When
     var state = wizard.applySelection(1L, FilterStep.PRICE, "NONEXISTENT");
 
-    // Then — price remains null (graceful degradation), step advances to OWNER_ONLY
+    // Then
     assertThat(state.getPriceMin()).isNull();
     assertThat(state.getPriceMax()).isNull();
     assertThat(state.getCurrentStep()).isEqualTo(FilterStep.OWNER_ONLY);
