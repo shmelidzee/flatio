@@ -280,6 +280,7 @@ class SearchResultSenderTest {
         BigDecimal.valueOf(52.0),
         "Минск",
         "Советский район",
+        null,
         "realt",
         null,
         photoUrl,

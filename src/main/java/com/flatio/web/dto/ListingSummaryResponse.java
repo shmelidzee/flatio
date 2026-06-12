@@ -36,6 +36,9 @@ public record ListingSummaryResponse(
     @Schema(description = "District or neighbourhood", example = "Советский район")
     String district,
 
+    @Schema(description = "Street address", example = "ул. Пушкина, 5")
+    String address,
+
     @Schema(description = "Source platform code", example = "realt")
     String sourceId,
 

@@ -108,7 +108,8 @@ public class ListingFormatter {
    * <p>Zone 1 always occupies two lines:
    * <ol>
    *   <li>Room-count prefix + price: {@code {N}-комнатная за $USD (BYN BYN)}</li>
-   *   <li>Address (district and/or city), omitted when both are absent</li>
+   *   <li>Address — uses {@code address} field when present; falls back to district and/or city;
+   *       omitted when all three are absent</li>
    * </ol>
    *
    * @param sb      the caption builder to append to, never null
@@ -124,7 +125,7 @@ public class ListingFormatter {
       sb.append(escapeHtml(roomPrefix)).append(" за ").append(priceFormatted);
     }
 
-    String address = formatLocation(listing.district(), listing.city());
+    String address = formatLocation(listing.address(), listing.district(), listing.city());
     if (!address.isEmpty()) {
       sb.append("\n").append(escapeHtml(address));
     }
@@ -182,7 +183,10 @@ public class ListingFormatter {
     return "<b>" + formatNumber(price) + " " + (currency != null ? currency : "") + "</b>";
   }
 
-  private String formatLocation(String district, String city) {
+  private String formatLocation(String address, String district, String city) {
+    if (address != null && !address.isBlank()) {
+      return address;
+    }
     if (district != null && city != null) {
       return district + ", " + city;
     }

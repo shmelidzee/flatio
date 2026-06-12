@@ -188,7 +188,7 @@ class ListingControllerTest {
   private static ListingSummaryResponse buildSummary(Long id) {
     return new ListingSummaryResponse(
         id, "Test listing", BigDecimal.valueOf(75_000), "USD", null, 2,
-        null, BigDecimal.valueOf(52.5), "Минск", null, "realt", Instant.now(), null,
+        null, BigDecimal.valueOf(52.5), "Минск", null, null, "realt", Instant.now(), null,
         "https://realt.by/" + id
     );
   }
