@@ -7,6 +7,41 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- **PR #189 — CI pipeline: GitHub Actions build/test/docker-build (issue #40)**
+  - `.github/workflows/ci.yml` — полностью переработан: три последовательных job'а через `needs`:
+    - `build`: `./gradlew build -x test --no-daemon` + кэш Gradle через `actions/setup-java cache: gradle`
+    - `test`: `./gradlew test integrationTest --no-daemon` — запускает unit и Testcontainers IT-тесты; Docker доступен нативно на `ubuntu-latest`
+    - `docker-build`: `docker build -t flatio:${{ github.sha }}`; push в Docker Hub выполняется только при `push` в `master` через `secrets.DOCKER_USERNAME` / `secrets.DOCKER_PASSWORD`
+  - Триггеры: `push` в `feature/**`, `fix/**`, `docs/**`, `develop`, `master`; `pull_request` в `develop`, `master`
+  - `build.gradle.kts` — добавлена задача `integrationTest` (`dependsOn("test")`) — алиас, позволяющий вызывать `./gradlew test integrationTest` в CI без ошибки "Task not found"
+
+### Added
+- **PR #188 — Поддержка RENT_DAILY в фильтре поиска API (issue #92)**
+  - `ListingSearchCriteria.dealType` — `@Schema` обновлён: `example = "RENT_DAILY"`, описание перечисляет все допустимые значения `RENT`, `SELL`, `RENT_DAILY`
+  - `ListingResponse.dealType` — описание `@Schema` включает `RENT_DAILY`
+  - Бизнес-логика не изменялась: `buildSearchSpec` и FTS-путь обрабатывали все значения `DealType` без ограничений
+
+### Fixed
+- **PR #187 — Geocoding language ru + deactivation of stale listings (issues #185, #186)**
+  - **#186 — Название города на русском из Nominatim:**
+    - `NominatimProperties` — добавлено поле `language`; читается из `${NOMINATIM_LANGUAGE:ru}` (`application.yml`)
+    - `NominatimClient` — добавлен параметр `.queryParam("accept-language", language)` в URI `/reverse`; ранее Nominatim возвращал названия на белорусском (дефолт OSM для RB)
+    - Существующие записи в кэше не мигрируются — фикс применяется к новым geocoding-вызовам
+  - **#185 — Деактивация устаревших объявлений:**
+    - `ListingIngestionServiceImpl.applyMissedSyncPenalty(Source, Set<String>)` — для ACTIVE объявлений, отсутствующих в последнем fetch, инкрементирует `missedSyncsCount`; при достижении порога `flatio.sync.inactive-threshold` (default: 3) устанавливает статус `INACTIVE`
+    - `ListingRepository.incrementMissedSyncsForAbsent()` + `deactivateByMissedSyncsThreshold()` — два JPQL `@Modifying` запроса
+    - `OnlinerFullSyncJob.performFullSync()` — вызывает `applyMissedSyncPenalty()` после каждого полного синка
+    - `application.yml` — `flatio.sync.inactive-threshold: ${FLATIO_SYNC_INACTIVE_THRESHOLD:3}`
+
+- **PR #184 — Восстановление адреса в карточке Telegram + исправление сортировки (issues #180, #181)**
+  - **#181 — Пропавший адрес в карточке:**
+    - `ListingSummaryResponse` — добавлено поле `address`; MapStruct маппит автоматически из `Listing.address`
+    - `ListingFormatter.formatLocation` — принимает три параметра (`address`, `district`, `city`); `address` имеет приоритет, `district`/`city` — fallback
+  - **#180 — Порядок сортировки листингов:**
+    - `SearchResultSender` — сортировка изменена с `createdAt DESC` на `publishedAt DESC NULLS LAST` в обоих методах (`handle` и `handlePageCallback`)
+    - Причина: карточка отображает `publishedAt`, а сортировка по `createdAt` (время вставки в БД) создавала видимое несоответствие дат
+
 ### Fixed
 - **PR #172 — Исправление декодирования URL фото Onliner (issue #170)**
   - `OnlinerConnector.resolvePhotoUrl()` — исправлено декодирование imgproxy URL:
