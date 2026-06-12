@@ -80,6 +80,13 @@ tasks.withType<Test> {
   useJUnitPlatform()
 }
 
+// Integration tests share the main 'test' source set — this task is an alias used in CI
+tasks.register("integrationTest") {
+  group = "verification"
+  description = "Runs integration tests (Testcontainers-based tests live in the 'test' source set)"
+  dependsOn("test")
+}
+
 tasks.named<BootJar>("bootJar") {
   archiveFileName.set("app.jar")
 }
