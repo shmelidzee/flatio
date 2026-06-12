@@ -7,6 +7,7 @@ import com.flatio.security.JwtAuthenticationFilter;
 import com.flatio.security.JwtService;
 import com.flatio.service.ListingService;
 import com.flatio.web.dto.ListingResponse;
+import com.flatio.web.dto.ListingSearchCriteria;
 import com.flatio.web.dto.ListingSummaryResponse;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.HttpServletRequest;
@@ -179,6 +180,33 @@ class ListingControllerTest {
     mockMvc.perform(get("/api/v1/listings").param("dealType", "TOTALLY_INVALID"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.status").value(400));
+  }
+
+  @Test
+  void should_return_200_when_deal_type_filter_is_rent_daily() throws Exception {
+    // Given
+    Page<ListingSummaryResponse> emptyPage = Page.empty();
+    when(listingService.search(any(), any())).thenReturn(emptyPage);
+
+    // When / Then — RENT_DAILY must be accepted as a valid dealType filter value
+    mockMvc.perform(get("/api/v1/listings").param("dealType", "RENT_DAILY"))
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_bind_rent_daily_deal_type_to_search_criteria() throws Exception {
+    // Given
+    var criteriaCaptor = ArgumentCaptor.forClass(ListingSearchCriteria.class);
+    Page<ListingSummaryResponse> emptyPage = Page.empty();
+    when(listingService.search(criteriaCaptor.capture(), any())).thenReturn(emptyPage);
+
+    // When
+    mockMvc.perform(get("/api/v1/listings").param("dealType", "RENT_DAILY"))
+        .andExpect(status().isOk());
+
+    // Then — service receives RENT_DAILY as the deal type in criteria
+    assertThat(criteriaCaptor.getValue().dealType()).isEqualTo(DealType.RENT_DAILY);
   }
 
   // -------------------------------------------------------------------------

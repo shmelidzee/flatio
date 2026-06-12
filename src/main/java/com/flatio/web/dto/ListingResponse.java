@@ -25,7 +25,7 @@ public record ListingResponse(
     @Schema(description = "Full description provided by the source", example = "Сдаётся квартира с мебелью")
     String description,
 
-    @Schema(description = "Deal type: rent or sell", example = "SELL")
+    @Schema(description = "Deal type: RENT, SELL, or RENT_DAILY", example = "SELL")
     DealType dealType,
 
     @Schema(description = "Price unit for rental listings: PER_MONTH or PER_DAY. Null for sales.",

@@ -13,7 +13,7 @@ import java.math.BigDecimal;
  */
 @Schema(description = "Filter parameters for listing search")
 public record ListingSearchCriteria(
-    @Schema(description = "Deal type filter", example = "RENT")
+    @Schema(description = "Deal type filter: RENT, SELL, or RENT_DAILY", example = "RENT_DAILY")
     DealType dealType,
 
     @Schema(description = "Property type filter", example = "APARTMENT")

@@ -11,6 +11,7 @@ import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabas
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -58,6 +59,10 @@ class ListingRepositoryIT {
   // -------------------------------------------------------------------------
 
   private Listing buildListing(String externalId, ListingStatus status) {
+    return buildListing(externalId, status, DealType.RENT);
+  }
+
+  private Listing buildListing(String externalId, ListingStatus status, DealType dealType) {
     var source = sourceRepository.findByCode("ONLINER").orElseThrow();
     var currency = currencyRepository.findByCode("BYN").orElseThrow();
     var country = countryRepository.findByCode("BY").orElseThrow();
@@ -66,7 +71,7 @@ class ListingRepositoryIT {
     listing.setExternalId(externalId);
     listing.setSource(source);
     listing.setTitle("Test listing " + externalId);
-    listing.setDealType(DealType.RENT);
+    listing.setDealType(dealType);
     listing.setPrice(BigDecimal.valueOf(500));
     listing.setCurrency(currency);
     listing.setCountry(country);
@@ -229,5 +234,42 @@ class ListingRepositoryIT {
     // Then
     assertThat(page.getTotalElements()).isEqualTo(0);
     assertThat(page.getContent()).isEmpty();
+  }
+
+  // -------------------------------------------------------------------------
+  // JPA Specification — dealType RENT_DAILY filter (#92)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_return_only_rent_daily_listings_when_filtered_by_deal_type() {
+    // Given — mix of RENT_DAILY, RENT and SELL listings
+    listingRepository.save(buildListing("ext-rd-1", ListingStatus.ACTIVE, DealType.RENT_DAILY));
+    listingRepository.save(buildListing("ext-rd-2", ListingStatus.ACTIVE, DealType.RENT_DAILY));
+    listingRepository.save(buildListing("ext-rent-1", ListingStatus.ACTIVE, DealType.RENT));
+    listingRepository.save(buildListing("ext-sell-1", ListingStatus.ACTIVE, DealType.SELL));
+    listingRepository.flush();
+
+    // When
+    Specification<Listing> spec = (root, query, cb) -> cb.equal(root.get("dealType"), DealType.RENT_DAILY);
+    var result = listingRepository.findAll(spec);
+
+    // Then — only RENT_DAILY listings returned
+    assertThat(result).hasSize(2);
+    assertThat(result).allMatch(l -> l.getDealType() == DealType.RENT_DAILY);
+  }
+
+  @Test
+  void should_return_empty_list_when_no_rent_daily_listings_exist() {
+    // Given — only RENT listings persisted
+    listingRepository.save(buildListing("ext-only-rent-1", ListingStatus.ACTIVE, DealType.RENT));
+    listingRepository.save(buildListing("ext-only-rent-2", ListingStatus.ACTIVE, DealType.RENT));
+    listingRepository.flush();
+
+    // When
+    Specification<Listing> spec = (root, query, cb) -> cb.equal(root.get("dealType"), DealType.RENT_DAILY);
+    var result = listingRepository.findAll(spec);
+
+    // Then
+    assertThat(result).isEmpty();
   }
 }
