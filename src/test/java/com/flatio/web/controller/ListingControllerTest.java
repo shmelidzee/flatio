@@ -26,8 +26,14 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
+import org.mockito.ArgumentCaptor;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -108,6 +114,25 @@ class ListingControllerTest {
             .param("priceMax", "1500")
             .param("rooms", "2"))
         .andExpect(status().isOk());
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_use_createdAt_desc_sort_by_default() throws Exception {
+    // Given
+    var pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+    Page<ListingSummaryResponse> emptyPage = Page.empty();
+    when(listingService.search(any(), pageableCaptor.capture())).thenReturn(emptyPage);
+
+    // When
+    mockMvc.perform(get("/api/v1/listings"))
+        .andExpect(status().isOk());
+
+    // Then — default Pageable must have sort createdAt DESC
+    Pageable captured = pageableCaptor.getValue();
+    Sort.Order order = captured.getSort().getOrderFor("createdAt");
+    assertThat(order).isNotNull();
+    assertThat(order.getDirection()).isEqualTo(Sort.Direction.DESC);
   }
 
   // -------------------------------------------------------------------------

@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
@@ -34,7 +35,7 @@ public class ListingController {
    * <p>All filter parameters are optional. Defaults to ACTIVE listings when {@code status} is omitted.
    *
    * @param criteria filter parameters bound from query string
-   * @param pageable pagination and sorting (default: 20 per page, sorted by publishedAt desc)
+   * @param pageable pagination and sorting (default: 20 per page, sorted by createdAt DESC)
    * @return page of matching listing summaries
    */
   @Operation(
@@ -47,7 +48,7 @@ public class ListingController {
   @GetMapping
   public Page<ListingSummaryResponse> search(
       @ModelAttribute ListingSearchCriteria criteria,
-      @PageableDefault(size = 20, sort = "publishedAt") Pageable pageable
+      @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable
   ) {
     return listingService.search(criteria, pageable);
   }

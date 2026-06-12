@@ -40,6 +40,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -180,6 +181,56 @@ class ListingServiceTest {
 
     // Then — Specification was passed to repository (its building/execution is tested via integration tests)
     verify(listingRepository).findAll(any(Specification.class), eq(pageable));
+  }
+
+  @Test
+  void should_pass_createdAt_desc_sort_to_repository_when_no_query() {
+    // Given — Pageable with createdAt DESC sort (matches REST API default after fix)
+    var pageable = PageRequest.of(0, 20, Sort.by(Sort.Direction.DESC, "createdAt"));
+    Page<Listing> emptyPage = new PageImpl<>(Collections.emptyList(), pageable, 0);
+
+    var pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+    when(listingRepository.findAll(any(Specification.class), pageableCaptor.capture()))
+        .thenReturn(emptyPage);
+
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null);
+
+    // When
+    listingService.search(criteria, pageable);
+
+    // Then — repository receives the same createdAt DESC sort unchanged
+    Sort.Order capturedOrder = pageableCaptor.getValue().getSort().getOrderFor("createdAt");
+    assertThat(capturedOrder).isNotNull();
+    assertThat(capturedOrder.getDirection()).isEqualTo(Sort.Direction.DESC);
+  }
+
+  @Test
+  void should_preserve_sort_order_across_pages_when_paginating() {
+    // Given — page 1 and page 2 both carry createdAt DESC sort
+    var pageOne = PageRequest.of(0, 5, Sort.by(Sort.Direction.DESC, "createdAt"));
+    var pageTwo = PageRequest.of(1, 5, Sort.by(Sort.Direction.DESC, "createdAt"));
+    var listing = buildListing(1L);
+    var page = new PageImpl<>(List.of(listing), pageOne, 10);
+
+    when(listingRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
+    when(listingMapper.toSummaryResponse(listing)).thenReturn(buildListingSummary(1L));
+
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null);
+    var pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+
+    // When — call search twice simulating pagination
+    listingService.search(criteria, pageOne);
+    listingService.search(criteria, pageTwo);
+
+    // Then — both calls pass createdAt DESC sort to repository
+    verify(listingRepository, times(2))
+        .findAll(any(Specification.class), pageableCaptor.capture());
+
+    pageableCaptor.getAllValues().forEach(p -> {
+      Sort.Order order = p.getSort().getOrderFor("createdAt");
+      assertThat(order).isNotNull();
+      assertThat(order.getDirection()).isEqualTo(Sort.Direction.DESC);
+    });
   }
 
   // -------------------------------------------------------------------------
