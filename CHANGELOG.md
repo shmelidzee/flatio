@@ -7,6 +7,88 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Security
+- **PR #202 — Ужесточение SSL nginx + ограничение размера тела запроса (issues #200, #201)**
+  - `docker/nginx/nginx.conf` — заменён cipher suite на Mozilla Intermediate profile:
+    `ECDHE-ECDSA-AES128-GCM-SHA256`, `ECDHE-RSA-AES128-GCM-SHA256`, `ECDHE-ECDSA-AES256-GCM-SHA384`,
+    `ECDHE-RSA-AES256-GCM-SHA384`, `ECDHE-ECDSA-CHACHA20-POLY1305`, `ECDHE-RSA-CHACHA20-POLY1305`,
+    `DHE-RSA-AES128-GCM-SHA256`, `DHE-RSA-AES256-GCM-SHA384`
+  - `ssl_prefer_server_ciphers off` — клиент выбирает cipher (современный best practice)
+  - `ssl_session_tickets off` — отключены TLS session tickets для предотвращения Forward Secrecy downgrade
+  - HSTS обновлён: добавлен `preload` флаг (`max-age=31536000; includeSubDomains; preload`)
+  - Добавлены HTTP security headers: `Referrer-Policy: strict-origin-when-cross-origin`,
+    `Permissions-Policy: geolocation=(), microphone=(), camera=()`, `X-XSS-Protection: 1; mode=block`
+  - Все `add_header` — с флагом `always` (заголовки применяются и к ошибочным ответам)
+  - `client_max_body_size 10m` — ограничение размера тела запроса для защиты от DoS
+  - `proxy_send_timeout 60s` — добавлен таймаут отправки ответа через proxy
+
+### Added
+- **PR #199 — HTTPS prod деплой + оптимизация CI/CD (issues #41, #197)**
+  - `docker/docker-compose.prod.example.yml` — шаблон продакшн Docker Compose: сервисы `flatio-app`,
+    `postgres`, `nginx`, `certbot`; все переменные окружения через `.env`; named volume для
+    Let's Encrypt сертификатов; помечен как `.example` — реальный файл в `.gitignore`
+  - `docker/nginx/nginx.conf` — nginx reverse proxy с HTTPS: HTTP→HTTPS редирект (301),
+    SSL терминация с Let's Encrypt, proxy к `flatio-app:8080`; базовые security headers
+    (`X-Frame-Options DENY`, `X-Content-Type-Options nosniff`, HSTS)
+  - `docs/local-setup.md` — полная инструкция по локальному запуску и деплою на VPS:
+    требования, Docker Compose, переменные окружения, SSL настройка, обновление приложения
+  - `.gitignore` — добавлен `docker/docker-compose.prod.yml` (реальный файл с секретами)
+  - `.github/workflows/ci.yml` — оптимизация pipeline (#197):
+    - Job'ы `build` и `test` объединены в один (`build-and-test`) — исключает двойной checkout и Gradle daemon
+    - Job `docker-build` теперь запускается только для веток `develop` и `master` (не для `feature/**`, `fix/**`)
+
+### Added
+- **PR #193 — Коннектор Onliner ПРОДАЖА + ценовые фильтры по типу сделки (issue #192)**
+  - `com.flatio.integration.onliner.client.OnlinerSaleConnector` — коннектор к `pk.api.onliner.by`
+    для объявлений о продаже (`deal_type=SELL`); отдельный домен, отличная структура ответа от аренды
+  - DTO пакета `com.flatio.integration.onliner.dto`: `OnlinerSaleApartment`, `OnlinerSaleArea`,
+    `OnlinerSaleSeller`, `OnlinerSaleSearchResponse` — отражают разницу в полях:
+    `number_of_rooms` (целое число) вместо `rent_type`, `seller.type` вместо `contact.owner`
+  - `com.flatio.integration.onliner.config.OnlinerSaleClientConfig` + `OnlinerSaleProperties` —
+    конфиг коннектора через `@ConfigurationProperties(prefix = "connector.onliner-sale")`
+  - `OnlinerSaleDeltaSyncJob` + `OnlinerSaleFullSyncJob` — джобы синхронизации, зеркалят
+    аналоги аренды; Resilience4j (rate limiter, retry, circuit breaker) для `connector-onliner-sale`
+  - `FilterKeyboardFactory` — клавиатура ценовых диапазонов теперь зависит от типа сделки:
+    аренда показывает диапазоны BYN/мес (до 4 000), продажа — полную стоимость BYN (до 400 000+)
+  - `SearchFilterWizard.applyPriceRange` — разрешает корректные пороги из `state.dealType`
+  - Flyway V28 — запись источника `ONLINER_SALE` в таблице `sources`
+  - `application.yml` — новые секции Resilience4j и коннектора для `connector-onliner-sale`
+  - Защита: `MAX_RETRY_AFTER_SECONDS = 60L` в обоих коннекторах (аренда и продажа) —
+    кап заголовка `Retry-After` для защиты от блокировки scheduler-потока сервером
+
+### Changed
+- **PR #196 — Пороги ценовых фильтров продажи вынесены в конфигурацию (issue #195)**
+  - `com.flatio.config.SellPriceFilterProperties` — новый `@ConfigurationProperties(prefix = "flatio.filter.price.sell")`:
+    три порога `lowMax`, `mediumMax`, `highMax` (BigDecimal); валидируются `@NotNull @Positive` при старте
+  - `com.flatio.config.FilterPriceConfig` — `@Configuration` бин, владеет `@EnableConfigurationProperties`;
+    изолирует Telegram-конфиг от конфига цен
+  - `FilterKeyboardFactory` — метки кнопок строятся динамически из конфига; `formatPrice` использует
+    `setScale(0, HALF_UP).longValueExact()` для корректного форматирования
+  - `SearchFilterWizard` — хардкоды `100_000`, `200_000`, `400_000` BYN заменены на значения из `SellPriceFilterProperties`
+  - `application.yml` — новая секция `flatio.filter.price.sell.*` с env-переменными:
+    `FLATIO_FILTER_PRICE_SELL_LOW_MAX`, `FLATIO_FILTER_PRICE_SELL_MEDIUM_MAX`, `FLATIO_FILTER_PRICE_SELL_HIGH_MAX`
+
+### Added
+- **PR #191 — DataFreshnessHealthIndicator и аудит-таблица sync_runs (issue #38)**
+  - `com.flatio.domain.source.SyncRun` — новый Entity: аудитная запись одного запуска синхронизации;
+    поля: `source`, `syncType`, `status`, `startedAt`, `finishedAt`, `fetchedCount`, `addedCount`,
+    `updatedCount`, `errorCount`, `errorMessage`
+  - Enum `SyncRunStatus`: `SUCCESS` | `FAILURE`; enum `SyncType`: `DELTA` | `FULL`
+  - `com.flatio.repository.SyncRunRepository` — `findTopBySourceCodeOrderByStartedAtDesc()` для
+    получения последнего запуска по источнику
+  - `com.flatio.service.SyncRunService` + `SyncRunServiceImpl` — сервис записи результатов синка;
+    `SyncRunRequest` Record инкапсулирует параметры создания записи
+  - `com.flatio.scheduler.DataFreshnessHealthIndicator` — реализует Spring Boot `HealthIndicator`;
+    статус `DOWN` если последний успешный синк старше порога `flatio.freshness.max-age-minutes`
+    (default 30 мин для дельта, 1440 для полного)
+  - `com.flatio.scheduler.DataFreshnessWatchdog` — `@Scheduled` компонент; периодически вызывает
+    `DataFreshnessHealthIndicator` и логирует предупреждение при статусе `DOWN`
+  - `OnlinerDeltaSyncJob` + `OnlinerFullSyncJob` — интегрированы с `SyncRunService`:
+    записывают `SUCCESS` после успешного синка и `FAILURE` в catch-блоках
+  - Flyway V26 — DDL таблицы `sync_runs` с FK на `sources`
+  - Flyway V27 — индексы `(source_id, started_at DESC)` и `(status, started_at DESC)`
+  - `application.yml` — `flatio.freshness.max-age-minutes`
+
 ### Changed
 - **PR #189 — CI pipeline: GitHub Actions build/test/docker-build (issue #40)**
   - `.github/workflows/ci.yml` — полностью переработан: три последовательных job'а через `needs`:
