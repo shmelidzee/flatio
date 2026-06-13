@@ -3,7 +3,7 @@ package com.flatio.telegram.state;
 import com.flatio.domain.city.City;
 import com.flatio.domain.listing.DealType;
 import com.flatio.service.CityService;
-import com.flatio.telegram.config.SellPriceFilterProperties;
+import com.flatio.config.SellPriceFilterProperties;
 import java.math.BigDecimal;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;

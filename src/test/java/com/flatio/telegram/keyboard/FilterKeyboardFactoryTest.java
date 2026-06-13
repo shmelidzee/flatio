@@ -1,7 +1,7 @@
 package com.flatio.telegram.keyboard;
 
 import com.flatio.domain.listing.DealType;
-import com.flatio.telegram.config.SellPriceFilterProperties;
+import com.flatio.config.SellPriceFilterProperties;
 import com.flatio.telegram.state.FilterStep;
 import com.flatio.telegram.state.SearchFilterState;
 import java.math.BigDecimal;

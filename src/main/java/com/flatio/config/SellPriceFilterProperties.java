@@ -1,7 +1,10 @@
-package com.flatio.telegram.config;
+package com.flatio.config;
 
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import java.math.BigDecimal;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.validation.annotation.Validated;
 
 /**
  * Market-specific price tier thresholds for SELL listings shown in the Telegram search filter.
@@ -18,10 +21,15 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * Override via {@code flatio.filter.price.sell.*} in {@code application.yml}
  * or environment variables when deploying to a different market.
  *
- * @param lowMax     upper boundary of the LOW tier
- * @param mediumMax  upper boundary of the MEDIUM tier
- * @param highMax    upper boundary of the HIGH tier (also the lower boundary of PREMIUM)
+ * @param lowMax     upper boundary of the LOW tier; must be positive
+ * @param mediumMax  upper boundary of the MEDIUM tier; must be positive
+ * @param highMax    upper boundary of the HIGH tier (lower boundary of PREMIUM); must be positive
  */
+@Validated
 @ConfigurationProperties(prefix = "flatio.filter.price.sell")
-public record SellPriceFilterProperties(BigDecimal lowMax, BigDecimal mediumMax, BigDecimal highMax) {
+public record SellPriceFilterProperties(
+    @NotNull @Positive BigDecimal lowMax,
+    @NotNull @Positive BigDecimal mediumMax,
+    @NotNull @Positive BigDecimal highMax
+) {
 }

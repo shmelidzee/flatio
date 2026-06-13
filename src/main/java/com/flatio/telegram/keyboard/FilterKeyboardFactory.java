@@ -2,11 +2,12 @@ package com.flatio.telegram.keyboard;
 
 import com.flatio.domain.city.City;
 import com.flatio.domain.listing.DealType;
-import com.flatio.telegram.config.SellPriceFilterProperties;
+import com.flatio.config.SellPriceFilterProperties;
 import com.flatio.telegram.state.FilterStep;
 import com.flatio.telegram.state.SearchFilterState;
 import com.flatio.telegram.state.SearchFilterWizard;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -154,7 +155,7 @@ public class FilterKeyboardFactory {
   }
 
   private static String formatPrice(BigDecimal value) {
-    long v = value.longValue();
+    long v = value.setScale(0, RoundingMode.HALF_UP).longValueExact();
     if (v >= 1_000_000) {
       return String.format("%d %03d %03d", v / 1_000_000, (v % 1_000_000) / 1_000, v % 1_000);
     }
