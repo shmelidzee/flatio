@@ -2,11 +2,13 @@ package com.flatio.telegram.keyboard;
 
 import com.flatio.domain.city.City;
 import com.flatio.domain.listing.DealType;
+import com.flatio.telegram.config.SellPriceFilterProperties;
 import com.flatio.telegram.state.FilterStep;
 import com.flatio.telegram.state.SearchFilterState;
 import com.flatio.telegram.state.SearchFilterWizard;
 import java.math.BigDecimal;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
@@ -16,12 +18,15 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
  * Builds inline keyboards and prompt texts for each step of the search filter wizard.
  */
 @Component
+@RequiredArgsConstructor
 public class FilterKeyboardFactory {
 
   private static final String P = SearchFilterWizard.CALLBACK_PREFIX;
 
   /** Maximum number of city buttons shown per keyboard without filtering. */
   private static final int MAX_CITY_BUTTONS = 8;
+
+  private final SellPriceFilterProperties sellPriceProps;
 
   /**
    * Returns the inline keyboard markup for the current wizard step.
@@ -128,16 +133,16 @@ public class FilterKeyboardFactory {
   private InlineKeyboardMarkup buildPriceKeyboard(DealType dealType) {
     boolean isSale = dealType == DealType.SELL;
     var low = isSale
-        ? btn("до 100 000", P + ":PRICE:LOW")
+        ? btn("до " + formatPrice(sellPriceProps.lowMax()), P + ":PRICE:LOW")
         : btn("до 1 000", P + ":PRICE:LOW");
     var med = isSale
-        ? btn("100 000–200 000", P + ":PRICE:MEDIUM")
+        ? btn(formatPrice(sellPriceProps.lowMax()) + "–" + formatPrice(sellPriceProps.mediumMax()), P + ":PRICE:MEDIUM")
         : btn("1 000–2 000", P + ":PRICE:MEDIUM");
     var high = isSale
-        ? btn("200 000–400 000", P + ":PRICE:HIGH")
+        ? btn(formatPrice(sellPriceProps.mediumMax()) + "–" + formatPrice(sellPriceProps.highMax()), P + ":PRICE:HIGH")
         : btn("2 000–4 000", P + ":PRICE:HIGH");
     var premium = isSale
-        ? btn("400 000+", P + ":PRICE:PREMIUM")
+        ? btn(formatPrice(sellPriceProps.highMax()) + "+", P + ":PRICE:PREMIUM")
         : btn("4 000+", P + ":PRICE:PREMIUM");
     var any = btn("Любая", P + ":PRICE:ANY");
     return InlineKeyboardMarkup.builder()
@@ -146,6 +151,10 @@ public class FilterKeyboardFactory {
         .keyboardRow(new InlineKeyboardRow(any))
         .keyboardRow(navRow())
         .build();
+  }
+
+  private static String formatPrice(BigDecimal value) {
+    return String.format("%,d", value.longValue()).replace(",", " ");
   }
 
   private InlineKeyboardMarkup buildOwnerOnlyKeyboard() {

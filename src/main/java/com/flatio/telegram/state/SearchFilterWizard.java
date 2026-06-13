@@ -2,6 +2,7 @@ package com.flatio.telegram.state;
 
 import com.flatio.domain.listing.DealType;
 import com.flatio.service.CityService;
+import com.flatio.telegram.config.SellPriceFilterProperties;
 import java.math.BigDecimal;
 import java.util.Map;
 import java.util.Optional;
@@ -42,15 +43,8 @@ public class SearchFilterWizard {
   static final BigDecimal RENT_PRICE_HIGH_MAX = BigDecimal.valueOf(4_000);
   static final BigDecimal RENT_PRICE_PREMIUM_MIN = BigDecimal.valueOf(4_000);
 
-  // Sale price thresholds (BYN total)
-  static final BigDecimal SALE_PRICE_LOW_MAX = BigDecimal.valueOf(100_000);
-  static final BigDecimal SALE_PRICE_MED_MIN = BigDecimal.valueOf(100_000);
-  static final BigDecimal SALE_PRICE_MED_MAX = BigDecimal.valueOf(200_000);
-  static final BigDecimal SALE_PRICE_HIGH_MIN = BigDecimal.valueOf(200_000);
-  static final BigDecimal SALE_PRICE_HIGH_MAX = BigDecimal.valueOf(400_000);
-  static final BigDecimal SALE_PRICE_PREMIUM_MIN = BigDecimal.valueOf(400_000);
-
   private final CityService cityService;
+  private final SellPriceFilterProperties sellPriceProps;
 
   private final Map<Long, SearchFilterState> states = new ConcurrentHashMap<>();
 
@@ -272,18 +266,18 @@ public class SearchFilterWizard {
     switch (value) {
       case "LOW" -> {
         state.setPriceMin(null);
-        state.setPriceMax(isSale ? SALE_PRICE_LOW_MAX : RENT_PRICE_LOW_MAX);
+        state.setPriceMax(isSale ? sellPriceProps.lowMax() : RENT_PRICE_LOW_MAX);
       }
       case "MEDIUM" -> {
-        state.setPriceMin(isSale ? SALE_PRICE_MED_MIN : RENT_PRICE_MED_MIN);
-        state.setPriceMax(isSale ? SALE_PRICE_MED_MAX : RENT_PRICE_MED_MAX);
+        state.setPriceMin(isSale ? sellPriceProps.lowMax() : RENT_PRICE_MED_MIN);
+        state.setPriceMax(isSale ? sellPriceProps.mediumMax() : RENT_PRICE_MED_MAX);
       }
       case "HIGH" -> {
-        state.setPriceMin(isSale ? SALE_PRICE_HIGH_MIN : RENT_PRICE_HIGH_MIN);
-        state.setPriceMax(isSale ? SALE_PRICE_HIGH_MAX : RENT_PRICE_HIGH_MAX);
+        state.setPriceMin(isSale ? sellPriceProps.mediumMax() : RENT_PRICE_HIGH_MIN);
+        state.setPriceMax(isSale ? sellPriceProps.highMax() : RENT_PRICE_HIGH_MAX);
       }
       case "PREMIUM" -> {
-        state.setPriceMin(isSale ? SALE_PRICE_PREMIUM_MIN : RENT_PRICE_PREMIUM_MIN);
+        state.setPriceMin(isSale ? sellPriceProps.highMax() : RENT_PRICE_PREMIUM_MIN);
         state.setPriceMax(null);
       }
       case VALUE_ANY -> { state.setPriceMin(null); state.setPriceMax(null); }

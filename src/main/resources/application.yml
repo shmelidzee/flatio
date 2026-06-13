@@ -102,6 +102,12 @@ flatio:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
   scheduler:
     pool-size: ${FLATIO_SCHEDULER_POOL:5}
+  filter:
+    price:
+      sell:
+        low-max: ${SELL_PRICE_LOW_MAX:100000}
+        medium-max: ${SELL_PRICE_MEDIUM_MAX:200000}
+        high-max: ${SELL_PRICE_HIGH_MAX:400000}
   health:
     freshness:
       threshold-minutes: ${FLATIO_HEALTH_FRESHNESS_THRESHOLD_MINUTES:30}

@@ -15,7 +15,7 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
  * {@link org.telegram.telegrambots.longpolling.starter.SpringLongPollingBot} beans.
  */
 @Configuration
-@EnableConfigurationProperties(BotConfig.class)
+@EnableConfigurationProperties({BotConfig.class, SellPriceFilterProperties.class})
 public class BotConfiguration {
 
   /**
