@@ -553,4 +553,88 @@ class SearchFilterWizardTest {
     assertThat(state.getPriceMax()).isNull();
     assertThat(state.getCurrentStep()).isEqualTo(FilterStep.OWNER_ONLY);
   }
+
+  // -------------------------------------------------------------------------
+  // Sale price ranges — deal-type-aware thresholds
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_apply_sale_low_price_range_when_deal_type_is_sell() {
+    // Given
+    wizard.start(1L);
+    wizard.applySelection(1L, FilterStep.DEAL_TYPE, "SELL");
+    wizard.applySelection(1L, FilterStep.PROPERTY_TYPE, "APARTMENT");
+    wizard.applySelection(1L, FilterStep.ROOMS, "ANY");
+
+    // When
+    var state = wizard.applySelection(1L, FilterStep.PRICE, "LOW");
+
+    // Then — sale LOW is до 100 000 BYN, not 1 000 BYN (rent)
+    assertThat(state.getPriceMin()).isNull();
+    assertThat(state.getPriceMax()).isEqualByComparingTo(BigDecimal.valueOf(100_000));
+  }
+
+  @Test
+  void should_apply_sale_medium_price_range_when_deal_type_is_sell() {
+    // Given
+    wizard.start(1L);
+    wizard.applySelection(1L, FilterStep.DEAL_TYPE, "SELL");
+    wizard.applySelection(1L, FilterStep.PROPERTY_TYPE, "ANY");
+    wizard.applySelection(1L, FilterStep.ROOMS, "ANY");
+
+    // When
+    var state = wizard.applySelection(1L, FilterStep.PRICE, "MEDIUM");
+
+    // Then — sale MEDIUM is 100 000–200 000 BYN
+    assertThat(state.getPriceMin()).isEqualByComparingTo(BigDecimal.valueOf(100_000));
+    assertThat(state.getPriceMax()).isEqualByComparingTo(BigDecimal.valueOf(200_000));
+  }
+
+  @Test
+  void should_apply_sale_high_price_range_when_deal_type_is_sell() {
+    // Given
+    wizard.start(1L);
+    wizard.applySelection(1L, FilterStep.DEAL_TYPE, "SELL");
+    wizard.applySelection(1L, FilterStep.PROPERTY_TYPE, "ANY");
+    wizard.applySelection(1L, FilterStep.ROOMS, "ANY");
+
+    // When
+    var state = wizard.applySelection(1L, FilterStep.PRICE, "HIGH");
+
+    // Then — sale HIGH is 200 000–400 000 BYN
+    assertThat(state.getPriceMin()).isEqualByComparingTo(BigDecimal.valueOf(200_000));
+    assertThat(state.getPriceMax()).isEqualByComparingTo(BigDecimal.valueOf(400_000));
+  }
+
+  @Test
+  void should_apply_sale_premium_price_range_when_deal_type_is_sell() {
+    // Given
+    wizard.start(1L);
+    wizard.applySelection(1L, FilterStep.DEAL_TYPE, "SELL");
+    wizard.applySelection(1L, FilterStep.PROPERTY_TYPE, "ANY");
+    wizard.applySelection(1L, FilterStep.ROOMS, "ANY");
+
+    // When
+    var state = wizard.applySelection(1L, FilterStep.PRICE, "PREMIUM");
+
+    // Then — sale PREMIUM is 400 000+ BYN
+    assertThat(state.getPriceMin()).isEqualByComparingTo(BigDecimal.valueOf(400_000));
+    assertThat(state.getPriceMax()).isNull();
+  }
+
+  @Test
+  void should_apply_rent_price_ranges_when_deal_type_is_null() {
+    // Given — no deal type selected (ANY) → falls back to rent thresholds
+    wizard.start(1L);
+    wizard.applySelection(1L, FilterStep.DEAL_TYPE, "ANY");
+    wizard.applySelection(1L, FilterStep.PROPERTY_TYPE, "ANY");
+    wizard.applySelection(1L, FilterStep.ROOMS, "ANY");
+
+    // When
+    var state = wizard.applySelection(1L, FilterStep.PRICE, "MEDIUM");
+
+    // Then — null deal type uses rent ranges (1 000–2 000 BYN)
+    assertThat(state.getPriceMin()).isEqualByComparingTo(BigDecimal.valueOf(1_000));
+    assertThat(state.getPriceMax()).isEqualByComparingTo(BigDecimal.valueOf(2_000));
+  }
 }

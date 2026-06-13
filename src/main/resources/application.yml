@@ -54,6 +54,12 @@ connector:
     region-code: ${ONLINER_REGION_CODE:BY}
     apartments-path: /search/apartments
     page-size: 50
+  onliner-sale:
+    base-url: ${ONLINER_SALE_BASE_URL:https://pk.api.onliner.by}
+    source-id: ${ONLINER_SALE_SOURCE_ID:ONLINER_SALE}
+    region-code: ${ONLINER_SALE_REGION_CODE:BY}
+    apartments-path: /search/apartments
+    page-size: 50
 
 telegram:
   bot:
@@ -79,6 +85,11 @@ flatio:
         cron: ${FLATIO_SYNC_ONLINER_DELTA_CRON:0 */10 * * * *}
       full:
         cron: ${FLATIO_SYNC_ONLINER_FULL_CRON:0 0 2 * * *}
+    onliner-sale:
+      delta:
+        cron: ${FLATIO_SYNC_ONLINER_SALE_DELTA_CRON:0 */15 * * * *}
+      full:
+        cron: ${FLATIO_SYNC_ONLINER_SALE_FULL_CRON:0 0 3 * * *}
   geocoding:
     cron: ${FLATIO_GEOCODING_CRON:0 */30 * * * *}
     batch-size: ${FLATIO_GEOCODING_BATCH_SIZE:50}
@@ -104,6 +115,10 @@ resilience4j:
         limit-for-period: 1
         limit-refresh-period: 1s
         timeout-duration: 5s
+      connector-onliner-sale:
+        limit-for-period: 1
+        limit-refresh-period: 1s
+        timeout-duration: 5s
       nominatim:
         limit-for-period: 1
         limit-refresh-period: 1s
@@ -121,9 +136,28 @@ resilience4j:
           - com.flatio.integration.core.ConnectorTransientException
         ignore-exceptions:
           - io.github.resilience4j.circuitbreaker.CallNotPermittedException
+      connector-onliner-sale:
+        max-attempts: 3
+        wait-duration: 2s
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - org.springframework.web.client.HttpServerErrorException
+          - org.springframework.web.client.ResourceAccessException
+          - com.flatio.integration.core.ConnectorTransientException
+        ignore-exceptions:
+          - io.github.resilience4j.circuitbreaker.CallNotPermittedException
   circuitbreaker:
     instances:
       connector-onliner:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 5
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 100
+        wait-duration-in-open-state: 60s
+        automatic-transition-from-open-to-half-open-enabled: true
+        permitted-number-of-calls-in-half-open-state: 1
+      connector-onliner-sale:
         sliding-window-type: COUNT_BASED
         sliding-window-size: 5
         minimum-number-of-calls: 5

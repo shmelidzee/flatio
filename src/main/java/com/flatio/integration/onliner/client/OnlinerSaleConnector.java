@@ -3,10 +3,10 @@ package com.flatio.integration.onliner.client;
 import com.flatio.integration.core.ConnectorTransientException;
 import com.flatio.integration.core.ListingConnector;
 import com.flatio.integration.core.RawListing;
-import com.flatio.integration.onliner.config.OnlinerProperties;
-import com.flatio.integration.onliner.dto.OnlinerApartment;
+import com.flatio.integration.onliner.config.OnlinerSaleProperties;
 import com.flatio.integration.onliner.dto.OnlinerConvertedPrice;
-import com.flatio.integration.onliner.dto.OnlinerSearchResponse;
+import com.flatio.integration.onliner.dto.OnlinerSaleApartment;
+import com.flatio.integration.onliner.dto.OnlinerSaleSearchResponse;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
 import io.github.resilience4j.retry.annotation.Retry;
@@ -26,50 +26,36 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Connector for fetching apartment listings from the Onliner API.
+ * Connector for fetching apartment sale listings from the Onliner purchase API
+ * ({@code pk.api.onliner.by}).
  *
  * <p>Supports two fetch strategies:
  * <ul>
  *   <li>{@link #fetchDelta(Instant)} — incremental: pages through results sorted by
  *       {@code last_time_up} descending and stops once an entry is older than the given threshold.</li>
- *   <li>{@link #fetchAll()} — full pass: iterates every available page, re-checking
- *       {@code page.last} on each iteration since the total may change mid-run.</li>
+ *   <li>{@link #fetchAll()} — full pass: iterates every available page.</li>
  * </ul>
  *
- * <p>Rate limiting (1 req/s), circuit breaker (opens after 5 failures, stays open 60 s),
+ * <p>All returned listings have {@code dealType = "SELL"}.
+ * Rate limiting (1 req/s), circuit breaker (opens after 5 failures, stays open 60 s),
  * and retry with exponential backoff (3 attempts: 2 s → 4 s → 8 s) are applied via Resilience4j.
- * HTTP 429 is retried after honouring the {@code Retry-After} header (default 5 s).
- * Each listing is parsed in isolation — a broken entry does not abort the full fetch.
  */
 @Service
 @Slf4j
-public class OnlinerConnector implements ListingConnector {
+public class OnlinerSaleConnector implements ListingConnector {
 
   private static final long DEFAULT_RETRY_AFTER_SECONDS = 5L;
   private static final long MAX_RETRY_AFTER_SECONDS = 60L;
-  private static final String DEAL_TYPE_RENT = "RENT";
+  private static final String DEAL_TYPE_SELL = "SELL";
   private static final String PROPERTY_TYPE_APARTMENT = "APARTMENT";
-  private static final String PROPERTY_TYPE_ROOM = "ROOM";
   private static final String IMGPROXY_ONLINER_HOST = "imgproxy.onliner.by";
   private static final int BASE64_BLOCK_SIZE = 4;
 
-  /**
-   * Maps Onliner {@code rent_type} to room count.
-   * {@code "room"} (single room for rent, not a full apartment) is intentionally absent — maps to null.
-   * Unrecognised values also produce null.
-   */
-  private static final Map<String, Integer> RENT_TYPE_TO_ROOMS = Map.of(
-      "1_room", 1,
-      "2_rooms", 2,
-      "3_rooms", 3,
-      "4_rooms", 4
-  );
-
   private final RestClient restClient;
-  private final OnlinerProperties properties;
+  private final OnlinerSaleProperties properties;
 
-  public OnlinerConnector(@Qualifier("onlinerRestClient") RestClient restClient,
-      OnlinerProperties properties) {
+  public OnlinerSaleConnector(@Qualifier("onlinerSaleRestClient") RestClient restClient,
+      OnlinerSaleProperties properties) {
     this.restClient = restClient;
     this.properties = properties;
   }
@@ -85,34 +71,31 @@ public class OnlinerConnector implements ListingConnector {
   }
 
   /**
-   * Fetches listings from the Onliner API.
+   * Fetches sale listings from the Onliner purchase API.
    *
-   * <p>Delegates to {@link #fetchAll()} for backward compatibility with the existing scheduler.
-   * Prefer {@link #fetchDelta(Instant)} for incremental syncs once the dedicated sync jobs
-   * from issue #104 are in place.
+   * <p>Delegates to {@link #fetchAll()} for use by the existing scheduler contract.
+   * Prefer {@link #fetchDelta(Instant)} for incremental syncs.
    *
-   * @return list of raw listings, never null
+   * @return list of raw sale listings, never null
    */
   @Override
-  @RateLimiter(name = "connector-onliner")
-  @CircuitBreaker(name = "connector-onliner")
-  @Retry(name = "connector-onliner", fallbackMethod = "fetchFallback")
+  @RateLimiter(name = "connector-onliner-sale")
+  @CircuitBreaker(name = "connector-onliner-sale")
+  @Retry(name = "connector-onliner-sale", fallbackMethod = "fetchFallback")
   public List<RawListing> fetch() {
     return fetchAllInternal();
   }
 
   /**
-   * Fetches all currently active listings from every available page.
+   * Fetches all currently active sale listings from every available page.
    *
-   * <p>{@code page.last} is re-read on each iteration — the total may change
-   * while pagination is in progress. Rate-limited, circuit-broken, and retried via
-   * Resilience4j; on exhausted retries {@link #fetchAllFallback} returns an empty list.
+   * <p>Rate-limited, circuit-broken, and retried via Resilience4j.
    *
-   * @return complete list of raw listings, never null
+   * @return complete list of raw sale listings, never null
    */
-  @RateLimiter(name = "connector-onliner")
-  @CircuitBreaker(name = "connector-onliner")
-  @Retry(name = "connector-onliner", fallbackMethod = "fetchAllFallback")
+  @RateLimiter(name = "connector-onliner-sale")
+  @CircuitBreaker(name = "connector-onliner-sale")
+  @Retry(name = "connector-onliner-sale", fallbackMethod = "fetchAllFallback")
   public List<RawListing> fetchAll() {
     log.info("Full fetch started: source={}", properties.sourceId());
     List<RawListing> result = fetchAllInternal();
@@ -121,18 +104,17 @@ public class OnlinerConnector implements ListingConnector {
   }
 
   /**
-   * Fetches listings published or updated at or after the given timestamp.
+   * Fetches sale listings published or updated at or after the given timestamp.
    *
    * <p>Pages through results ordered by {@code last_time_up} descending and stops as soon as
-   * an entry's {@code last_time_up} is strictly before {@code since}. {@code page.last} is
-   * re-read on each iteration. Rate-limited, circuit-broken, and retried via Resilience4j.
+   * an entry's {@code last_time_up} is strictly before {@code since}.
    *
    * @param since lower-bound timestamp (exclusive); entries older than this are skipped
-   * @return list of recently updated listings, never null
+   * @return list of recently updated sale listings, never null
    */
-  @RateLimiter(name = "connector-onliner")
-  @CircuitBreaker(name = "connector-onliner")
-  @Retry(name = "connector-onliner", fallbackMethod = "fetchDeltaFallback")
+  @RateLimiter(name = "connector-onliner-sale")
+  @CircuitBreaker(name = "connector-onliner-sale")
+  @Retry(name = "connector-onliner-sale", fallbackMethod = "fetchDeltaFallback")
   public List<RawListing> fetchDelta(Instant since) {
     log.info("Delta fetch started: source={}, since={}", properties.sourceId(), since);
     List<RawListing> result = new ArrayList<>();
@@ -141,14 +123,14 @@ public class OnlinerConnector implements ListingConnector {
     boolean done = false;
     try {
       do {
-        OnlinerSearchResponse response = fetchPage(currentPage);
+        OnlinerSaleSearchResponse response = fetchPage(currentPage);
         if (response == null || response.apartments() == null || response.apartments().isEmpty()) {
           break;
         }
         if (response.page() != null && response.page().last() != null) {
           lastPage = response.page().last();
         }
-        for (OnlinerApartment apt : response.apartments()) {
+        for (OnlinerSaleApartment apt : response.apartments()) {
           if (apt.lastTimeUp() != null && apt.lastTimeUp().toInstant().isBefore(since)) {
             done = true;
             break;
@@ -168,17 +150,17 @@ public class OnlinerConnector implements ListingConnector {
 
   // Package-private: Resilience4j AOP proxy requires fallback methods to be accessible from the same package.
   List<RawListing> fetchFallback(Exception e) {
-    log.error("All retry attempts exhausted for Onliner fetch: source={}", properties.sourceId(), e);
+    log.error("All retry attempts exhausted for Onliner sale fetch: source={}", properties.sourceId(), e);
     return List.of();
   }
 
   List<RawListing> fetchAllFallback(Exception e) {
-    log.error("All retry attempts exhausted for Onliner full fetch: source={}", properties.sourceId(), e);
+    log.error("All retry attempts exhausted for Onliner sale full fetch: source={}", properties.sourceId(), e);
     return List.of();
   }
 
   List<RawListing> fetchDeltaFallback(Instant since, Exception e) {
-    log.error("All retry attempts exhausted for Onliner delta fetch: source={}, since={}", properties.sourceId(), since, e);
+    log.error("All retry attempts exhausted for Onliner sale delta fetch: source={}, since={}", properties.sourceId(), since, e);
     return List.of();
   }
 
@@ -188,7 +170,7 @@ public class OnlinerConnector implements ListingConnector {
     int lastPage = 1;
     try {
       do {
-        OnlinerSearchResponse response = fetchPage(currentPage);
+        OnlinerSaleSearchResponse response = fetchPage(currentPage);
         if (response == null || response.apartments() == null || response.apartments().isEmpty()) {
           break;
         }
@@ -206,7 +188,7 @@ public class OnlinerConnector implements ListingConnector {
     return result;
   }
 
-  private OnlinerSearchResponse fetchPage(int pageNumber) {
+  private OnlinerSaleSearchResponse fetchPage(int pageNumber) {
     return restClient.get()
         .uri(uriBuilder -> uriBuilder
             .path(properties.apartmentsPath())
@@ -214,36 +196,36 @@ public class OnlinerConnector implements ListingConnector {
             .queryParam("limit", properties.pageSize())
             .build())
         .retrieve()
-        .body(OnlinerSearchResponse.class);
+        .body(OnlinerSaleSearchResponse.class);
   }
 
-  private List<RawListing> parseListings(List<OnlinerApartment> apartments) {
+  private List<RawListing> parseListings(List<OnlinerSaleApartment> apartments) {
     List<RawListing> result = new ArrayList<>();
-    for (OnlinerApartment apartment : apartments) {
+    for (OnlinerSaleApartment apartment : apartments) {
       safeAdd(result, apartment);
     }
     return result;
   }
 
-  private void safeAdd(List<RawListing> result, OnlinerApartment apartment) {
+  private void safeAdd(List<RawListing> result, OnlinerSaleApartment apartment) {
     try {
       result.add(toRawListing(apartment));
     } catch (Exception e) {
-      log.warn("Skipping broken Onliner listing: id={}, error={}", apartment.id(), e.getMessage());
+      log.warn("Skipping broken Onliner sale listing: id={}, error={}", apartment.id(), e.getMessage());
     }
   }
 
-  private RawListing toRawListing(OnlinerApartment apartment) {
+  private RawListing toRawListing(OnlinerSaleApartment apartment) {
     if (apartment.price() == null) {
-      throw new IllegalArgumentException("Missing price for apartment id=" + apartment.id());
+      throw new IllegalArgumentException("Missing price for sale apartment id=" + apartment.id());
     }
     Map<String, OnlinerConvertedPrice> converted = apartment.price().converted();
     OnlinerConvertedPrice bynConverted = converted != null ? converted.get("BYN") : null;
     if (bynConverted == null) {
-      throw new IllegalArgumentException("Missing BYN converted price for apartment id=" + apartment.id());
+      throw new IllegalArgumentException("Missing BYN converted price for sale apartment id=" + apartment.id());
     }
     BigDecimal price = new BigDecimal(bynConverted.amount());
-    OnlinerConvertedPrice usdConverted = converted.get("USD");
+    OnlinerConvertedPrice usdConverted = converted != null ? converted.get("USD") : null;
     BigDecimal priceUsd = usdConverted != null ? new BigDecimal(usdConverted.amount()) : null;
     BigDecimal lat = apartment.location() != null ? apartment.location().latitude() : null;
     BigDecimal lon = apartment.location() != null ? apartment.location().longitude() : null;
@@ -251,19 +233,18 @@ public class OnlinerConnector implements ListingConnector {
     String resolvedPhoto = resolvePhotoUrl(apartment.photo());
     List<String> photos = resolvedPhoto != null ? List.of(resolvedPhoto) : List.of();
     Instant publishedAt = apartment.lastTimeUp() != null ? apartment.lastTimeUp().toInstant() : null;
-    Integer rooms = mapRentTypeToRooms(apartment.rentType());
-    Boolean isOwner = apartment.contact() != null ? apartment.contact().owner() : null;
+    Boolean isOwner = apartment.seller() != null ? "owner".equals(apartment.seller().type()) : null;
 
     return new RawListing(
         String.valueOf(apartment.id()),
         buildTitle(address),
         null,
-        DEAL_TYPE_RENT,
-        mapRentTypeToPropertyType(apartment.rentType()),
+        DEAL_TYPE_SELL,
+        PROPERTY_TYPE_APARTMENT,
         price,
         "BYN",
         priceUsd,
-        rooms,
+        apartment.numberOfRooms(),
         null,
         null,
         null,
@@ -279,37 +260,13 @@ public class OnlinerConnector implements ListingConnector {
     );
   }
 
-  private static Integer mapRentTypeToRooms(String rentType) {
-    if (rentType == null) {
-      return null;
-    }
-    return RENT_TYPE_TO_ROOMS.get(rentType);
-  }
-
-  /**
-   * Maps Onliner {@code rent_type} to a property type string.
-   *
-   * <p>{@code "room"} (single room for rent) maps to {@code "ROOM"}.
-   * All apartment rent types ({@code "1_room"}, {@code "2_rooms"}, etc.) map to {@code "APARTMENT"}.
-   *
-   * @param rentType the Onliner rent_type value, may be null
-   * @return {@code "ROOM"} if rent_type is {@code "room"}, {@code "APARTMENT"} otherwise
-   */
-  private static String mapRentTypeToPropertyType(String rentType) {
-    if ("room".equals(rentType)) {
-      return PROPERTY_TYPE_ROOM;
-    }
-    return PROPERTY_TYPE_APARTMENT;
-  }
-
   /**
    * Resolves the original photo URL from an Onliner imgproxy-wrapped URL.
    *
-   * <p>Onliner imgproxy splits the base64-encoded original URL across multiple path segments
-   * of 16 characters each (e.g. {@code /aHR0cHM6Ly9jb250/ZW50Lm9ubGluZXIu/...}).
-   * Transform parameters such as {@code w:600}, {@code h:400}, {@code dpr:2} always contain
-   * a colon and appear before the base64 chunks. All segments after the last colon-containing
-   * segment are joined and decoded as a single base64 string.
+   * <p>Onliner imgproxy splits the base64-encoded original URL across multiple path segments.
+   * Transform parameters (e.g. {@code w:600}, {@code h:400}) always contain a colon;
+   * base64 chunks never do. All segments after the last colon-containing segment are
+   * joined and decoded.
    *
    * @param photoUrl raw photo URL from Onliner API, may be null
    * @return decoded original URL, the input URL unchanged if not an imgproxy URL, or null on failure
@@ -323,31 +280,23 @@ public class OnlinerConnector implements ListingConnector {
     }
     try {
       String[] segments = photoUrl.split("/", -1);
-
-      // Transform params (w:600, h:400, dpr:2) always contain ':'; base64 chunks never do.
-      // Find the last transform param — everything after it forms the base64 payload.
       int lastTransformIdx = -1;
       for (int i = 0; i < segments.length; i++) {
         if (segments[i].contains(":")) {
           lastTransformIdx = i;
         }
       }
-
       if (lastTransformIdx < 0 || lastTransformIdx >= segments.length - 1) {
         log.warn("Unexpected imgproxy URL format, cannot extract base64 segments: url={}", photoUrl);
         return null;
       }
-
       StringBuilder base64Builder = new StringBuilder();
       for (int i = lastTransformIdx + 1; i < segments.length; i++) {
         base64Builder.append(segments[i]);
       }
       String base64 = base64Builder.toString();
-
-      // Add padding if needed — base64 length must be a multiple of BASE64_BLOCK_SIZE
       int padLen = (BASE64_BLOCK_SIZE - base64.length() % BASE64_BLOCK_SIZE) % BASE64_BLOCK_SIZE;
       base64 = base64 + "=".repeat(padLen);
-
       byte[] decoded = Base64.getUrlDecoder().decode(base64);
       return new String(decoded, StandardCharsets.UTF_8);
     } catch (Exception e) {
@@ -360,12 +309,12 @@ public class OnlinerConnector implements ListingConnector {
     if (address != null && !address.isBlank()) {
       return address;
     }
-    return "Квартира на Onliner";
+    return "Квартира на продажу (Onliner)";
   }
 
   private void handleRateLimit(HttpClientErrorException.TooManyRequests e) {
     long retryAfterSeconds = parseRetryAfterSeconds(e.getResponseHeaders());
-    log.warn("Rate limited by Onliner (429): source={}, retryAfterSeconds={}", properties.sourceId(), retryAfterSeconds);
+    log.warn("Rate limited by Onliner sale API (429): source={}, retryAfterSeconds={}", properties.sourceId(), retryAfterSeconds);
     sleepQuietly(retryAfterSeconds * 1000L);
     throw new ConnectorTransientException("Rate limited: source=" + properties.sourceId(), e);
   }

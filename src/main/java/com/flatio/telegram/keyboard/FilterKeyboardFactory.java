@@ -34,7 +34,7 @@ public class FilterKeyboardFactory {
       case DEAL_TYPE -> buildDealTypeKeyboard();
       case PROPERTY_TYPE -> buildPropertyTypeKeyboard();
       case ROOMS -> buildRoomsKeyboard();
-      case PRICE -> buildPriceKeyboard();
+      case PRICE -> buildPriceKeyboard(state.getDealType());
       case OWNER_ONLY -> buildOwnerOnlyKeyboard();
       case CITY -> buildCityKeyboard(List.of());
       case KEYWORD -> buildKeywordKeyboard();
@@ -79,7 +79,9 @@ public class FilterKeyboardFactory {
       case DEAL_TYPE -> "🏠 Выберите тип сделки:";
       case PROPERTY_TYPE -> "🏢 Тип недвижимости:";
       case ROOMS -> "🛏 Количество комнат:";
-      case PRICE -> "💰 Диапазон цены (BYN/мес):";
+      case PRICE -> state.getDealType() == DealType.SELL
+          ? "💰 Диапазон цены (BYN):"
+          : "💰 Диапазон цены (BYN/мес):";
       case OWNER_ONLY -> "👤 Тип продавца:";
       case CITY -> "🏙 Выберите город или введите часть названия для поиска:";
       case KEYWORD -> "🔍 Введите ключевые слова для поиска\nили нажмите «Пропустить»:";
@@ -123,11 +125,20 @@ public class FilterKeyboardFactory {
         .build();
   }
 
-  private InlineKeyboardMarkup buildPriceKeyboard() {
-    var low = btn("до 1 000", P + ":PRICE:LOW");
-    var med = btn("1 000–2 000", P + ":PRICE:MEDIUM");
-    var high = btn("2 000–4 000", P + ":PRICE:HIGH");
-    var premium = btn("4 000+", P + ":PRICE:PREMIUM");
+  private InlineKeyboardMarkup buildPriceKeyboard(DealType dealType) {
+    boolean isSale = dealType == DealType.SELL;
+    var low = isSale
+        ? btn("до 100 000", P + ":PRICE:LOW")
+        : btn("до 1 000", P + ":PRICE:LOW");
+    var med = isSale
+        ? btn("100 000–200 000", P + ":PRICE:MEDIUM")
+        : btn("1 000–2 000", P + ":PRICE:MEDIUM");
+    var high = isSale
+        ? btn("200 000–400 000", P + ":PRICE:HIGH")
+        : btn("2 000–4 000", P + ":PRICE:HIGH");
+    var premium = isSale
+        ? btn("400 000+", P + ":PRICE:PREMIUM")
+        : btn("4 000+", P + ":PRICE:PREMIUM");
     var any = btn("Любая", P + ":PRICE:ANY");
     return InlineKeyboardMarkup.builder()
         .keyboardRow(new InlineKeyboardRow(low, med))
