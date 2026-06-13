@@ -1,0 +1,58 @@
+{
+  "apartments": [
+    {
+      "id": 2001,
+      "url": "https://r.onliner.by/pk/apartments/2001",
+      "number_of_rooms": 2,
+      "photo": "https://content.onliner.by/apartments_photo/2001/original/photo.jpg",
+      "price": {
+        "amount": "73449.63",
+        "currency": "USD",
+        "converted": {
+          "BYN": {"amount": "203573.00", "currency": "BYN"},
+          "USD": {"amount": "73449.63", "currency": "USD"}
+        }
+      },
+      "location": {
+        "address": "Минск, Орловская ул. 11",
+        "user_address": "Минск, Орловская ул. 11",
+        "latitude": 53.9319,
+        "longitude": 27.5629
+      },
+      "seller": {"type": "owner"},
+      "area": {"total": 55.0, "living": 30.0, "kitchen": 9.0},
+      "resale": true,
+      "created_at": "2026-05-22T18:00:38+03:00",
+      "last_time_up": "2026-06-10T14:25:10+03:00",
+      "up_available_in": 9320
+    },
+    {
+      "id": 2002,
+      "url": "https://r.onliner.by/pk/apartments/2002",
+      "number_of_rooms": 3,
+      "photo": null,
+      "price": {
+        "amount": "60000.00",
+        "currency": "USD",
+        "converted": {
+          "BYN": {"amount": "166296.00", "currency": "BYN"},
+          "USD": {"amount": "60000.00", "currency": "USD"}
+        }
+      },
+      "location": {
+        "address": "Минск, ул. Немига, 5",
+        "user_address": "Минск",
+        "latitude": 53.9006,
+        "longitude": 27.5590
+      },
+      "seller": {"type": "agent"},
+      "area": {"total": 85.0, "living": 55.0, "kitchen": 12.0},
+      "resale": false,
+      "created_at": "2026-04-11T20:01:08+03:00",
+      "last_time_up": "2026-06-11T16:41:53+03:00",
+      "up_available_in": 103913
+    }
+  ],
+  "total": 2,
+  "page": {"limit": 50, "items": 2, "current": 1, "last": 1}
+}
