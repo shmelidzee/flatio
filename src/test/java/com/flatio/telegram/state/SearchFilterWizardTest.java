@@ -3,6 +3,7 @@ package com.flatio.telegram.state;
 import com.flatio.domain.city.City;
 import com.flatio.domain.listing.DealType;
 import com.flatio.service.CityService;
+import com.flatio.telegram.config.SellPriceFilterProperties;
 import java.math.BigDecimal;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,6 +20,12 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class SearchFilterWizardTest {
 
+  private static final SellPriceFilterProperties DEFAULT_SELL_PROPS = new SellPriceFilterProperties(
+      BigDecimal.valueOf(100_000),
+      BigDecimal.valueOf(200_000),
+      BigDecimal.valueOf(400_000)
+  );
+
   @Mock
   private CityService cityService;
 
@@ -26,7 +33,7 @@ class SearchFilterWizardTest {
 
   @BeforeEach
   void setUp() {
-    wizard = new SearchFilterWizard(cityService);
+    wizard = new SearchFilterWizard(cityService, DEFAULT_SELL_PROPS);
   }
 
   @Test
@@ -620,6 +627,33 @@ class SearchFilterWizardTest {
     // Then — sale PREMIUM is 400 000+ BYN
     assertThat(state.getPriceMin()).isEqualByComparingTo(BigDecimal.valueOf(400_000));
     assertThat(state.getPriceMax()).isNull();
+  }
+
+  @Test
+  void should_use_configured_sell_thresholds_when_custom_values_provided() {
+    // Given — wizard with non-default sell price config (simulates a different market)
+    var customProps = new SellPriceFilterProperties(
+        BigDecimal.valueOf(50_000),
+        BigDecimal.valueOf(150_000),
+        BigDecimal.valueOf(300_000)
+    );
+    var customWizard = new SearchFilterWizard(cityService, customProps);
+    customWizard.start(2L);
+    customWizard.applySelection(2L, FilterStep.DEAL_TYPE, "SELL");
+    customWizard.applySelection(2L, FilterStep.PROPERTY_TYPE, "ANY");
+    customWizard.applySelection(2L, FilterStep.ROOMS, "ANY");
+
+    // When
+    var stateLow = customWizard.applySelection(2L, FilterStep.PRICE, "LOW");
+    customWizard.start(2L);
+    customWizard.applySelection(2L, FilterStep.DEAL_TYPE, "SELL");
+    customWizard.applySelection(2L, FilterStep.PROPERTY_TYPE, "ANY");
+    customWizard.applySelection(2L, FilterStep.ROOMS, "ANY");
+    var statePremium = customWizard.applySelection(2L, FilterStep.PRICE, "PREMIUM");
+
+    // Then — custom thresholds are respected
+    assertThat(stateLow.getPriceMax()).isEqualByComparingTo(BigDecimal.valueOf(50_000));
+    assertThat(statePremium.getPriceMin()).isEqualByComparingTo(BigDecimal.valueOf(300_000));
   }
 
   @Test

@@ -154,7 +154,14 @@ public class FilterKeyboardFactory {
   }
 
   private static String formatPrice(BigDecimal value) {
-    return String.format("%,d", value.longValue()).replace(",", " ");
+    long v = value.longValue();
+    if (v >= 1_000_000) {
+      return String.format("%d %03d %03d", v / 1_000_000, (v % 1_000_000) / 1_000, v % 1_000);
+    }
+    if (v >= 1_000) {
+      return String.format("%d %03d", v / 1_000, v % 1_000);
+    }
+    return String.valueOf(v);
   }
 
   private InlineKeyboardMarkup buildOwnerOnlyKeyboard() {
