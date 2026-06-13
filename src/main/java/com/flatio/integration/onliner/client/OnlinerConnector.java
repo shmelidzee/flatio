@@ -46,6 +46,7 @@ import java.util.Map;
 public class OnlinerConnector implements ListingConnector {
 
   private static final long DEFAULT_RETRY_AFTER_SECONDS = 5L;
+  private static final long MAX_RETRY_AFTER_SECONDS = 60L;
   private static final String DEAL_TYPE_RENT = "RENT";
   private static final String PROPERTY_TYPE_APARTMENT = "APARTMENT";
   private static final String PROPERTY_TYPE_ROOM = "ROOM";
@@ -165,6 +166,7 @@ public class OnlinerConnector implements ListingConnector {
     return result;
   }
 
+  // Package-private: Resilience4j AOP proxy requires fallback methods to be accessible from the same package.
   List<RawListing> fetchFallback(Exception e) {
     log.error("All retry attempts exhausted for Onliner fetch: source={}", properties.sourceId(), e);
     return List.of();
@@ -368,7 +370,7 @@ public class OnlinerConnector implements ListingConnector {
     throw new ConnectorTransientException("Rate limited: source=" + properties.sourceId(), e);
   }
 
-  private long parseRetryAfterSeconds(HttpHeaders headers) {
+  long parseRetryAfterSeconds(HttpHeaders headers) {
     if (headers == null) {
       return DEFAULT_RETRY_AFTER_SECONDS;
     }
@@ -377,7 +379,7 @@ public class OnlinerConnector implements ListingConnector {
       return DEFAULT_RETRY_AFTER_SECONDS;
     }
     try {
-      return Long.parseLong(retryAfter.trim());
+      return Math.min(Long.parseLong(retryAfter.trim()), MAX_RETRY_AFTER_SECONDS);
     } catch (NumberFormatException e) {
       return DEFAULT_RETRY_AFTER_SECONDS;
     }

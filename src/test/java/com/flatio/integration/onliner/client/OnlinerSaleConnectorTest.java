@@ -416,6 +416,19 @@ class OnlinerSaleConnectorTest {
   }
 
   @Test
+  void should_cap_retry_after_when_server_returns_large_value() {
+    // Given — server returns suspiciously large value to block the scheduler thread
+    var headers = new HttpHeaders();
+    headers.set(HttpHeaders.RETRY_AFTER, "9999");
+
+    // When
+    long result = connector.parseRetryAfterSeconds(headers);
+
+    // Then — capped at 60 seconds
+    assertThat(result).isEqualTo(60L);
+  }
+
+  @Test
   @SuppressWarnings("unchecked")
   void should_return_empty_list_when_non_retryable_4xx_received() {
     // Given
