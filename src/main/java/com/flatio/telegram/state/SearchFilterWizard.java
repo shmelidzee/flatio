@@ -34,12 +34,21 @@ public class SearchFilterWizard {
 
   private static final Set<String> ALLOWED_PROPERTY_TYPES = Set.of("APARTMENT", "HOUSE", "ROOM");
 
-  static final BigDecimal PRICE_LOW_MAX = BigDecimal.valueOf(1_000);
-  static final BigDecimal PRICE_MED_MIN = BigDecimal.valueOf(1_000);
-  static final BigDecimal PRICE_MED_MAX = BigDecimal.valueOf(2_000);
-  static final BigDecimal PRICE_HIGH_MIN = BigDecimal.valueOf(2_000);
-  static final BigDecimal PRICE_HIGH_MAX = BigDecimal.valueOf(4_000);
-  static final BigDecimal PRICE_PREMIUM_MIN = BigDecimal.valueOf(4_000);
+  // Rent price thresholds (BYN/month)
+  static final BigDecimal RENT_PRICE_LOW_MAX = BigDecimal.valueOf(1_000);
+  static final BigDecimal RENT_PRICE_MED_MIN = BigDecimal.valueOf(1_000);
+  static final BigDecimal RENT_PRICE_MED_MAX = BigDecimal.valueOf(2_000);
+  static final BigDecimal RENT_PRICE_HIGH_MIN = BigDecimal.valueOf(2_000);
+  static final BigDecimal RENT_PRICE_HIGH_MAX = BigDecimal.valueOf(4_000);
+  static final BigDecimal RENT_PRICE_PREMIUM_MIN = BigDecimal.valueOf(4_000);
+
+  // Sale price thresholds (BYN total)
+  static final BigDecimal SALE_PRICE_LOW_MAX = BigDecimal.valueOf(100_000);
+  static final BigDecimal SALE_PRICE_MED_MIN = BigDecimal.valueOf(100_000);
+  static final BigDecimal SALE_PRICE_MED_MAX = BigDecimal.valueOf(200_000);
+  static final BigDecimal SALE_PRICE_HIGH_MIN = BigDecimal.valueOf(200_000);
+  static final BigDecimal SALE_PRICE_HIGH_MAX = BigDecimal.valueOf(400_000);
+  static final BigDecimal SALE_PRICE_PREMIUM_MIN = BigDecimal.valueOf(400_000);
 
   private final CityService cityService;
 
@@ -259,11 +268,24 @@ public class SearchFilterWizard {
   }
 
   private void applyPriceRange(SearchFilterState state, String value) {
+    boolean isSale = state.getDealType() == DealType.SELL;
     switch (value) {
-      case "LOW" -> { state.setPriceMin(null); state.setPriceMax(PRICE_LOW_MAX); }
-      case "MEDIUM" -> { state.setPriceMin(PRICE_MED_MIN); state.setPriceMax(PRICE_MED_MAX); }
-      case "HIGH" -> { state.setPriceMin(PRICE_HIGH_MIN); state.setPriceMax(PRICE_HIGH_MAX); }
-      case "PREMIUM" -> { state.setPriceMin(PRICE_PREMIUM_MIN); state.setPriceMax(null); }
+      case "LOW" -> {
+        state.setPriceMin(null);
+        state.setPriceMax(isSale ? SALE_PRICE_LOW_MAX : RENT_PRICE_LOW_MAX);
+      }
+      case "MEDIUM" -> {
+        state.setPriceMin(isSale ? SALE_PRICE_MED_MIN : RENT_PRICE_MED_MIN);
+        state.setPriceMax(isSale ? SALE_PRICE_MED_MAX : RENT_PRICE_MED_MAX);
+      }
+      case "HIGH" -> {
+        state.setPriceMin(isSale ? SALE_PRICE_HIGH_MIN : RENT_PRICE_HIGH_MIN);
+        state.setPriceMax(isSale ? SALE_PRICE_HIGH_MAX : RENT_PRICE_HIGH_MAX);
+      }
+      case "PREMIUM" -> {
+        state.setPriceMin(isSale ? SALE_PRICE_PREMIUM_MIN : RENT_PRICE_PREMIUM_MIN);
+        state.setPriceMax(null);
+      }
       case VALUE_ANY -> { state.setPriceMin(null); state.setPriceMax(null); }
       // Unknown value: price stays null (no filter), step still advances — intentional graceful degradation
       default -> log.warn("Unknown price range value in callback: {}", value);
