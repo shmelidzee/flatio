@@ -1,0 +1,98 @@
+package com.flatio.security;
+
+import com.flatio.repository.CityRepository;
+import com.flatio.repository.ListingRepository;
+import com.flatio.repository.PriceHistoryRepository;
+import com.flatio.repository.SourceRepository;
+import com.flatio.repository.SyncRunRepository;
+import com.flatio.repository.UserAuthProviderRepository;
+import com.flatio.repository.UserRepository;
+import com.flatio.repository.UserSavedSearchRepository;
+import com.flatio.service.ListingIngestionService;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.web.servlet.MockMvc;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+/**
+ * Verifies the access rules in {@link SecurityConfig}, in particular that the Telegram webhook
+ * endpoint ({@code POST /<bot-token>}) is reachable without authentication — Telegram cannot
+ * send a JWT — while everything else not explicitly permitted is still denied (fail-closed).
+ *
+ * <p>This guards against a regression found in production: the webhook path was not covered by
+ * any {@code permitAll()} rule, so {@code anyRequest().denyAll()} rejected every update from
+ * Telegram with HTTP 403, even though the webhook itself was registered successfully.
+ */
+@SpringBootTest(
+    properties = {
+        "spring.autoconfigure.exclude=" +
+            "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration," +
+            "org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration," +
+            "org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration," +
+            "org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration," +
+            "org.telegram.telegrambots.webhook.starter.TelegramBotStarterConfiguration",
+        "telegram.bot.token=test_token:123",
+        "telegram.bot.username=dummy_test_bot",
+        "telegram.bot.webhook-url=https://test.example.com",
+        "JWT_SECRET_KEY=test-secret-key-for-security-config-test-minimum-256-bits-long"
+    }
+)
+@AutoConfigureMockMvc
+class SecurityConfigTest {
+
+  @MockBean
+  ListingIngestionService listingIngestionService;
+
+  @MockBean
+  SourceRepository sourceRepository;
+
+  @MockBean
+  UserRepository userRepository;
+
+  @MockBean
+  UserAuthProviderRepository userAuthProviderRepository;
+
+  @MockBean
+  ListingRepository listingRepository;
+
+  @MockBean
+  PriceHistoryRepository priceHistoryRepository;
+
+  @MockBean
+  UserSavedSearchRepository userSavedSearchRepository;
+
+  @MockBean
+  CityRepository cityRepository;
+
+  @MockBean
+  SyncRunRepository syncRunRepository;
+
+  @Autowired
+  private MockMvc mockMvc;
+
+  @Test
+  void should_not_return_forbidden_when_posting_to_telegram_webhook_path_without_auth() throws Exception {
+    // Given / When — POST to "/<bot-token>" with no Authorization header, mirroring Telegram
+    // Then — must not be rejected by Spring Security (403); any other status is the webhook
+    // starter's own concern, not this test's
+    mockMvc.perform(post("/test_token:123").contentType("application/json").content("{}"))
+        .andExpect(result -> {
+          int status = result.getResponse().getStatus();
+          if (status == 403) {
+            throw new AssertionError("Webhook path was rejected by Spring Security with 403 Forbidden");
+          }
+        });
+  }
+
+  @Test
+  void should_return_forbidden_when_posting_to_an_unmapped_path_without_auth() throws Exception {
+    // Given / When / Then — fail-closed default still applies to everything else
+    mockMvc.perform(post("/some-random-unmapped-path"))
+        .andExpect(status().isForbidden());
+  }
+}

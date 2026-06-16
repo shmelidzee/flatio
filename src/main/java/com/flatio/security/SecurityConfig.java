@@ -1,5 +1,6 @@
 package com.flatio.security;
 
+import com.flatio.telegram.config.BotConfig;
 import java.util.Arrays;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -7,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -30,6 +32,9 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
  *   <li>{@code /api/v1/admin/**} — requires {@code ADMIN} role</li>
  *   <li>{@code /api/v1/**} — requires any authenticated user</li>
  *   <li>Swagger UI, OpenAPI docs, and Actuator health/info — publicly accessible</li>
+ *   <li>{@code POST /<bot-token>} — publicly accessible; this is the Telegram webhook
+ *       endpoint (see {@code TelegramWebhookConfig}). Telegram cannot send a JWT, and the
+ *       token-as-path is itself the access control for this endpoint</li>
  *   <li>Everything else — denied (fail-closed, HTTP 403)</li>
  * </ul>
  *
@@ -47,6 +52,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 public class SecurityConfig {
 
   private final JwtAuthenticationFilter jwtAuthFilter;
+  private final BotConfig botConfig;
 
   @Value("${flatio.cors.allowed-origins:http://localhost:3000}")
   private String corsAllowedOrigins;
@@ -72,6 +78,7 @@ public class SecurityConfig {
                 "/v3/api-docs/**", "/api-docs/**",
                 "/actuator/health/**", "/actuator/info"
             ).permitAll()
+            .requestMatchers(HttpMethod.POST, "/" + botConfig.token()).permitAll()
             .anyRequest().denyAll()
         )
         .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
