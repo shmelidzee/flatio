@@ -172,3 +172,22 @@ resilience4j:
         wait-duration-in-open-state: 60s
         automatic-transition-from-open-to-half-open-enabled: true
         permitted-number-of-calls-in-half-open-state: 1
+
+# The long-polling and webhook Telegram starters both auto-configure a bean named
+# 'telegramBotsApplication' — having both active at once fails startup with
+# BeanDefinitionOverrideException. Exactly one is excluded per profile, matching which
+# transport FlatioLongPollingBot/TelegramWebhookConfig are @Profile-gated for.
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+  autoconfigure:
+    exclude: org.telegram.telegrambots.webhook.starter.TelegramBotStarterConfiguration
+---
+spring:
+  config:
+    activate:
+      on-profile: '!local'
+  autoconfigure:
+    exclude: org.telegram.telegrambots.longpolling.starter.TelegramBotStarterConfiguration
