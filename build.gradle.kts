@@ -55,6 +55,7 @@ dependencies {
   implementation("net.logstash.logback:logstash-logback-encoder:$logstashEncoderVersion")
 
   implementation("org.telegram:telegrambots-springboot-longpolling-starter:$telegramBotsVersion")
+  implementation("org.telegram:telegrambots-springboot-webhook-starter:$telegramBotsVersion")
   implementation("org.telegram:telegrambots-client:$telegramBotsVersion")
 
   implementation("org.mapstruct:mapstruct:$mapstructVersion")

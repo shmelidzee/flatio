@@ -7,9 +7,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *
  * <p>Values are read from environment variables {@code TELEGRAM_BOT_TOKEN} and
  * {@code TELEGRAM_BOT_USERNAME}. Both are required — startup fails if either is missing.
+ *
+ * <p>{@code webhookUrl} ({@code TELEGRAM_WEBHOOK_URL}) is only required outside the
+ * {@code local} profile, where the bot uses webhook delivery instead of long-polling.
+ * It is not validated here because the {@code local} profile never needs it.
  */
 @ConfigurationProperties(prefix = "telegram.bot")
-public record BotConfig(String token, String username) {
+public record BotConfig(String token, String username, String webhookUrl) {
 
   public BotConfig {
     if (token == null || token.isBlank()) {

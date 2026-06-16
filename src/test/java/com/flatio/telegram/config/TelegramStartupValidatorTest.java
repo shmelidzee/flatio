@@ -5,6 +5,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.core.env.Environment;
 import org.telegram.telegrambots.meta.api.methods.updates.GetWebhookInfo;
 import org.telegram.telegrambots.meta.api.objects.WebhookInfo;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
@@ -13,6 +14,7 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
 import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -20,6 +22,9 @@ class TelegramStartupValidatorTest {
 
   @Mock
   private TelegramClient telegramClient;
+
+  @Mock
+  private Environment environment;
 
   @InjectMocks
   private TelegramStartupValidator validator;
@@ -51,17 +56,34 @@ class TelegramStartupValidatorTest {
   }
 
   // -------------------------------------------------------------------------
-  // webhook conflict — should warn but not throw
+  // local profile — active webhook conflicts with long-polling
   // -------------------------------------------------------------------------
 
   @Test
-  void should_not_throw_when_active_webhook_detected() throws TelegramApiException {
-    // Given — webhook is configured (conflicts with long-polling)
+  void should_not_throw_when_active_webhook_detected_in_local_profile() throws TelegramApiException {
+    // Given — webhook is configured while running long-polling locally
     WebhookInfo info = new WebhookInfo();
     info.setUrl("https://example.com/webhook");
     when(telegramClient.execute(any(GetWebhookInfo.class))).thenReturn(info);
+    lenient().when(environment.matchesProfiles("local")).thenReturn(true);
 
     // When / Then — WARN is logged but startup is not blocked
+    assertThatNoException().isThrownBy(() -> validator.validate());
+  }
+
+  // -------------------------------------------------------------------------
+  // non-local profile — active webhook is the expected state
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_not_throw_when_active_webhook_detected_outside_local_profile() throws TelegramApiException {
+    // Given — webhook is configured and the active profile is not local (expected state)
+    WebhookInfo info = new WebhookInfo();
+    info.setUrl("https://api.flatio.by/token");
+    when(telegramClient.execute(any(GetWebhookInfo.class))).thenReturn(info);
+    lenient().when(environment.matchesProfiles("local")).thenReturn(false);
+
+    // When / Then — no conflict warning, startup proceeds
     assertThatNoException().isThrownBy(() -> validator.validate());
   }
 
