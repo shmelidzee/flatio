@@ -90,6 +90,22 @@ class TelegramWebhookConfigTest {
         "https://api.flatio.by/token:1".equals(setWebhook.getUrl())));
   }
 
+  @Test
+  void should_strip_trailing_slash_when_webhook_url_has_one() throws TelegramApiException {
+    // Given — operator misconfigured TELEGRAM_WEBHOOK_URL with a trailing slash
+    var telegramClient = mock(TelegramClient.class);
+    var config = new TelegramWebhookConfig(
+        new BotConfig("token:1", "bot", "https://api.flatio.by/"), telegramClient, mock(FlatioBot.class));
+    var webhookBot = config.flatioWebhookBot();
+
+    // When
+    webhookBot.runSetWebhook();
+
+    // Then — no double slash between the base URL and the bot path
+    verify(telegramClient).execute(argThat((SetWebhook setWebhook) ->
+        "https://api.flatio.by/token:1".equals(setWebhook.getUrl())));
+  }
+
   // -------------------------------------------------------------------------
   // failure handling — neither call should crash the application
   // -------------------------------------------------------------------------

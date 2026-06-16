@@ -60,7 +60,8 @@ public class TelegramWebhookConfig {
       throw new IllegalStateException(
           "Telegram webhook URL is not configured. Set the TELEGRAM_WEBHOOK_URL environment variable.");
     }
-    return webhookUrl;
+    // Strip a trailing slash so a misconfigured TELEGRAM_WEBHOOK_URL never produces a double slash.
+    return webhookUrl.endsWith("/") ? webhookUrl.substring(0, webhookUrl.length() - 1) : webhookUrl;
   }
 
   private void registerWebhook(String webhookUrl, String botPath) {
