@@ -10,9 +10,13 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
  * Registers Telegram bot configuration properties and provides the HTTP client bean
  * used for outbound API calls (sending messages, etc.).
  *
- * <p>Long-polling registration is handled automatically by
- * {@code telegrambots-springboot-longpolling-starter}, which discovers all
- * {@link org.telegram.telegrambots.longpolling.starter.SpringLongPollingBot} beans.
+ * <p>Delivery transport registration is handled automatically by the respective starter:
+ * {@code telegrambots-springboot-longpolling-starter} discovers
+ * {@link org.telegram.telegrambots.longpolling.starter.SpringLongPollingBot} beans
+ * ({@code local} profile, see {@code FlatioLongPollingBot}), while
+ * {@code telegrambots-springboot-webhook-starter} discovers
+ * {@link org.telegram.telegrambots.webhook.starter.SpringTelegramWebhookBot} beans
+ * (every other profile, see {@code TelegramWebhookConfig}).
  */
 @Configuration
 @EnableConfigurationProperties(BotConfig.class)

@@ -3,15 +3,11 @@ package com.flatio.telegram.handler;
 import com.flatio.telegram.callback.FilterCallbackHandler;
 import com.flatio.telegram.command.HelpCommandHandler;
 import com.flatio.telegram.command.StartCommandHandler;
-import com.flatio.telegram.config.BotConfig;
 import com.flatio.telegram.state.SearchFilterWizard;
-import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
-import org.telegram.telegrambots.longpolling.interfaces.LongPollingUpdateConsumer;
-import org.telegram.telegrambots.longpolling.starter.SpringLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.AnswerCallbackQuery;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
@@ -20,12 +16,12 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 
 /**
- * Main Telegram bot bean for Flatio.
+ * Transport-agnostic Telegram update router for Flatio.
  *
- * <p>Implements {@link SpringLongPollingBot} so the
- * {@code telegrambots-springboot-longpolling-starter} auto-configuration discovers and registers
- * it automatically. Implements {@link LongPollingUpdateConsumer} to process incoming updates
- * in the same class.
+ * <p>Holds all Update-processing logic regardless of how updates are delivered. The actual
+ * delivery transport — long-polling or webhook — is registered by a separate bean
+ * ({@code FlatioLongPollingBot} for the {@code local} profile, {@code TelegramWebhookConfig}
+ * otherwise) which forwards every received {@link Update} to {@link #handleUpdateAsync(Update)}.
  *
  * <p>Routing rules:
  * <ul>
@@ -42,14 +38,13 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
 @Component
 @Slf4j
 @RequiredArgsConstructor
-public class FlatioBot implements SpringLongPollingBot, LongPollingUpdateConsumer {
+public class FlatioBot {
 
   private static final String FILTER_CALLBACK_PREFIX = SearchFilterWizard.CALLBACK_PREFIX + ":";
   private static final String FILTER_SEARCH_CALLBACK = SearchFilterWizard.CALLBACK_PREFIX + ":SEARCH";
   private static final String ACTION_HELP = "action:help";
   private static final String ERROR_TEXT = "Произошла ошибка, попробуйте позже";
 
-  private final BotConfig botConfig;
   private final TelegramClient telegramClient;
   private final StartCommandHandler startCommandHandler;
   private final HelpCommandHandler helpCommandHandler;
@@ -58,40 +53,25 @@ public class FlatioBot implements SpringLongPollingBot, LongPollingUpdateConsume
   private final ThreadPoolTaskExecutor telegramUpdateExecutor;
 
   /**
-   * Returns the bot API token used for long-polling authentication.
-   *
-   * @return bot token from {@code TELEGRAM_BOT_TOKEN}, never null
-   */
-  @Override
-  public String getBotToken() {
-    return botConfig.token();
-  }
-
-  /**
-   * Returns this instance as the update consumer; all updates are handled in-place.
-   *
-   * @return this bot instance, never null
-   */
-  @Override
-  public LongPollingUpdateConsumer getUpdatesConsumer() {
-    return this;
-  }
-
-  /**
-   * Dispatches each incoming Telegram update to the executor for concurrent processing.
+   * Dispatches a single Telegram update to the executor for concurrent processing.
    *
    * <p>Each update is handled in its own thread so a slow handler
-   * (e.g. search with multiple SendPhoto calls) does not block other users.
+   * (e.g. search with multiple SendPhoto calls) does not block other updates.
    * Exceptions inside {@link #handleUpdate(Update)} are caught there and do not propagate.
+   * Called by the transport-specific bean (long-polling or webhook) for every update received.
    *
-   * @param updates list of updates received from Telegram, never null
+   * @param update update received from Telegram, never null
    */
-  @Override
-  public void consume(List<Update> updates) {
-    updates.forEach(u -> telegramUpdateExecutor.execute(() -> handleUpdate(u)));
+  public void handleUpdateAsync(Update update) {
+    telegramUpdateExecutor.execute(() -> handleUpdate(update));
   }
 
-  private void handleUpdate(Update update) {
+  /**
+   * Routes a single Telegram update to the matching command, callback, or free-text handler.
+   *
+   * @param update update received from Telegram, never null
+   */
+  public void handleUpdate(Update update) {
     log.debug("Update received: updateId={}", update.getUpdateId());
     try {
       if (update.hasMessage() && update.getMessage().hasLocation()) {

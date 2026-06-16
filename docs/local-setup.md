@@ -84,9 +84,15 @@ DOCKER_USERNAME=<your-dockerhub-username>
 
 TELEGRAM_BOT_TOKEN=<your-bot-token>
 TELEGRAM_BOT_USERNAME=<your-bot-username>
+TELEGRAM_WEBHOOK_URL=https://api.flatio.by
 
 ONLINER_BASE_URL=https://r.onliner.by
 ```
+
+`TELEGRAM_WEBHOOK_URL` is the public HTTPS base URL Telegram delivers updates to (the bot
+token is appended automatically as the path). Required outside the `local` profile — the
+application fails to start without it. Locally (`local` profile) the bot keeps using
+long-polling instead, since no public URL is available.
 
 ### 3. Prepare compose file
 
