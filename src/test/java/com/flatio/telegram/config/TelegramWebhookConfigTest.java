@@ -3,7 +3,6 @@ package com.flatio.telegram.config;
 import com.flatio.telegram.handler.FlatioBot;
 import org.junit.jupiter.api.Test;
 import org.telegram.telegrambots.meta.api.methods.botapimethods.BotApiMethod;
-import org.telegram.telegrambots.meta.api.methods.updates.DeleteWebhook;
 import org.telegram.telegrambots.meta.api.methods.updates.SetWebhook;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
@@ -16,6 +15,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class TelegramWebhookConfigTest {
@@ -125,16 +125,18 @@ class TelegramWebhookConfigTest {
   }
 
   @Test
-  void should_not_throw_when_delete_webhook_call_fails() throws TelegramApiException {
-    // Given
+  void should_not_call_telegram_when_delete_webhook_runs() throws TelegramApiException {
+    // Given — no deleteWebhook callback is wired (see class Javadoc): a rolling deploy's old
+    // instance shutting down must not erase the webhook the new instance just registered
     var telegramClient = mock(TelegramClient.class);
-    when(telegramClient.execute(any(DeleteWebhook.class)))
-        .thenThrow(new TelegramApiException("network error"));
     var config = new TelegramWebhookConfig(
         new BotConfig("token:1", "bot", "https://api.flatio.by"), telegramClient, mock(FlatioBot.class));
     var webhookBot = config.flatioWebhookBot();
 
-    // When / Then
-    assertThatNoException().isThrownBy(webhookBot::runDeleteWebhook);
+    // When
+    webhookBot.runDeleteWebhook();
+
+    // Then — no-op, no API call made, no exception
+    verifyNoInteractions(telegramClient);
   }
 }

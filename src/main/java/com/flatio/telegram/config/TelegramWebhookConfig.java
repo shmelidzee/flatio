@@ -6,7 +6,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
-import org.telegram.telegrambots.meta.api.methods.updates.DeleteWebhook;
 import org.telegram.telegrambots.meta.api.methods.updates.SetWebhook;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
@@ -22,6 +21,14 @@ import org.telegram.telegrambots.webhook.starter.SpringTelegramWebhookBot;
  *
  * <p>The webhook path is the bot token itself — Telegram's own recommended technique for
  * keeping the endpoint unguessable, since the starter does not support a secret-header check.
+ *
+ * <p>No {@code deleteWebhook} callback is wired: {@code TelegramBotsSpringWebhookApplication}
+ * (the starter's own bean) implements {@code AutoCloseable}, so Spring calls it on every
+ * context shutdown — including the old instance during a rolling deploy (Railway, k8s, etc.).
+ * If we deleted the webhook there, the old instance's shutdown could race past the new
+ * instance's startup and erase the webhook the new instance just registered, leaving the bot
+ * unreachable until the next restart. Re-registering on every startup is idempotent and
+ * sufficient; nothing needs to run on shutdown.
  */
 @Configuration
 @Profile("!local")
@@ -50,7 +57,6 @@ public class TelegramWebhookConfig {
           return null;
         })
         .setWebhook(() -> registerWebhook(webhookUrl, botPath))
-        .deleteWebhook(this::deleteWebhook)
         .build();
   }
 
@@ -72,14 +78,6 @@ public class TelegramWebhookConfig {
       log.info("Telegram webhook registered successfully");
     } catch (TelegramApiException e) {
       log.error("Failed to register Telegram webhook", e);
-    }
-  }
-
-  private void deleteWebhook() {
-    try {
-      telegramClient.execute(DeleteWebhook.builder().build());
-    } catch (TelegramApiException e) {
-      log.warn("Failed to delete Telegram webhook", e);
     }
   }
 }
