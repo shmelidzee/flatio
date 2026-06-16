@@ -1,0 +1,124 @@
+package com.flatio.telegram.config;
+
+import com.flatio.telegram.handler.FlatioBot;
+import org.junit.jupiter.api.Test;
+import org.telegram.telegrambots.meta.api.methods.botapimethods.BotApiMethod;
+import org.telegram.telegrambots.meta.api.methods.updates.DeleteWebhook;
+import org.telegram.telegrambots.meta.api.methods.updates.SetWebhook;
+import org.telegram.telegrambots.meta.api.objects.Update;
+import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
+import org.telegram.telegrambots.meta.generics.TelegramClient;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNoException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+class TelegramWebhookConfigTest {
+
+  @Test
+  void should_throw_when_webhook_url_is_blank() {
+    // Given
+    var config = new TelegramWebhookConfig(
+        new BotConfig("token:1", "bot", "  "), mock(TelegramClient.class), mock(FlatioBot.class));
+
+    // When / Then
+    assertThatThrownBy(config::flatioWebhookBot)
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("TELEGRAM_WEBHOOK_URL");
+  }
+
+  @Test
+  void should_throw_when_webhook_url_is_null() {
+    // Given
+    var config = new TelegramWebhookConfig(
+        new BotConfig("token:1", "bot", null), mock(TelegramClient.class), mock(FlatioBot.class));
+
+    // When / Then
+    assertThatThrownBy(config::flatioWebhookBot)
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("TELEGRAM_WEBHOOK_URL");
+  }
+
+  @Test
+  void should_build_bot_with_token_as_bot_path() {
+    // Given
+    var config = new TelegramWebhookConfig(
+        new BotConfig("token:1", "bot", "https://api.flatio.by"), mock(TelegramClient.class), mock(FlatioBot.class));
+
+    // When
+    var webhookBot = config.flatioWebhookBot();
+
+    // Then
+    assertThat(webhookBot.getBotPath()).isEqualTo("token:1");
+  }
+
+  @Test
+  void should_forward_update_to_flatio_bot_when_consuming() {
+    // Given
+    var flatioBot = mock(FlatioBot.class);
+    var config = new TelegramWebhookConfig(
+        new BotConfig("token:1", "bot", "https://api.flatio.by"), mock(TelegramClient.class), flatioBot);
+    var webhookBot = config.flatioWebhookBot();
+    var update = mock(Update.class);
+
+    // When
+    BotApiMethod<?> result = webhookBot.consumeUpdate(update);
+
+    // Then
+    verify(flatioBot).handleUpdateAsync(update);
+    assertThat(result).isNull();
+  }
+
+  @Test
+  void should_call_set_webhook_with_url_and_token_path_when_registering() throws TelegramApiException {
+    // Given
+    var telegramClient = mock(TelegramClient.class);
+    var config = new TelegramWebhookConfig(
+        new BotConfig("token:1", "bot", "https://api.flatio.by"), telegramClient, mock(FlatioBot.class));
+    var webhookBot = config.flatioWebhookBot();
+
+    // When
+    webhookBot.runSetWebhook();
+
+    // Then
+    verify(telegramClient).execute(argThat((SetWebhook setWebhook) ->
+        "https://api.flatio.by/token:1".equals(setWebhook.getUrl())));
+  }
+
+  // -------------------------------------------------------------------------
+  // failure handling — neither call should crash the application
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_not_throw_when_set_webhook_call_fails() throws TelegramApiException {
+    // Given
+    var telegramClient = mock(TelegramClient.class);
+    when(telegramClient.execute(any(SetWebhook.class)))
+        .thenThrow(new TelegramApiException("network error"));
+    var config = new TelegramWebhookConfig(
+        new BotConfig("token:1", "bot", "https://api.flatio.by"), telegramClient, mock(FlatioBot.class));
+    var webhookBot = config.flatioWebhookBot();
+
+    // When / Then — registration failure must not crash startup
+    assertThatNoException().isThrownBy(webhookBot::runSetWebhook);
+  }
+
+  @Test
+  void should_not_throw_when_delete_webhook_call_fails() throws TelegramApiException {
+    // Given
+    var telegramClient = mock(TelegramClient.class);
+    when(telegramClient.execute(any(DeleteWebhook.class)))
+        .thenThrow(new TelegramApiException("network error"));
+    var config = new TelegramWebhookConfig(
+        new BotConfig("token:1", "bot", "https://api.flatio.by"), telegramClient, mock(FlatioBot.class));
+    var webhookBot = config.flatioWebhookBot();
+
+    // When / Then
+    assertThatNoException().isThrownBy(webhookBot::runDeleteWebhook);
+  }
+}

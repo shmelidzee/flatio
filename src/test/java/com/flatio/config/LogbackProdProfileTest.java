@@ -34,9 +34,13 @@ import static org.assertj.core.api.Assertions.assertThat;
             "org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration," +
             "org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration," +
             "org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration," +
-            "org.telegram.telegrambots.longpolling.starter.TelegramBotStarterConfiguration",
+            "org.telegram.telegrambots.longpolling.starter.TelegramBotStarterConfiguration," +
+            "org.telegram.telegrambots.webhook.starter.TelegramBotStarterConfiguration",
         "telegram.bot.token=dummy-test-token",
         "telegram.bot.username=dummy_test_bot",
+        // prod profile activates TelegramWebhookConfig, which requires this to build its bean;
+        // the webhook starter's own auto-configuration is excluded above, so setWebhook is never called
+        "telegram.bot.webhook-url=https://test.example.com",
         "JWT_SECRET_KEY=test-secret-key-for-logback-test-minimum-256-bits-long"
     }
 )
