@@ -12,15 +12,21 @@ import com.flatio.repository.UserAuthProviderRepository;
 import com.flatio.repository.UserRepository;
 import com.flatio.repository.UserSavedSearchRepository;
 import com.flatio.service.ListingIngestionService;
+import com.flatio.telegram.handler.FlatioLongPollingBot;
 import net.logstash.logback.encoder.LogstashEncoder;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.NoSuchBeanDefinitionException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.ApplicationContext;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
+import org.telegram.telegrambots.webhook.starter.SpringTelegramWebhookBot;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Verifies that logback-spring.xml correctly configures LogstashEncoder
@@ -77,6 +83,9 @@ class LogbackProdProfileTest {
   @MockBean
   SyncRunRepository syncRunRepository;
 
+  @Autowired
+  private ApplicationContext applicationContext;
+
   @Test
   void should_configure_logstash_encoder_on_root_logger_when_prod_profile_active() {
     // Given
@@ -92,5 +101,15 @@ class LogbackProdProfileTest {
 
     var consoleAppender = (ConsoleAppender<?>) jsonAppender;
     assertThat(consoleAppender.getEncoder()).isInstanceOf(LogstashEncoder.class);
+  }
+
+  @Test
+  void should_register_only_webhook_bot_when_prod_profile_active() {
+    // Given / When — context loaded with the prod profile (see class annotations)
+
+    // Then — webhook bot is present, no long-polling bot bean was created
+    assertThat(applicationContext.getBean(SpringTelegramWebhookBot.class)).isNotNull();
+    assertThatThrownBy(() -> applicationContext.getBean(FlatioLongPollingBot.class))
+        .isInstanceOf(NoSuchBeanDefinitionException.class);
   }
 }
