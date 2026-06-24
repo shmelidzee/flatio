@@ -9,6 +9,8 @@ import java.math.BigDecimal;
  * Used as the transfer type between the Telegram layer and {@code UserSavedSearchService}.
  *
  * @param regionCode   region code (e.g. "BY-MIN"), or null for any region
+ * @param dealType     deal type name (e.g. "RENT", "SALE"), or null for any
+ * @param cityId       city identifier from the cities reference table, or null for any city
  * @param priceMin     minimum price inclusive, or null
  * @param priceMax     maximum price inclusive, or null
  * @param roomsMin     minimum room count inclusive, or null
@@ -19,6 +21,8 @@ import java.math.BigDecimal;
  */
 public record SearchFilter(
     String regionCode,
+    String dealType,
+    Long cityId,
     BigDecimal priceMin,
     BigDecimal priceMax,
     Integer roomsMin,

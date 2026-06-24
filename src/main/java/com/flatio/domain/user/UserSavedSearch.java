@@ -37,6 +37,12 @@ public class UserSavedSearch {
   @Column(name = "region_code", length = 20)
   private String regionCode;
 
+  @Column(name = "deal_type", length = 30)
+  private String dealType;
+
+  @Column(name = "city_id")
+  private Long cityId;
+
   @Column(name = "price_min", precision = 15, scale = 2)
   private BigDecimal priceMin;
 

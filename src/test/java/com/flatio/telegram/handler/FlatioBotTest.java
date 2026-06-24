@@ -2,6 +2,7 @@ package com.flatio.telegram.handler;
 
 import com.flatio.telegram.callback.FilterCallbackHandler;
 import com.flatio.telegram.command.HelpCommandHandler;
+import com.flatio.telegram.command.SearchCommandHandler;
 import com.flatio.telegram.command.StartCommandHandler;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -116,6 +117,7 @@ class FlatioBotTest {
         telegramClient,
         mock(StartCommandHandler.class),
         mock(HelpCommandHandler.class),
+        mock(SearchCommandHandler.class),
         mock(FilterCallbackHandler.class),
         searchResultSender,
         executor

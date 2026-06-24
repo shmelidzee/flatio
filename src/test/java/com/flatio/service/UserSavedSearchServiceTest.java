@@ -132,7 +132,7 @@ class UserSavedSearchServiceTest {
   private static SearchFilter buildFilter(
       String regionCode, BigDecimal priceMin, BigDecimal priceMax,
       Integer roomsMin, Integer roomsMax, String propertyType, Boolean isOwner, String keyword) {
-    return new SearchFilter(regionCode, priceMin, priceMax, roomsMin, roomsMax,
+    return new SearchFilter(regionCode, null, null, priceMin, priceMax, roomsMin, roomsMax,
         propertyType, isOwner, keyword);
   }
 

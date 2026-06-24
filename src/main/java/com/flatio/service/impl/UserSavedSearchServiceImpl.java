@@ -39,6 +39,8 @@ public class UserSavedSearchServiceImpl implements UserSavedSearchService {
 
   private void applyFilter(UserSavedSearch entity, SearchFilter filter) {
     entity.setRegionCode(filter.regionCode());
+    entity.setDealType(filter.dealType());
+    entity.setCityId(filter.cityId());
     entity.setPriceMin(filter.priceMin());
     entity.setPriceMax(filter.priceMax());
     entity.setRoomsMin(filter.roomsMin());
@@ -51,6 +53,8 @@ public class UserSavedSearchServiceImpl implements UserSavedSearchService {
   private SearchFilter toFilter(UserSavedSearch entity) {
     return new SearchFilter(
         entity.getRegionCode(),
+        entity.getDealType(),
+        entity.getCityId(),
         entity.getPriceMin(),
         entity.getPriceMax(),
         entity.getRoomsMin(),
