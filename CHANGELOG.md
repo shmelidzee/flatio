@@ -8,6 +8,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Security
+- **PR #209 — Двойная защита Telegram webhook от утечки токена (issue #205)**
+  - `docker/nginx/nginx.conf` — `location ~* "^/[0-9]+:[A-Za-z0-9_-]+$"` с `access_log off`:
+    токен бота больше не появляется в access-логах nginx на каждое входящее обновление от Telegram
+  - `BotConfig` — добавлено поле `webhookSecretToken` (`TELEGRAM_WEBHOOK_SECRET_TOKEN` env var, опциональный)
+  - `TelegramWebhookConfig.registerWebhook()` — передаёт `secretToken` в `SetWebhook.secretToken()`, если настроен
+  - `TelegramWebhookSecretFilter` (новый) — `OncePerRequestFilter`; проверяет заголовок
+    `X-Telegram-Bot-Api-Secret-Token` с timing-safe сравнением (`MessageDigest.isEqual`);
+    отклоняет запрос с HTTP 403 при несовпадении или отсутствии заголовка
+  - `TelegramWebhookSecurityConfig` (новый) — `SecurityFilterChain` с `@Order(1)` и `AntPathRequestMatcher`
+    для пути вебхука; активен только вне профиля `local`
+  - Фильтр opt-in: без `TELEGRAM_WEBHOOK_SECRET_TOKEN` работает в no-op режиме (backward-compatible)
+  - `docs/architecture.md` — задокументирован двухслойный подход к безопасности вебхука
+
+### Added
+- **PR #210 — Автосохранение фильтра поиска после завершения мастера (issue #157)**
+  - `SearchResultSender.handle()` — после успешного поиска (при наличии результатов) фильтр автоматически
+    сохраняется в `user_saved_searches` через `UserSavedSearchService.save(telegramId, filter)`
+  - Graceful degradation: ошибка сохранения перехватывается, логируется с `log.error`, пользователь
+    получает результаты поиска независимо от успеха сохранения
+  - Фильтр не сохраняется при нулевых результатах поиска (нет смысла сохранять фильтр без совпадений)
+  - Маппинг `SearchFilterState → SearchFilter`: `rooms → roomsMin`, `ownerOnly → isOwner`,
+    `query → keyword`; `regionCode = null` (state хранит `cityId`, не код региона)
+
+### Security
 - **PR #202 — Ужесточение SSL nginx + ограничение размера тела запроса (issues #200, #201)**
   - `docker/nginx/nginx.conf` — заменён cipher suite на Mozilla Intermediate profile:
     `ECDHE-ECDSA-AES128-GCM-SHA256`, `ECDHE-RSA-AES128-GCM-SHA256`, `ECDHE-ECDSA-AES256-GCM-SHA384`,
