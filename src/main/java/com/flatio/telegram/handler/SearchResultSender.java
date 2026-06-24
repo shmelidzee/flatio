@@ -2,6 +2,8 @@ package com.flatio.telegram.handler;
 
 import com.flatio.domain.listing.ListingStatus;
 import com.flatio.service.ListingService;
+import com.flatio.service.UserSavedSearchService;
+import com.flatio.service.domain.SearchFilter;
 import com.flatio.telegram.callback.FilterCallbackHandler;
 import com.flatio.telegram.formatter.ListingFormatter;
 import com.flatio.telegram.state.SearchFilterState;
@@ -75,6 +77,7 @@ public class SearchResultSender {
   private final ListingService listingService;
   private final ListingFormatter listingFormatter;
   private final TelegramClient telegramClient;
+  private final UserSavedSearchService userSavedSearchService;
 
   private final Map<Long, SearchSession> sessions = new ConcurrentHashMap<>();
 
@@ -112,6 +115,7 @@ public class SearchResultSender {
       return;
     }
 
+    autoSaveFilter(telegramId, stateOpt.get());
     sessions.put(telegramId, new SearchSession(criteria, 0, page.getTotalPages()));
     log.debug("Sending {} result cards: telegramId={}, totalPages={}", page.getNumberOfElements(), telegramId, page.getTotalPages());
     page.getContent().forEach(listing -> sendCard(chatId, listing));
@@ -269,6 +273,24 @@ public class SearchResultSender {
       return null;
     }
     return session;
+  }
+
+  private void autoSaveFilter(Long telegramId, SearchFilterState state) {
+    try {
+      var filter = new SearchFilter(
+          null,
+          state.getPriceMin(),
+          state.getPriceMax(),
+          state.getRooms(),
+          null,
+          state.getPropertyType(),
+          state.getOwnerOnly(),
+          state.getQuery()
+      );
+      userSavedSearchService.save(telegramId, filter);
+    } catch (Exception e) {
+      log.error("Failed to auto-save search filter: telegramId={}", telegramId, e);
+    }
   }
 
   private ListingSearchCriteria buildCriteria(SearchFilterState state) {
