@@ -1,6 +1,8 @@
 package com.flatio.telegram.handler;
 
 import com.flatio.service.ListingService;
+import com.flatio.service.UserSavedSearchService;
+import com.flatio.service.domain.SearchFilter;
 import com.flatio.telegram.formatter.ListingFormatter;
 import com.flatio.telegram.state.SearchFilterState;
 import com.flatio.telegram.state.SearchFilterWizard;
@@ -30,7 +32,9 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
 
 import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -52,6 +56,9 @@ class SearchResultSenderTest {
 
   @Mock
   private TelegramClient telegramClient;
+
+  @Mock
+  private UserSavedSearchService userSavedSearchService;
 
   @InjectMocks
   private SearchResultSender searchResultSender;
@@ -260,6 +267,68 @@ class SearchResultSenderTest {
     searchResultSender.handle(buildCallback(1L, 100L, 10));
 
     // Then — photo card sent with placeholder, no text card fallback
+    verify(telegramClient).execute(any(SendPhoto.class));
+    verify(telegramClient).execute(any(SendMessage.class));
+  }
+
+  // -------------------------------------------------------------------------
+  // auto-save filter
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_save_filter_when_search_returns_results() throws TelegramApiException {
+    // Given
+    var state = new SearchFilterState();
+    state.setPropertyType("APARTMENT");
+    state.setRooms(2);
+    state.setPriceMin(BigDecimal.valueOf(500));
+    state.setPriceMax(BigDecimal.valueOf(1_500));
+    state.setOwnerOnly(true);
+    state.setQuery("тихий район");
+
+    var listing = buildListing(20L, null, "https://realt.by/20");
+    when(wizard.getState(1L)).thenReturn(Optional.of(state));
+    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingFormatter.buildCaption(listing)).thenReturn("caption");
+    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+
+    // When
+    searchResultSender.handle(buildCallback(1L, 100L, 10));
+
+    // Then — filter saved with values from wizard state
+    verify(userSavedSearchService).save(1L, new SearchFilter(
+        null, BigDecimal.valueOf(500), BigDecimal.valueOf(1_500),
+        2, null, "APARTMENT", true, "тихий район"
+    ));
+  }
+
+  @Test
+  void should_not_save_filter_when_search_returns_empty() throws TelegramApiException {
+    // Given
+    when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
+    when(listingService.search(any(), any())).thenReturn(Page.empty());
+
+    // When
+    searchResultSender.handle(buildCallback(1L, 100L, 10));
+
+    // Then — no save attempt on empty results
+    verify(userSavedSearchService, never()).save(anyLong(), any());
+  }
+
+  @Test
+  void should_not_interrupt_results_when_save_fails() throws TelegramApiException {
+    // Given
+    var listing = buildListing(21L, null, "https://realt.by/21");
+    when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
+    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingFormatter.buildCaption(listing)).thenReturn("caption");
+    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    doThrow(new RuntimeException("DB error")).when(userSavedSearchService).save(anyLong(), any());
+
+    // When / Then — no exception propagated, results are still delivered
+    assertThatNoException().isThrownBy(
+        () -> searchResultSender.handle(buildCallback(1L, 100L, 10))
+    );
     verify(telegramClient).execute(any(SendPhoto.class));
     verify(telegramClient).execute(any(SendMessage.class));
   }
