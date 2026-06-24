@@ -40,6 +40,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -272,6 +273,56 @@ class SearchResultSenderTest {
   }
 
   // -------------------------------------------------------------------------
+  // handleLastSearch
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_send_results_when_last_search_has_saved_filter() throws TelegramApiException {
+    // Given
+    var savedFilter = new SearchFilter(null, null, null, 2, null, "APARTMENT", null, null);
+    when(userSavedSearchService.getByTelegramUserId(1L)).thenReturn(Optional.of(savedFilter));
+    var listing = buildListing(30L, null, "https://realt.by/30");
+    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingFormatter.buildCaption(listing)).thenReturn("caption");
+    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+
+    // When
+    searchResultSender.handleLastSearch(buildCallback(1L, 100L, 10));
+
+    // Then — SendPhoto for card + SendMessage for navigation
+    verify(telegramClient).execute(any(SendPhoto.class));
+    verify(telegramClient).execute(any(SendMessage.class));
+  }
+
+  @Test
+  void should_send_no_saved_filter_message_when_last_search_has_no_filter() throws TelegramApiException {
+    // Given
+    when(userSavedSearchService.getByTelegramUserId(1L)).thenReturn(Optional.empty());
+
+    // When
+    searchResultSender.handleLastSearch(buildCallback(1L, 100L, 10));
+
+    // Then — only one SendMessage with "not found" text; no listing service called
+    verify(telegramClient).execute(any(SendMessage.class));
+    verifyNoInteractions(listingService);
+  }
+
+  @Test
+  void should_send_no_results_message_when_last_search_returns_empty() throws TelegramApiException {
+    // Given
+    var savedFilter = new SearchFilter(null, null, null, null, null, null, null, null);
+    when(userSavedSearchService.getByTelegramUserId(1L)).thenReturn(Optional.of(savedFilter));
+    when(listingService.search(any(), any())).thenReturn(Page.empty());
+
+    // When
+    searchResultSender.handleLastSearch(buildCallback(1L, 100L, 10));
+
+    // Then — only one SendMessage with "no results" text
+    verify(telegramClient).execute(any(SendMessage.class));
+    verify(listingFormatter, never()).buildCaption(any());
+  }
+
+  // -------------------------------------------------------------------------
   // auto-save filter
   // -------------------------------------------------------------------------
 
@@ -368,7 +419,7 @@ class SearchResultSenderTest {
 
     var message = mock(Message.class);
     when(message.getChatId()).thenReturn(chatId);
-    when(message.getMessageId()).thenReturn(messageId);
+    lenient().when(message.getMessageId()).thenReturn(messageId);
 
     var callback = mock(CallbackQuery.class);
     when(callback.getFrom()).thenReturn(user);

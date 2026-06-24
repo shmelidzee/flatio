@@ -4,6 +4,7 @@ import com.flatio.domain.listing.ListingStatus;
 import com.flatio.service.ListingService;
 import com.flatio.service.UserSavedSearchService;
 import com.flatio.service.domain.SearchFilter;
+import com.flatio.telegram.command.SearchCommandHandler;
 import com.flatio.telegram.callback.FilterCallbackHandler;
 import com.flatio.telegram.formatter.ListingFormatter;
 import com.flatio.telegram.state.SearchFilterState;
@@ -69,6 +70,8 @@ public class SearchResultSender {
       "Пожалуйста, сначала настройте фильтры поиска.";
   private static final String SESSION_EXPIRED_TEXT =
       "Поиск устарел. Начните новый поиск.";
+  private static final String NO_SAVED_FILTER_TEXT =
+      "Сохранённый поиск не найден. Начните новый поиск.";
 
   @Value("${telegram.bot.no-photo-url:https://placehold.co/800x600/e2e8f0/94a3b8.png}")
   private String noPhotoUrl;
@@ -275,6 +278,44 @@ public class SearchResultSender {
     return session;
   }
 
+  /**
+   * Executes the search immediately using the user's last saved filter.
+   *
+   * <p>Triggered by the {@code action:use-last-search} callback. Skips the filter wizard and
+   * runs the search directly with the filter stored in {@code user_saved_searches}.
+   * If no saved filter is found for the user, a prompt to start a new search is sent instead.
+   *
+   * @param callbackQuery the incoming callback query, never null
+   */
+  public void handleLastSearch(CallbackQuery callbackQuery) {
+    Long telegramId = callbackQuery.getFrom().getId();
+    String chatId = String.valueOf(callbackQuery.getMessage().getChatId());
+
+    var filterOpt = userSavedSearchService.getByTelegramUserId(telegramId);
+    if (filterOpt.isEmpty()) {
+      log.debug("No saved filter for last-search: telegramId={}", telegramId);
+      sendText(chatId, NO_SAVED_FILTER_TEXT);
+      return;
+    }
+
+    var criteria = buildCriteriaFromFilter(filterOpt.get());
+    var pageable = PageRequest.of(0, PAGE_SIZE,
+        Sort.by(Sort.Order.desc("publishedAt").with(Sort.NullHandling.NULLS_LAST)));
+    var page = listingService.search(criteria, pageable);
+
+    if (page.isEmpty()) {
+      log.debug("No results for last-search: telegramId={}", telegramId);
+      sendText(chatId, NO_RESULTS_TEXT);
+      return;
+    }
+
+    sessions.put(telegramId, new SearchSession(criteria, 0, page.getTotalPages()));
+    log.debug("Sending {} last-search cards: telegramId={}, totalPages={}",
+        page.getNumberOfElements(), telegramId, page.getTotalPages());
+    page.getContent().forEach(listing -> sendCard(chatId, listing));
+    sendNavigationMessage(chatId, 0, page.getTotalPages());
+  }
+
   private void autoSaveFilter(Long telegramId, SearchFilterState state) {
     try {
       var filter = new SearchFilter(
@@ -306,6 +347,22 @@ public class SearchResultSender {
         ListingStatus.ACTIVE,
         state.getQuery(),
         state.getOwnerOnly()
+    );
+  }
+
+  private ListingSearchCriteria buildCriteriaFromFilter(SearchFilter filter) {
+    return new ListingSearchCriteria(
+        null,
+        filter.propertyType(),
+        null,
+        null,
+        null,
+        filter.priceMin(),
+        filter.priceMax(),
+        filter.roomsMin(),
+        ListingStatus.ACTIVE,
+        filter.keyword(),
+        filter.isOwner()
     );
   }
 }

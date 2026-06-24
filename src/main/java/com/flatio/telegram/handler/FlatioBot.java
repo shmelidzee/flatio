@@ -2,6 +2,7 @@ package com.flatio.telegram.handler;
 
 import com.flatio.telegram.callback.FilterCallbackHandler;
 import com.flatio.telegram.command.HelpCommandHandler;
+import com.flatio.telegram.command.SearchCommandHandler;
 import com.flatio.telegram.command.StartCommandHandler;
 import com.flatio.telegram.state.SearchFilterWizard;
 import lombok.RequiredArgsConstructor;
@@ -26,10 +27,11 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
  * <p>Routing rules:
  * <ul>
  *   <li>{@code /start} — {@link StartCommandHandler}</li>
- *   <li>{@code /search} — starts the filter wizard via {@link FilterCallbackHandler}</li>
+ *   <li>{@code /search} — {@link SearchCommandHandler}: shows last-search choice if filter exists, otherwise starts wizard</li>
  *   <li>{@code /help} — {@link HelpCommandHandler}</li>
  *   <li>Free text while wizard is at KEYWORD step — forwarded to {@link FilterCallbackHandler}</li>
  *   <li>{@code action:search}, {@code FILTER:*} callbacks — {@link FilterCallbackHandler}</li>
+ *   <li>{@code action:use-last-search} callback — {@link SearchResultSender#handleLastSearch}</li>
  *   <li>{@code action:help} callback — {@link HelpCommandHandler}</li>
  *   <li>{@code FILTER:SEARCH} callback — {@link SearchResultSender}</li>
  *   <li>{@code PAGE:*} callbacks — {@link SearchResultSender}</li>
@@ -48,6 +50,7 @@ public class FlatioBot {
   private final TelegramClient telegramClient;
   private final StartCommandHandler startCommandHandler;
   private final HelpCommandHandler helpCommandHandler;
+  private final SearchCommandHandler searchCommandHandler;
   private final FilterCallbackHandler filterCallbackHandler;
   private final SearchResultSender searchResultSender;
   private final ThreadPoolTaskExecutor telegramUpdateExecutor;
@@ -126,7 +129,7 @@ public class FlatioBot {
       }
     } else if (text.startsWith("/search")) {
       try {
-        telegramClient.execute(filterCallbackHandler.startWizardMessage(userId, chatId));
+        telegramClient.execute(searchCommandHandler.handle(userId, chatId));
       } catch (TelegramApiException e) {
         log.error("Failed to send search wizard: chatId={}", chatId, e);
       }
@@ -182,6 +185,8 @@ public class FlatioBot {
 
     if (FILTER_SEARCH_CALLBACK.equals(data)) {
       searchResultSender.handle(callbackQuery);
+    } else if (SearchCommandHandler.ACTION_USE_LAST_SEARCH.equals(data)) {
+      searchResultSender.handleLastSearch(callbackQuery);
     } else if (data.startsWith(SearchResultSender.PAGE_CALLBACK_PREFIX)) {
       searchResultSender.handlePageCallback(callbackQuery);
     } else if (ACTION_HELP.equals(data)) {
