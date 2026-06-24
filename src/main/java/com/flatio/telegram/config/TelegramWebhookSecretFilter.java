@@ -5,6 +5,8 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -35,6 +37,10 @@ public class TelegramWebhookSecretFilter extends OncePerRequestFilter {
    * Checks the {@code X-Telegram-Bot-Api-Secret-Token} header and either passes the request
    * through or responds with HTTP 403.
    *
+   * <p>Comparison is performed with {@link MessageDigest#isEqual} to prevent timing side-channel
+   * attacks: unlike {@link String#equals}, {@code isEqual} always compares all bytes regardless
+   * of where the first mismatch occurs.
+   *
    * @param request  the incoming HTTP request
    * @param response the HTTP response
    * @param chain    the remaining filter chain
@@ -51,11 +57,20 @@ public class TelegramWebhookSecretFilter extends OncePerRequestFilter {
       return;
     }
     String received = request.getHeader(SECRET_TOKEN_HEADER);
-    if (!configured.equals(received)) {
+    if (!timingSafeEquals(configured, received)) {
       log.warn("Webhook request rejected: invalid or missing {}", SECRET_TOKEN_HEADER);
       response.setStatus(HttpServletResponse.SC_FORBIDDEN);
       return;
     }
     chain.doFilter(request, response);
+  }
+
+  private boolean timingSafeEquals(String expected, String actual) {
+    if (actual == null) {
+      return false;
+    }
+    return MessageDigest.isEqual(
+        expected.getBytes(StandardCharsets.UTF_8),
+        actual.getBytes(StandardCharsets.UTF_8));
   }
 }

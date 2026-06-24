@@ -98,4 +98,21 @@ class TelegramWebhookSecretFilterTest {
     // Then — blank token treated as unconfigured
     verify(chain).doFilter(request, response);
   }
+
+  @Test
+  void should_reject_request_when_token_shares_prefix_with_configured_secret() throws Exception {
+    // Given — "correct" is a prefix of "correct-secret": timing-safe comparison must still reject
+    var filter = filterWithSecret("correct-secret");
+    var request = new MockHttpServletRequest();
+    request.addHeader(SECRET_HEADER, "correct");
+    var response = new MockHttpServletResponse();
+    var chain = mock(FilterChain.class);
+
+    // When
+    filter.doFilter(request, response, chain);
+
+    // Then — prefix match must be rejected, not accepted
+    assertThat(response.getStatus()).isEqualTo(HttpServletResponse.SC_FORBIDDEN);
+    verifyNoInteractions(chain);
+  }
 }
