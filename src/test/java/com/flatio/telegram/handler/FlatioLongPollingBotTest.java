@@ -14,7 +14,7 @@ class FlatioLongPollingBotTest {
   @Test
   void should_return_token_from_config() {
     // Given
-    var bot = new FlatioLongPollingBot(new BotConfig("test_token:123", "test_bot", null), mock(FlatioBot.class));
+    var bot = new FlatioLongPollingBot(new BotConfig("test_token:123", "test_bot", null, null), mock(FlatioBot.class));
 
     // When
     var result = bot.getBotToken();
@@ -26,7 +26,7 @@ class FlatioLongPollingBotTest {
   @Test
   void should_return_self_as_updates_consumer() {
     // Given
-    var bot = new FlatioLongPollingBot(new BotConfig("t:1", "bot", null), mock(FlatioBot.class));
+    var bot = new FlatioLongPollingBot(new BotConfig("t:1", "bot", null, null), mock(FlatioBot.class));
 
     // When
     var consumer = bot.getUpdatesConsumer();
@@ -39,7 +39,7 @@ class FlatioLongPollingBotTest {
   void should_forward_every_update_to_flatio_bot() {
     // Given
     var flatioBot = mock(FlatioBot.class);
-    var bot = new FlatioLongPollingBot(new BotConfig("t:1", "bot", null), flatioBot);
+    var bot = new FlatioLongPollingBot(new BotConfig("t:1", "bot", null, null), flatioBot);
     var update1 = mock(Update.class);
     var update2 = mock(Update.class);
 

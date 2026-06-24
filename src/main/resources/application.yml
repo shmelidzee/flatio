@@ -66,6 +66,7 @@ telegram:
     token: ${TELEGRAM_BOT_TOKEN}
     username: ${TELEGRAM_BOT_USERNAME}
     webhook-url: ${TELEGRAM_WEBHOOK_URL:}
+    webhook-secret-token: ${TELEGRAM_WEBHOOK_SECRET_TOKEN:}
     no-photo-url: ${TELEGRAM_NO_PHOTO_URL:https://placehold.co/800x600/e2e8f0/94a3b8.png}
     executor:
       core-pool-size: ${TELEGRAM_EXECUTOR_CORE_POOL_SIZE:10}

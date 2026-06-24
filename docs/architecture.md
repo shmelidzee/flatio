@@ -293,9 +293,36 @@ JWT-based stateless authentication via Spring Security. Sessions are disabled.
 | `/api/v1/admin/**` | `ADMIN` role required |
 | `/api/v1/**` | Any authenticated user |
 | `/swagger-ui/**`, `/v3/api-docs/**`, `/actuator/health/**`, `/actuator/info` | Public |
+| `POST /<bot-token>` | Public — Telegram webhook (see below) |
 | Everything else | Denied — HTTP 403 (fail-closed) |
 
 `anyRequest().denyAll()` ensures no route is accidentally left open.
+
+### Telegram webhook security (two layers)
+
+The webhook path is `/<bot-token>` — Telegram's own recommended technique
+(token-as-path makes the endpoint unguessable). Two additional layers protect it:
+
+**Layer 1 — nginx access log suppression.**
+`docker/nginx/nginx.conf` matches the webhook path with `~* "^/[0-9]+:[A-Za-z0-9_-]+$"` and sets
+`access_log off` for that location. This prevents the bot token from appearing in plain text in
+every access log line on each incoming Telegram update.
+
+**Layer 2 — `X-Telegram-Bot-Api-Secret-Token` header check.**
+When `TELEGRAM_WEBHOOK_SECRET_TOKEN` is set, `TelegramWebhookConfig` passes it to Telegram's
+`setWebhook` API. Telegram then includes it as `X-Telegram-Bot-Api-Secret-Token` in every update.
+`TelegramWebhookSecretFilter` validates this header before the bot handler runs — rejecting any
+request that doesn't carry the expected value with HTTP 403. This means a leaked URL token alone
+is not enough to forge an update.
+
+The secret token is optional: if `TELEGRAM_WEBHOOK_SECRET_TOKEN` is not set, the filter passes
+all requests through unchanged (backward-compatible). Setting it is strongly recommended in all
+production deployments.
+
+The webhook `SecurityFilterChain` is registered with `@Order(1)` in
+`TelegramWebhookSecurityConfig` (`@Profile("!local")`) so it takes precedence over the main
+chain for the webhook path. In the `local` profile, long-polling is used and the webhook
+security config is inactive.
 
 ### CORS
 
@@ -310,6 +337,7 @@ Defaults to `http://localhost:3000`. Wildcard `*` is never accepted.
 | `JWT_SECRET_KEY` | HMAC-SHA256 signing key — **required**, no default | — |
 | `JWT_ACCESS_TOKEN_EXPIRY` | Access token lifetime in seconds | `3600` |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated list of allowed CORS origins | `http://localhost:3000` |
+| `TELEGRAM_WEBHOOK_SECRET_TOKEN` | Second-layer secret sent by Telegram as `X-Telegram-Bot-Api-Secret-Token` | `""` (disabled) |
 | `TELEGRAM_EXECUTOR_CORE_POOL_SIZE` | Core threads in Telegram update executor | `10` |
 | `TELEGRAM_EXECUTOR_MAX_POOL_SIZE` | Max threads in Telegram update executor | `20` |
 | `TELEGRAM_EXECUTOR_QUEUE_CAPACITY` | Task queue capacity before extra threads spawn | `100` |
