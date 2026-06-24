@@ -47,7 +47,7 @@ class SearchCommandHandlerTest {
   @Test
   void should_show_choice_keyboard_when_saved_filter_exists() {
     // Given
-    var savedFilter = new SearchFilter(null, null, null, null, null, "APARTMENT", null, null);
+    var savedFilter = new SearchFilter(null, "RENT", 42L, null, null, null, null, "APARTMENT", null, null);
     when(userSavedSearchService.getByTelegramUserId(1L)).thenReturn(Optional.of(savedFilter));
 
     // When

@@ -279,7 +279,7 @@ class SearchResultSenderTest {
   @Test
   void should_send_results_when_last_search_has_saved_filter() throws TelegramApiException {
     // Given
-    var savedFilter = new SearchFilter(null, null, null, 2, null, "APARTMENT", null, null);
+    var savedFilter = new SearchFilter(null, "RENT", 42L, null, null, 2, null, "APARTMENT", null, null);
     when(userSavedSearchService.getByTelegramUserId(1L)).thenReturn(Optional.of(savedFilter));
     var listing = buildListing(30L, null, "https://realt.by/30");
     when(listingService.search(any(), any())).thenReturn(pageOf(listing));
@@ -310,7 +310,7 @@ class SearchResultSenderTest {
   @Test
   void should_send_no_results_message_when_last_search_returns_empty() throws TelegramApiException {
     // Given
-    var savedFilter = new SearchFilter(null, null, null, null, null, null, null, null);
+    var savedFilter = new SearchFilter(null, null, null, null, null, null, null, null, null, null);
     when(userSavedSearchService.getByTelegramUserId(1L)).thenReturn(Optional.of(savedFilter));
     when(listingService.search(any(), any())).thenReturn(Page.empty());
 
@@ -346,9 +346,9 @@ class SearchResultSenderTest {
     // When
     searchResultSender.handle(buildCallback(1L, 100L, 10));
 
-    // Then — filter saved with values from wizard state
+    // Then — filter saved with values from wizard state (dealType=null, cityId=null — not set in state)
     verify(userSavedSearchService).save(1L, new SearchFilter(
-        null, BigDecimal.valueOf(500), BigDecimal.valueOf(1_500),
+        null, null, null, BigDecimal.valueOf(500), BigDecimal.valueOf(1_500),
         2, null, "APARTMENT", true, "тихий район"
     ));
   }

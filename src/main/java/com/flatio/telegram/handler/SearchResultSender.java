@@ -1,5 +1,6 @@
 package com.flatio.telegram.handler;
 
+import com.flatio.domain.listing.DealType;
 import com.flatio.domain.listing.ListingStatus;
 import com.flatio.service.ListingService;
 import com.flatio.service.UserSavedSearchService;
@@ -318,8 +319,11 @@ public class SearchResultSender {
 
   private void autoSaveFilter(Long telegramId, SearchFilterState state) {
     try {
+      var dealTypeName = state.getDealType() != null ? state.getDealType().name() : null;
       var filter = new SearchFilter(
           null,
+          dealTypeName,
+          state.getCityId(),
           state.getPriceMin(),
           state.getPriceMax(),
           state.getRooms(),
@@ -351,12 +355,13 @@ public class SearchResultSender {
   }
 
   private ListingSearchCriteria buildCriteriaFromFilter(SearchFilter filter) {
+    var dealType = filter.dealType() != null ? DealType.valueOf(filter.dealType()) : null;
     return new ListingSearchCriteria(
-        null,
+        dealType,
         filter.propertyType(),
         null,
         null,
-        null,
+        filter.cityId(),
         filter.priceMin(),
         filter.priceMax(),
         filter.roomsMin(),

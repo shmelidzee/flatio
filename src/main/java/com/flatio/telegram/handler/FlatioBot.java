@@ -132,6 +132,8 @@ public class FlatioBot {
         telegramClient.execute(searchCommandHandler.handle(userId, chatId));
       } catch (TelegramApiException e) {
         log.error("Failed to send search wizard: chatId={}", chatId, e);
+      } catch (Exception e) {
+        log.error("Unexpected error handling /search: chatId={}, updateId={}", chatId, update.getUpdateId(), e);
       }
     } else if (text.startsWith("/help")) {
       try {
