@@ -24,7 +24,7 @@ class TelegramWebhookConfigTest {
   void should_throw_when_webhook_url_is_blank() {
     // Given
     var config = new TelegramWebhookConfig(
-        new BotConfig("token:1", "bot", "  "), mock(TelegramClient.class), mock(FlatioBot.class));
+        new BotConfig("token:1", "bot", "  ", null), mock(TelegramClient.class), mock(FlatioBot.class));
 
     // When / Then
     assertThatThrownBy(config::flatioWebhookBot)
@@ -36,7 +36,7 @@ class TelegramWebhookConfigTest {
   void should_throw_when_webhook_url_is_null() {
     // Given
     var config = new TelegramWebhookConfig(
-        new BotConfig("token:1", "bot", null), mock(TelegramClient.class), mock(FlatioBot.class));
+        new BotConfig("token:1", "bot", null, null), mock(TelegramClient.class), mock(FlatioBot.class));
 
     // When / Then
     assertThatThrownBy(config::flatioWebhookBot)
@@ -48,7 +48,7 @@ class TelegramWebhookConfigTest {
   void should_build_bot_with_token_as_bot_path() {
     // Given
     var config = new TelegramWebhookConfig(
-        new BotConfig("token:1", "bot", "https://api.flatio.by"), mock(TelegramClient.class), mock(FlatioBot.class));
+        new BotConfig("token:1", "bot", "https://api.flatio.by", null), mock(TelegramClient.class), mock(FlatioBot.class));
 
     // When
     var webhookBot = config.flatioWebhookBot();
@@ -62,7 +62,7 @@ class TelegramWebhookConfigTest {
     // Given
     var flatioBot = mock(FlatioBot.class);
     var config = new TelegramWebhookConfig(
-        new BotConfig("token:1", "bot", "https://api.flatio.by"), mock(TelegramClient.class), flatioBot);
+        new BotConfig("token:1", "bot", "https://api.flatio.by", null), mock(TelegramClient.class), flatioBot);
     var webhookBot = config.flatioWebhookBot();
     var update = mock(Update.class);
 
@@ -79,7 +79,7 @@ class TelegramWebhookConfigTest {
     // Given
     var telegramClient = mock(TelegramClient.class);
     var config = new TelegramWebhookConfig(
-        new BotConfig("token:1", "bot", "https://api.flatio.by"), telegramClient, mock(FlatioBot.class));
+        new BotConfig("token:1", "bot", "https://api.flatio.by", null), telegramClient, mock(FlatioBot.class));
     var webhookBot = config.flatioWebhookBot();
 
     // When
@@ -91,11 +91,44 @@ class TelegramWebhookConfigTest {
   }
 
   @Test
+  void should_call_set_webhook_with_secret_token_when_configured() throws TelegramApiException {
+    // Given
+    var telegramClient = mock(TelegramClient.class);
+    var config = new TelegramWebhookConfig(
+        new BotConfig("token:1", "bot", "https://api.flatio.by", "my-secret-token"),
+        telegramClient, mock(FlatioBot.class));
+    var webhookBot = config.flatioWebhookBot();
+
+    // When
+    webhookBot.runSetWebhook();
+
+    // Then — secret token is forwarded to Telegram so it echoes it back as a header on every update
+    verify(telegramClient).execute(argThat((SetWebhook setWebhook) ->
+        "my-secret-token".equals(setWebhook.getSecretToken())));
+  }
+
+  @Test
+  void should_call_set_webhook_without_secret_token_when_not_configured() throws TelegramApiException {
+    // Given
+    var telegramClient = mock(TelegramClient.class);
+    var config = new TelegramWebhookConfig(
+        new BotConfig("token:1", "bot", "https://api.flatio.by", null), telegramClient, mock(FlatioBot.class));
+    var webhookBot = config.flatioWebhookBot();
+
+    // When
+    webhookBot.runSetWebhook();
+
+    // Then — no secret token in SetWebhook (backward-compatible mode)
+    verify(telegramClient).execute(argThat((SetWebhook setWebhook) ->
+        setWebhook.getSecretToken() == null || setWebhook.getSecretToken().isBlank()));
+  }
+
+  @Test
   void should_strip_trailing_slash_when_webhook_url_has_one() throws TelegramApiException {
     // Given — operator misconfigured TELEGRAM_WEBHOOK_URL with a trailing slash
     var telegramClient = mock(TelegramClient.class);
     var config = new TelegramWebhookConfig(
-        new BotConfig("token:1", "bot", "https://api.flatio.by/"), telegramClient, mock(FlatioBot.class));
+        new BotConfig("token:1", "bot", "https://api.flatio.by/", null), telegramClient, mock(FlatioBot.class));
     var webhookBot = config.flatioWebhookBot();
 
     // When
@@ -117,7 +150,7 @@ class TelegramWebhookConfigTest {
     when(telegramClient.execute(any(SetWebhook.class)))
         .thenThrow(new TelegramApiException("network error"));
     var config = new TelegramWebhookConfig(
-        new BotConfig("token:1", "bot", "https://api.flatio.by"), telegramClient, mock(FlatioBot.class));
+        new BotConfig("token:1", "bot", "https://api.flatio.by", null), telegramClient, mock(FlatioBot.class));
     var webhookBot = config.flatioWebhookBot();
 
     // When / Then — registration failure must not crash startup
@@ -130,7 +163,7 @@ class TelegramWebhookConfigTest {
     // instance shutting down must not erase the webhook the new instance just registered
     var telegramClient = mock(TelegramClient.class);
     var config = new TelegramWebhookConfig(
-        new BotConfig("token:1", "bot", "https://api.flatio.by"), telegramClient, mock(FlatioBot.class));
+        new BotConfig("token:1", "bot", "https://api.flatio.by", null), telegramClient, mock(FlatioBot.class));
     var webhookBot = config.flatioWebhookBot();
 
     // When

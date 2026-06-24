@@ -11,9 +11,15 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * <p>{@code webhookUrl} ({@code TELEGRAM_WEBHOOK_URL}) is only required outside the
  * {@code local} profile, where the bot uses webhook delivery instead of long-polling.
  * It is not validated here because the {@code local} profile never needs it.
+ *
+ * <p>{@code webhookSecretToken} ({@code TELEGRAM_WEBHOOK_SECRET_TOKEN}) is an optional
+ * second-layer security token passed to Telegram's {@code setWebhook} API. When set,
+ * Telegram includes it in every update via the {@code X-Telegram-Bot-Api-Secret-Token}
+ * header, and the application validates it — so a leaked URL token alone is not enough
+ * to forge an update.
  */
 @ConfigurationProperties(prefix = "telegram.bot")
-public record BotConfig(String token, String username, String webhookUrl) {
+public record BotConfig(String token, String username, String webhookUrl, String webhookSecretToken) {
 
   public BotConfig {
     if (token == null || token.isBlank()) {

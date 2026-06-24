@@ -72,9 +72,13 @@ public class TelegramWebhookConfig {
 
   private void registerWebhook(String webhookUrl, String botPath) {
     try {
-      telegramClient.execute(SetWebhook.builder()
-          .url(webhookUrl + "/" + botPath)
-          .build());
+      SetWebhook.SetWebhookBuilder builder = SetWebhook.builder()
+          .url(webhookUrl + "/" + botPath);
+      String secretToken = botConfig.webhookSecretToken();
+      if (secretToken != null && !secretToken.isBlank()) {
+        builder.secretToken(secretToken);
+      }
+      telegramClient.execute(builder.build());
       log.info("Telegram webhook registered successfully");
     } catch (TelegramApiException e) {
       log.error("Failed to register Telegram webhook", e);
