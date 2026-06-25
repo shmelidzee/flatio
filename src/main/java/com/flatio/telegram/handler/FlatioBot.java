@@ -77,9 +77,7 @@ public class FlatioBot {
   public void handleUpdate(Update update) {
     log.debug("Update received: updateId={}", update.getUpdateId());
     try {
-      if (update.hasMessage() && update.getMessage().hasLocation()) {
-        handleLocationMessage(update);
-      } else if (update.hasMessage() && update.getMessage().hasText()) {
+      if (update.hasMessage() && update.getMessage().hasText()) {
         handleTextMessage(update);
       } else if (update.hasCallbackQuery()) {
         handleCallbackQuery(update.getCallbackQuery());
@@ -147,14 +145,6 @@ public class FlatioBot {
   }
 
   private void handleFreeText(Long userId, String chatId, String text) {
-    if (filterCallbackHandler.isAtCityStep(userId)) {
-      try {
-        telegramClient.execute(filterCallbackHandler.handleCitySearchText(userId, chatId, text));
-      } catch (TelegramApiException e) {
-        log.error("Failed to send city search results: chatId={}", chatId, e);
-      }
-      return;
-    }
     if (!filterCallbackHandler.isAtKeywordStep(userId)) {
       return;
     }
@@ -162,22 +152,6 @@ public class FlatioBot {
       telegramClient.execute(filterCallbackHandler.handleKeywordText(userId, chatId, text));
     } catch (TelegramApiException e) {
       log.error("Failed to send DONE step after keyword input: chatId={}", chatId, e);
-    }
-  }
-
-  private void handleLocationMessage(Update update) {
-    Long userId = update.getMessage().getFrom().getId();
-    String chatId = String.valueOf(update.getMessage().getChatId());
-    if (!filterCallbackHandler.isAtCityStep(userId)) {
-      return;
-    }
-    var location = update.getMessage().getLocation();
-    var latitude = java.math.BigDecimal.valueOf(location.getLatitude());
-    var longitude = java.math.BigDecimal.valueOf(location.getLongitude());
-    try {
-      telegramClient.execute(filterCallbackHandler.handleLocation(userId, chatId, latitude, longitude));
-    } catch (TelegramApiException e) {
-      log.error("Failed to send KEYWORD step after location input: chatId={}", chatId, e);
     }
   }
 

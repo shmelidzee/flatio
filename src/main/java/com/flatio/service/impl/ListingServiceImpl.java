@@ -156,9 +156,6 @@ public class ListingServiceImpl implements ListingService {
       if (criteria.city() != null && !criteria.city().isBlank()) {
         predicates.add(cb.like(cb.lower(root.get("city")), "%" + criteria.city().toLowerCase() + "%"));
       }
-      if (criteria.cityId() != null) {
-        predicates.add(cb.equal(root.get("cityRef").get("id"), criteria.cityId()));
-      }
       if (criteria.sourceId() != null) {
         predicates.add(cb.equal(root.get("source").get("code"), criteria.sourceId()));
       }
