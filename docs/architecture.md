@@ -105,6 +105,7 @@ com.flatio
 │   ├── JwtAuthenticationFilter # OncePerRequestFilter — extracts Bearer token, populates SecurityContext
 │   ├── JwtProperties    # @ConfigurationProperties(prefix = "flatio.jwt"): secretKey, accessTokenExpiry
 │   ├── TelegramInitDataValidator # validates Telegram WebApp initData (HMAC-SHA256, bot token as secret) — issue #217
+│   ├── RateLimitFilter  # OncePerRequestFilter — per-caller rate limit on /api/v1/**: by client IP for /api/v1/auth/**, by JWT subject otherwise; dynamic RateLimiter per key via RateLimiterRegistry — issue #219
 │   └── SecurityConfig   # Spring Security filter chain: stateless, JWT-based, /api/v1/auth/** permitAll (token issuance), anyRequest().denyAll() otherwise (fail-closed)
 └── util/                # Utilities
 ```
