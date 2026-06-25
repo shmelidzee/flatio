@@ -75,9 +75,9 @@ class RealtConnectorTest {
     assertThat(result).hasSize(2);
     assertThat(result.get(0).externalId()).isEqualTo("12345678");
     assertThat(result.get(0).dealType()).isEqualTo("RENT");
-    assertThat(result.get(0).currency()).isEqualTo("USD");
-    assertThat(result.get(0).price()).isEqualByComparingTo(new BigDecimal("650"));
-    assertThat(result.get(0).priceUsd()).isEqualByComparingTo(new BigDecimal("650"));
+    assertThat(result.get(0).currency()).isEqualTo("BYN");
+    assertThat(result.get(0).price()).isEqualByComparingTo(new BigDecimal("2500"));
+    assertThat(result.get(0).priceUsd()).isNull();
     assertThat(result.get(1).externalId()).isEqualTo("87654321");
   }
 
@@ -104,31 +104,31 @@ class RealtConnectorTest {
 
     // Then
     assertThat(first.externalId()).isEqualTo("12345678");
-    assertThat(first.title()).isEqualTo("2-комнатная квартира, 58 м², 5/9 эт.");
+    assertThat(first.title()).isEqualTo("Снять 2-комнатную квартиру г. Минск, пр-т Независимости, 72");
     assertThat(first.dealType()).isEqualTo("RENT");
     assertThat(first.propertyType()).isEqualTo("APARTMENT");
-    assertThat(first.currency()).isEqualTo("USD");
-    assertThat(first.price()).isEqualByComparingTo(new BigDecimal("650"));
-    assertThat(first.priceUsd()).isEqualByComparingTo(new BigDecimal("650"));
+    assertThat(first.currency()).isEqualTo("BYN");
+    assertThat(first.price()).isEqualByComparingTo(new BigDecimal("2500"));
+    assertThat(first.priceUsd()).isNull();
     assertThat(first.address()).isEqualTo("г. Минск, пр-т Независимости, 72");
-    assertThat(first.sourceUrl()).isEqualTo("https://realt.by/rent/flat-for-long/object/12345678/");
+    assertThat(first.sourceUrl()).isEqualTo("https://realt.by/rent-flat-for-long/object/12345678/");
     assertThat(first.photoUrls()).hasSize(1);
-    assertThat(first.photoUrls().get(0)).isEqualTo("https://photo.realt.by/12/3456789.jpg");
+    assertThat(first.photoUrls().get(0)).isEqualTo("https://cdn.realt.by/img/12/3456789.jpg");
   }
 
   @Test
-  void should_set_price_usd_equal_to_price_when_source_currency_is_usd() throws IOException {
-    // Given — realt.by lists prices in USD; price and priceUsd must be identical
+  void should_set_currency_to_byn_and_price_usd_to_null() throws IOException {
+    // Given — realt.by lists prices in BYN; no USD conversion is performed by the connector
     String html = loadFixture("fixtures/realt/valid-listing-page.html");
     mockRestClientReturning(html);
 
     // When
     List<RawListing> result = connector.fetch();
 
-    // Then — for every listing: currency = USD, priceUsd = price
+    // Then — for every listing: currency = BYN, priceUsd = null (no exchange rate available)
     for (RawListing listing : result) {
-      assertThat(listing.currency()).isEqualTo("USD");
-      assertThat(listing.priceUsd()).isEqualByComparingTo(listing.price());
+      assertThat(listing.currency()).isEqualTo("BYN");
+      assertThat(listing.priceUsd()).isNull();
     }
   }
 
@@ -151,7 +151,7 @@ class RealtConnectorTest {
 
   @Test
   void should_return_empty_list_when_page_has_no_listing_cards() throws IOException {
-    // Given — HTML page without article.classified elements
+    // Given — HTML page without div[data-index] elements
     String html = loadFixture("fixtures/realt/empty-listing-page.html");
     mockRestClientReturning(html);
 
@@ -206,14 +206,14 @@ class RealtConnectorTest {
 
   @Test
   void should_skip_card_without_external_id_and_return_valid_ones() throws IOException {
-    // Given — first card valid, second has no data-classified-id attribute
+    // Given — first card valid, second has no card link so external ID cannot be extracted
     String html = loadFixture("fixtures/realt/listing-page-with-broken-card.html");
     mockRestClientReturning(html);
 
     // When
     List<RawListing> result = connector.fetch();
 
-    // Then — card without ID is skipped, valid one returned
+    // Then — card without extractable ID is skipped, valid one returned
     assertThat(result).hasSize(1);
     assertThat(result.get(0).externalId()).isEqualTo("33333333");
   }
@@ -236,7 +236,7 @@ class RealtConnectorTest {
     // When
     List<RawListing> result = connector.fetch();
 
-    // Then — Jsoup parses without throwing; no article.classified found → empty
+    // Then — Jsoup parses without throwing; no div[data-index] found → empty
     assertThat(result).isEmpty();
   }
 
@@ -271,7 +271,7 @@ class RealtConnectorTest {
 
   @Test
   void should_stop_pagination_when_no_next_page_link_in_html() throws IOException {
-    // Given — valid-listing-page.html has no rel="next" link
+    // Given — valid-listing-page.html has no data-testid="nextBtn" link
     String html = loadFixture("fixtures/realt/valid-listing-page.html");
     mockRestClientReturning(html);
 
@@ -285,7 +285,7 @@ class RealtConnectorTest {
   @Test
   @SuppressWarnings({"unchecked", "rawtypes"})
   void should_fetch_second_page_when_first_page_has_next_link() throws IOException {
-    // Given — first page has rel="next" link, second page is empty (no more results)
+    // Given — first page has data-testid="nextBtn" link, second page is empty (no more results)
     String pageWithNext = loadFixture("fixtures/realt/listing-page-with-pagination.html");
     String emptyPage = loadFixture("fixtures/realt/empty-listing-page.html");
     when(restClient.get()).thenReturn(requestHeadersUriSpec);

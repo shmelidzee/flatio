@@ -22,12 +22,15 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Connector for fetching apartment rental listings from the realt.by website.
  *
- * <p>Fetches and parses HTML listing pages from realt.by. Listings are priced in USD.
- * Each listing card is parsed in isolation — a broken card does not abort the full fetch.
+ * <p>Fetches and parses SSR HTML listing pages from realt.by (Next.js + Tailwind). Listings are
+ * priced in BYN (Belarusian ruble). Each card is parsed in isolation — a broken card does not
+ * abort the full fetch.
  *
  * <p>Rate limiting (1 req/2 s), circuit breaker (opens after 5 failures, stays open 60 s),
  * and retry with exponential backoff (3 attempts: 2 s → 4 s → 8 s) are applied via Resilience4j.
@@ -45,13 +48,17 @@ public class RealtConnector implements ListingConnector {
   private static final String PROPERTY_TYPE_APARTMENT = "APARTMENT";
   private static final String FALLBACK_TITLE = "Квартира на Realt.by";
 
-  private static final String CARD_SELECTOR = "article.classified";
-  private static final String EXTERNAL_ID_ATTR = "data-classified-id";
-  private static final String TITLE_LINK_SELECTOR = "h2.classified__title a";
-  private static final String ADDRESS_SELECTOR = "p.classified__address";
-  private static final String PRICE_AMOUNT_SELECTOR = "span.price__amount";
-  private static final String PHOTO_SELECTOR = "img.classified__image";
-  private static final String NEXT_PAGE_SELECTOR = "a[rel=next]";
+  // CSS selectors for the real realt.by SSR output (Next.js virtual list + Tailwind utility classes)
+  private static final String CARD_SELECTOR = "div[data-index]";
+  private static final String CARD_LINK_SELECTOR = "a[aria-label*='Ссылка на объект']";
+  private static final String PRICE_SELECTOR = "span.text-title.font-semibold";
+  private static final String ADDRESS_SELECTOR = "p.text-basic";
+  private static final String PHOTO_SELECTOR = "img[src*='cdn.realt.by']";
+  private static final String TITLE_FALLBACK_SELECTOR = "p.text-headline";
+  private static final String NEXT_PAGE_SELECTOR = "a[data-testid='nextBtn']";
+
+  // Extracts the numeric object ID from a path like /rent-flat-for-long/object/4154534/
+  private static final Pattern OBJECT_ID_PATTERN = Pattern.compile("object/(\\d+)/");
 
   private final RestClient restClient;
   private final RealtProperties properties;
@@ -75,8 +82,8 @@ public class RealtConnector implements ListingConnector {
   /**
    * Fetches all current rental listings from realt.by by paginating through all available pages.
    *
-   * <p>Pagination stops when the current page contains no listing cards or has no "next" link.
-   * Rate-limited, circuit-broken, and retried via Resilience4j; on exhausted retries
+   * <p>Pagination stops when the current page contains no listing cards or the "next" button
+   * is absent. Rate-limited, circuit-broken, and retried via Resilience4j; on exhausted retries
    * {@link #fetchFallback} returns an empty list.
    *
    * @return list of raw listings, never null, may be empty on source error
@@ -144,40 +151,51 @@ public class RealtConnector implements ListingConnector {
   }
 
   private void safeAdd(List<RawListing> result, Element card) {
-    String externalId = card.attr(EXTERNAL_ID_ATTR);
+    Element cardLink = card.selectFirst(CARD_LINK_SELECTOR);
+    String hintId = cardLink != null ? cardLink.attr("href") : "unknown";
     try {
       result.add(toRawListing(card));
     } catch (Exception e) {
-      log.warn("Skipping broken Realt listing: id={}, error={}", externalId, e.getMessage());
+      log.warn("Skipping broken Realt listing: hint={}, error={}", hintId, e.getMessage());
     }
   }
 
   private RawListing toRawListing(Element card) {
-    String externalId = card.attr(EXTERNAL_ID_ATTR);
-    if (externalId.isBlank()) {
-      throw new IllegalArgumentException("Missing external ID in listing card");
+    Element cardLink = card.selectFirst(CARD_LINK_SELECTOR);
+    if (cardLink == null) {
+      throw new IllegalArgumentException("Missing card link (aria-label='Ссылка на объект')");
     }
 
-    Element titleLink = card.selectFirst(TITLE_LINK_SELECTOR);
-    if (titleLink == null) {
-      throw new IllegalArgumentException("Missing title element for listing id=" + externalId);
+    String href = cardLink.attr("href");
+    Matcher idMatcher = OBJECT_ID_PATTERN.matcher(href);
+    if (!idMatcher.find()) {
+      throw new IllegalArgumentException("Cannot extract external ID from href: " + href);
     }
-    String title = titleLink.text().isBlank() ? FALLBACK_TITLE : titleLink.text();
-    String sourceUrl = properties.baseUrl() + titleLink.attr("href");
+    String externalId = idMatcher.group(1);
+    String sourceUrl = properties.baseUrl() + href;
 
-    String priceText = Optional.ofNullable(card.selectFirst(PRICE_AMOUNT_SELECTOR))
-        .map(el -> el.text().replaceAll("[^\\d.]", ""))
+    String priceText = Optional.ofNullable(card.selectFirst(PRICE_SELECTOR))
+        .map(el -> el.text().replaceAll("[^\\d]", ""))
         .orElse("");
     if (priceText.isBlank()) {
       throw new IllegalArgumentException("Missing price for listing id=" + externalId);
     }
     BigDecimal price = new BigDecimal(priceText);
 
+    Element photoElement = card.selectFirst(PHOTO_SELECTOR);
+    String title = Optional.ofNullable(photoElement)
+        .map(el -> el.attr("title"))
+        .filter(t -> !t.isBlank())
+        .orElseGet(() -> Optional.ofNullable(card.selectFirst(TITLE_FALLBACK_SELECTOR))
+            .map(Element::text)
+            .filter(t -> !t.isBlank())
+            .orElse(FALLBACK_TITLE));
+
     String address = Optional.ofNullable(card.selectFirst(ADDRESS_SELECTOR))
         .map(Element::text)
         .orElse(null);
 
-    String photoSrc = Optional.ofNullable(card.selectFirst(PHOTO_SELECTOR))
+    String photoSrc = Optional.ofNullable(photoElement)
         .map(el -> el.attr("src"))
         .filter(src -> !src.isBlank())
         .orElse(null);
@@ -190,8 +208,8 @@ public class RealtConnector implements ListingConnector {
         DEAL_TYPE_RENT,
         PROPERTY_TYPE_APARTMENT,
         price,
-        "USD",
-        price,
+        "BYN",
+        null,
         null,
         null,
         null,

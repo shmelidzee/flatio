@@ -5,42 +5,88 @@
   <title>Аренда квартир в Минске — Realt.by</title>
 </head>
 <body>
-<section class="classified-listing">
+<div class="-mx-1.5 sm:-mx-2.5 flex flex-wrap md:mb-[60px]">
 
-  <article class="classified" data-classified-id="12345678">
-    <div class="classified__image-block">
-      <a href="/rent/flat-for-long/object/12345678/">
-        <img class="classified__image" src="https://photo.realt.by/12/3456789.jpg" alt="Квартира" />
-      </a>
-    </div>
-    <div class="classified__body">
-      <h2 class="classified__title">
-        <a href="/rent/flat-for-long/object/12345678/">2-комнатная квартира, 58 м², 5/9 эт.</a>
-      </h2>
-      <p class="classified__address">г. Минск, пр-т Независимости, 72</p>
-      <div class="classified__price-block">
-        <span class="price__amount">650</span>
-        <span class="price__currency">USD</span>
+  <!-- Card 1: with photo -->
+  <div data-index="0">
+    <div class="sm:w-full w-full p-1.5 sm:p-2.5">
+      <div class="hover:shadow-10bottom overflow-hidden rounded-md">
+        <div class="bg-white flex flex-col md:flex-row relative">
+          <a aria-label="&quot;Ссылка на объект №12345678&quot;" class="z-1 absolute top-0 left-0 w-full h-full cursor-pointer" target="_blank" href="/rent-flat-for-long/object/12345678/"></a>
+          <div class="w-full md:max-w-[42.1%] relative">
+            <div class="swiper swiper-initialized swiper-horizontal h-full">
+              <div class="swiper-wrapper">
+                <div class="swiper-slide swiper-slide-active">
+                  <a target="_blank" href="/rent-flat-for-long/object/12345678/">
+                    <span>
+                      <img title="Снять 2-комнатную квартиру г. Минск, пр-т Независимости, 72" alt="" src="https://cdn.realt.by/img/12/3456789.jpg">
+                    </span>
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="flex flex-col w-full h-full p-5">
+            <div class="-order-3 flex justify-between">
+              <div>
+                <div>
+                  <span class="md:mr-0 flex items-center mr-1">
+                    <span class="text-title font-semibold text-basic-900 bg-primary-300 px-1.5 py-0.5 rounded-sm md:px-2">2&nbsp;500&nbsp;р./мес.</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+            <p class="flex flex-wrap text-headline items-center font-semibold">
+              <span class="mr-2">2 комн.</span>
+              <span class="mr-2">58 м²</span>
+              <span class="mr-2">5/9 этаж</span>
+            </p>
+            <div class="w-full">
+              <div class="text-basic-900 overflow-hidden">
+                <p class="text-basic w-full text-subhead md:text-body">г. Минск, пр-т Независимости, 72</p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
-  </article>
+  </div>
 
-  <article class="classified" data-classified-id="87654321">
-    <div class="classified__image-block">
-      <!-- no photo available -->
-    </div>
-    <div class="classified__body">
-      <h2 class="classified__title">
-        <a href="/rent/flat-for-long/object/87654321/">3-комнатная квартира, 75 м², 8/12 эт.</a>
-      </h2>
-      <p class="classified__address">г. Минск, ул. Немига, 5</p>
-      <div class="classified__price-block">
-        <span class="price__amount">900</span>
-        <span class="price__currency">USD</span>
+  <!-- Card 2: no photo -->
+  <div data-index="1">
+    <div class="sm:w-full w-full p-1.5 sm:p-2.5">
+      <div class="hover:shadow-10bottom overflow-hidden rounded-md">
+        <div class="bg-white flex flex-col md:flex-row relative">
+          <a aria-label="&quot;Ссылка на объект №87654321&quot;" class="z-1 absolute top-0 left-0 w-full h-full cursor-pointer" target="_blank" href="/rent-flat-for-long/object/87654321/"></a>
+          <div class="w-full md:max-w-[42.1%] relative">
+            <!-- no photo -->
+          </div>
+          <div class="flex flex-col w-full h-full p-5">
+            <div class="-order-3 flex justify-between">
+              <div>
+                <div>
+                  <span class="md:mr-0 flex items-center mr-1">
+                    <span class="text-title font-semibold text-basic-900 bg-primary-300 px-1.5 py-0.5 rounded-sm md:px-2">3&nbsp;100&nbsp;р./мес.</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+            <p class="flex flex-wrap text-headline items-center font-semibold">
+              <span class="mr-2">3 комн.</span>
+              <span class="mr-2">75 м²</span>
+              <span class="mr-2">8/12 этаж</span>
+            </p>
+            <div class="w-full">
+              <div class="text-basic-900 overflow-hidden">
+                <p class="text-basic w-full text-subhead md:text-body">г. Минск, ул. Немига, 5</p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
-  </article>
+  </div>
 
-</section>
+</div>
 </body>
 </html>
