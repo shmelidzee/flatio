@@ -4,6 +4,7 @@ import com.flatio.common.exception.InvalidTelegramAuthException;
 import com.flatio.security.JwtService;
 import com.flatio.service.AuthService;
 import com.flatio.web.dto.AuthResponse;
+import io.github.resilience4j.ratelimiter.RateLimiterRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -36,6 +37,9 @@ class AuthControllerTest {
 
   @MockBean
   private JwtService jwtService;
+
+  @MockBean
+  private RateLimiterRegistry rateLimiterRegistry;
 
   @Test
   void should_return_200_with_token_when_init_data_is_valid() throws Exception {

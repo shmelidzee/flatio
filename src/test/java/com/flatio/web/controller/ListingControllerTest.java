@@ -5,10 +5,12 @@ import com.flatio.domain.listing.DealType;
 import com.flatio.domain.listing.ListingStatus;
 import com.flatio.security.JwtAuthenticationFilter;
 import com.flatio.security.JwtService;
+import com.flatio.security.RateLimitFilter;
 import com.flatio.service.ListingService;
 import com.flatio.web.dto.ListingResponse;
 import com.flatio.web.dto.ListingSearchCriteria;
 import com.flatio.web.dto.ListingSummaryResponse;
+import jakarta.servlet.Filter;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -57,8 +59,16 @@ class ListingControllerTest {
   @MockBean
   private JwtAuthenticationFilter jwtAuthenticationFilter;
 
+  @MockBean
+  private RateLimitFilter rateLimitFilter;
+
   @BeforeEach
   void setUp() throws Exception {
+    passThroughFilter(jwtAuthenticationFilter);
+    passThroughFilter(rateLimitFilter);
+  }
+
+  private void passThroughFilter(Filter filter) throws Exception {
     doAnswer(invocation -> {
       var chain = (FilterChain) invocation.getArgument(2);
       chain.doFilter(
@@ -66,7 +76,7 @@ class ListingControllerTest {
           (HttpServletResponse) invocation.getArgument(1)
       );
       return null;
-    }).when(jwtAuthenticationFilter)
+    }).when(filter)
         .doFilter(any(HttpServletRequest.class), any(HttpServletResponse.class), any(FilterChain.class));
   }
 
