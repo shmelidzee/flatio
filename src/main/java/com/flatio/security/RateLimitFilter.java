@@ -40,7 +40,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
   private static final String AUTH_PREFIX = "/api/v1/auth/";
   private static final String AUTH_TELEGRAM_LIMITER = "api-auth-telegram";
   private static final String AUTHENTICATED_LIMITER = "api-authenticated";
-  private static final String FORWARDED_FOR_HEADER = "X-Forwarded-For";
+  private static final String REAL_IP_HEADER = "X-Real-IP";
 
   private final RateLimiterRegistry rateLimiterRegistry;
   private final ObjectMapper objectMapper;
@@ -84,11 +84,13 @@ public class RateLimitFilter extends OncePerRequestFilter {
   }
 
   private String clientIp(HttpServletRequest request) {
-    String forwardedFor = request.getHeader(FORWARDED_FOR_HEADER);
-    if (forwardedFor != null && !forwardedFor.isBlank()) {
-      return forwardedFor.split(",")[0].strip();
-    }
-    return request.getRemoteAddr();
+    // X-Real-IP is set by nginx to $remote_addr (the actual TCP peer) and cannot be spoofed
+    // by the client. X-Forwarded-For is deliberately NOT used here: nginx's
+    // $proxy_add_x_forwarded_for *appends* to whatever the client already sent rather than
+    // replacing it, so a client could set its own X-Forwarded-For and pick a fresh key on
+    // every request, bypassing the limiter entirely.
+    String realIp = request.getHeader(REAL_IP_HEADER);
+    return realIp != null && !realIp.isBlank() ? realIp.strip() : request.getRemoteAddr();
   }
 
   private void writeTooManyRequests(HttpServletRequest request, HttpServletResponse response) throws IOException {

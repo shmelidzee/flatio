@@ -73,11 +73,11 @@ class RateLimitFilterTest {
   }
 
   @Test
-  void should_prefer_x_forwarded_for_header_over_remote_addr() throws Exception {
-    // Given — request arrives through nginx, real client IP is in X-Forwarded-For
+  void should_prefer_x_real_ip_header_over_remote_addr() throws Exception {
+    // Given — request arrives through nginx, which sets X-Real-IP to $remote_addr
     var request = new MockHttpServletRequest("POST", "/api/v1/auth/telegram");
     request.setRemoteAddr("10.0.0.1");
-    request.addHeader("X-Forwarded-For", "198.51.100.7, 10.0.0.1");
+    request.addHeader("X-Real-IP", "198.51.100.7");
     var response = new MockHttpServletResponse();
     when(rateLimiterRegistry.rateLimiter(eq("api-auth-telegram:198.51.100.7"), eq("api-auth-telegram")))
         .thenReturn(rateLimiter);
@@ -87,6 +87,25 @@ class RateLimitFilterTest {
     filter.doFilterInternal(request, response, filterChain);
 
     // Then
+    verify(filterChain).doFilter(request, response);
+  }
+
+  @Test
+  void should_not_let_client_supplied_x_forwarded_for_override_the_limiter_key() throws Exception {
+    // Given — a malicious client sets its own X-Forwarded-For to try to get a fresh key on
+    // every request; nginx only appends to this header (never strips it), so it must be ignored
+    var request = new MockHttpServletRequest("POST", "/api/v1/auth/telegram");
+    request.setRemoteAddr("203.0.113.5");
+    request.addHeader("X-Forwarded-For", "1.2.3.4");
+    var response = new MockHttpServletResponse();
+    when(rateLimiterRegistry.rateLimiter(eq("api-auth-telegram:203.0.113.5"), eq("api-auth-telegram")))
+        .thenReturn(rateLimiter);
+    when(rateLimiter.acquirePermission()).thenReturn(true);
+
+    // When
+    filter.doFilterInternal(request, response, filterChain);
+
+    // Then — keyed by the real connection address, not the spoofable header
     verify(filterChain).doFilter(request, response);
   }
 
