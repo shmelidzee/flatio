@@ -7,7 +7,6 @@ public enum FilterStep {
   ROOMS,
   PRICE,
   OWNER_ONLY,
-  CITY,
   KEYWORD,
   DONE
 }

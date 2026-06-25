@@ -1,13 +1,9 @@
 package com.flatio.telegram.callback;
 
-import com.flatio.domain.city.City;
-import com.flatio.service.CityService;
 import com.flatio.telegram.keyboard.FilterKeyboardFactory;
 import com.flatio.telegram.state.FilterStep;
 import com.flatio.telegram.state.SearchFilterState;
 import com.flatio.telegram.state.SearchFilterWizard;
-import java.math.BigDecimal;
-import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -33,7 +29,6 @@ public class FilterCallbackHandler {
 
   private final SearchFilterWizard wizard;
   private final FilterKeyboardFactory keyboardFactory;
-  private final CityService cityService;
 
   /**
    * Processes a filter callback and returns the updated wizard message.
@@ -89,64 +84,6 @@ public class FilterCallbackHandler {
     return wizard.getState(telegramId)
         .map(s -> s.getCurrentStep() == FilterStep.KEYWORD)
         .orElse(false);
-  }
-
-  /**
-   * Checks whether the user's wizard is currently at the CITY selection step.
-   *
-   * @param telegramId Telegram user identifier, never null
-   * @return true if the wizard is at the CITY step
-   */
-  public boolean isAtCityStep(Long telegramId) {
-    return wizard.getState(telegramId)
-        .map(s -> s.getCurrentStep() == FilterStep.CITY)
-        .orElse(false);
-  }
-
-  /**
-   * Filters cities by a partial name query and returns the CITY step as a new message.
-   *
-   * <p>Called when the user types a message while the wizard is at the CITY step.
-   * The keyboard is rebuilt with matching city buttons so the user can select one.
-   * Returns a {@link SendMessage} because the incoming update is a text message.
-   *
-   * @param telegramId Telegram user identifier, never null
-   * @param chatId     target chat identifier, never null
-   * @param query      partial city name entered by the user, never null
-   * @return SendMessage displaying the CITY step with filtered city buttons, never null
-   */
-  public SendMessage handleCitySearchText(Long telegramId, String chatId, String query) {
-    List<City> cities = cityService.searchByName(query);
-    var state = wizard.getState(telegramId).orElseGet(() -> wizard.start(telegramId));
-    log.debug("City search text applied: telegramId={}, query={}, results={}", telegramId, query, cities.size());
-    return SendMessage.builder()
-        .chatId(chatId)
-        .text(keyboardFactory.getStepText(state))
-        .replyMarkup(keyboardFactory.buildCityKeyboard(cities))
-        .build();
-  }
-
-  /**
-   * Applies Telegram location to resolve the nearest city and advances the wizard to KEYWORD.
-   *
-   * <p>Returns a {@link SendMessage} because location updates arrive as messages,
-   * not callbacks — there is no existing wizard message to edit.
-   *
-   * @param telegramId Telegram user identifier, never null
-   * @param chatId     target chat identifier, never null
-   * @param latitude   latitude from Telegram location, never null
-   * @param longitude  longitude from Telegram location, never null
-   * @return SendMessage displaying the KEYWORD wizard step, never null
-   */
-  public SendMessage handleLocation(Long telegramId, String chatId, BigDecimal latitude, BigDecimal longitude) {
-    var state = wizard.applyCityByLocation(telegramId, latitude, longitude);
-    log.debug("Location applied: telegramId={}, lat={}, lon={}, cityId={}",
-        telegramId, latitude, longitude, state.getCityId());
-    return SendMessage.builder()
-        .chatId(chatId)
-        .text(keyboardFactory.getStepText(state))
-        .replyMarkup(keyboardFactory.buildForStep(state))
-        .build();
   }
 
   /**

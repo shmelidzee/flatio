@@ -1,6 +1,5 @@
 package com.flatio.telegram.keyboard;
 
-import com.flatio.domain.city.City;
 import com.flatio.domain.listing.DealType;
 import com.flatio.config.SellPriceFilterProperties;
 import com.flatio.telegram.state.FilterStep;
@@ -24,9 +23,6 @@ public class FilterKeyboardFactory {
 
   private static final String P = SearchFilterWizard.CALLBACK_PREFIX;
 
-  /** Maximum number of city buttons shown per keyboard without filtering. */
-  private static final int MAX_CITY_BUTTONS = 8;
-
   private final SellPriceFilterProperties sellPriceProps;
 
   /**
@@ -42,36 +38,9 @@ public class FilterKeyboardFactory {
       case ROOMS -> buildRoomsKeyboard();
       case PRICE -> buildPriceKeyboard(state.getDealType());
       case OWNER_ONLY -> buildOwnerOnlyKeyboard();
-      case CITY -> buildCityKeyboard(List.of());
       case KEYWORD -> buildKeywordKeyboard();
       case DONE -> buildDoneKeyboard();
     };
-  }
-
-  /**
-   * Builds the city selection keyboard from the given list of cities.
-   *
-   * <p>Each city is rendered as a button with callback {@code FILTER:CITY:<id>}.
-   * A «Пропустить» button and a «Определить по геолокации» button are always included.
-   * When the list is empty only those two action buttons and the navigation row are shown.
-   * The list is capped at {@value #MAX_CITY_BUTTONS} entries to keep the keyboard compact.
-   *
-   * @param cities list of cities to display; may be empty, never null
-   * @return inline keyboard markup for the CITY step, never null
-   */
-  public InlineKeyboardMarkup buildCityKeyboard(List<City> cities) {
-    var builder = InlineKeyboardMarkup.builder();
-    var geoBtn = btn("📍 Определить по геолокации", P + ":CITY:GEO");
-    var skipBtn = btn("Пропустить", P + ":CITY:ANY");
-    builder.keyboardRow(new InlineKeyboardRow(geoBtn));
-    int limit = Math.min(cities.size(), MAX_CITY_BUTTONS);
-    for (int i = 0; i < limit; i++) {
-      var city = cities.get(i);
-      builder.keyboardRow(new InlineKeyboardRow(btn(city.getNameRu(), P + ":CITY:" + city.getId())));
-    }
-    builder.keyboardRow(new InlineKeyboardRow(skipBtn));
-    builder.keyboardRow(navRow());
-    return builder.build();
   }
 
   /**
@@ -89,8 +58,7 @@ public class FilterKeyboardFactory {
           ? "💰 Диапазон цены (BYN):"
           : "💰 Диапазон цены (BYN/мес):";
       case OWNER_ONLY -> "👤 Тип продавца:";
-      case CITY -> "🏙 Выберите город или введите часть названия для поиска:";
-      case KEYWORD -> "🔍 Введите ключевые слова для поиска\nили нажмите «Пропустить»:";
+      case KEYWORD -> "🔍 Введите ключевые слова для поиска (можно указать город)\nили нажмите «Пропустить»:";
       case DONE -> buildSummaryText(state);
     };
   }
@@ -213,17 +181,11 @@ public class FilterKeyboardFactory {
         .append("Тип: ").append(propertyTypeLabel(state.getPropertyType())).append("\n")
         .append("Комнат: ").append(roomsLabel(state.getRooms())).append("\n")
         .append("Цена: ").append(priceLabel(state.getPriceMin(), state.getPriceMax())).append("\n")
-        .append("Продавец: ").append(ownerOnlyLabel(state.getOwnerOnly())).append("\n")
-        .append("Город: ").append(cityIdLabel(state.getCityId()));
+        .append("Продавец: ").append(ownerOnlyLabel(state.getOwnerOnly()));
     if (state.getQuery() != null && !state.getQuery().isBlank()) {
       sb.append("\nКлючевые слова: «").append(escapeHtml(state.getQuery())).append("»");
     }
     return sb.toString();
-  }
-
-  private String cityIdLabel(Long cityId) {
-    if (cityId == null) return "Любой";
-    return "ID " + cityId;
   }
 
   private String escapeHtml(String text) {
