@@ -26,6 +26,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
  * <p>The application uses stateless JWT-based authentication.
  * Sessions are disabled. The {@link JwtAuthenticationFilter} is registered before
  * the default username/password filter so that bearer tokens are resolved on every request.
+ * {@link RateLimitFilter} runs immediately after it so that per-caller rate limits (by IP for
+ * {@code /api/v1/auth/**}, by JWT subject otherwise) see the resolved authentication.
  *
  * <p>Access rules:
  * <ul>
@@ -54,6 +56,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 public class SecurityConfig {
 
   private final JwtAuthenticationFilter jwtAuthFilter;
+  private final RateLimitFilter rateLimitFilter;
   private final BotConfig botConfig;
 
   @Value("${flatio.cors.allowed-origins:http://localhost:3000}")
@@ -85,6 +88,7 @@ public class SecurityConfig {
             .anyRequest().denyAll()
         )
         .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+        .addFilterAfter(rateLimitFilter, JwtAuthenticationFilter.class)
         .build();
   }
 

@@ -131,6 +131,20 @@ resilience4j:
         limit-for-period: 1
         limit-refresh-period: 1s
         timeout-duration: 5s
+    # Inbound REST rate limits — config templates only, no eagerly-created instance bean.
+    # RateLimitFilter creates one RateLimiter per caller (IP or user) on demand via
+    # RateLimiterRegistry.rateLimiter(key, configName), all sharing the named config below.
+    # timeout-duration: 0s means acquirePermission() returns immediately instead of blocking
+    # the request thread waiting for the next refresh window.
+    configs:
+      api-auth-telegram:
+        limit-for-period: ${RATE_LIMIT_AUTH_REQUESTS:10}
+        limit-refresh-period: ${RATE_LIMIT_AUTH_REFRESH_SECONDS:60}s
+        timeout-duration: 0s
+      api-authenticated:
+        limit-for-period: ${RATE_LIMIT_API_REQUESTS:60}
+        limit-refresh-period: ${RATE_LIMIT_API_REFRESH_SECONDS:60}s
+        timeout-duration: 0s
   retry:
     instances:
       connector-onliner:
