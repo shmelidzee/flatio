@@ -30,6 +30,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
  * <p>Access rules:
  * <ul>
  *   <li>{@code /api/v1/admin/**} — requires {@code ADMIN} role</li>
+ *   <li>{@code /api/v1/auth/**} — publicly accessible; this is where JWT access tokens
+ *       are issued, so it cannot itself require a token (see {@code AuthController})</li>
  *   <li>{@code /api/v1/**} — requires any authenticated user</li>
  *   <li>Swagger UI, OpenAPI docs, and Actuator health/info — publicly accessible</li>
  *   <li>{@code POST /<bot-token>} — publicly accessible; this is the Telegram webhook
@@ -72,6 +74,7 @@ public class SecurityConfig {
         .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(auth -> auth
             .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+            .requestMatchers("/api/v1/auth/**").permitAll()
             .requestMatchers("/api/v1/**").authenticated()
             .requestMatchers(
                 "/swagger-ui/**", "/swagger-ui.html",
