@@ -8,6 +8,50 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Security
+- **PR #220 — Rate limiting для публичных/аутентифицированных REST-эндпоинтов (issue #219)**
+  - `RateLimitFilter` (новый) — `OncePerRequestFilter`, лимитирует `/api/v1/**` по вызывающей стороне:
+    `/api/v1/auth/**` по клиентскому IP (`X-Real-IP`, который nginx выставляет в `$remote_addr` и
+    клиент не может подделать — `X-Forwarded-For` намеренно не используется, так как
+    `$proxy_add_x_forwarded_for` лишь дополняет значение от клиента, а не заменяет его), остальной
+    `/api/v1/**` — по `sub` из JWT
+  - Один `RateLimiter` на каждый вызывающий ключ через `RateLimiterRegistry.rateLimiter(key, configName)`,
+    конфиг — `resilience4j.ratelimiter.configs.api-auth-telegram` / `api-authenticated` (именно `configs`,
+    не `instances` — туда лимиты для коннекторов, общий лимитер на всех вызывающих не годится для входящих запросов)
+  - Лимиты настраиваются через env: `RATE_LIMIT_AUTH_REQUESTS`, `RATE_LIMIT_AUTH_REFRESH_SECONDS`,
+    `RATE_LIMIT_API_REQUESTS`, `RATE_LIMIT_API_REFRESH_SECONDS`
+  - При превышении — `429` в формате `ErrorResponse`, без утечки деталей реализации лимитера
+  - `SecurityConfig` — фильтр подключён через `addFilterAfter(rateLimitFilter, JwtAuthenticationFilter.class)`
+
+### Added
+- **PR #218 — Выдача JWT через обмен Telegram WebApp initData (issue #217)**
+  - `POST /api/v1/auth/telegram` (новый, публичный) — до этого `/api/v1/**` требовал JWT, который
+    нечем было выдать (`JwtService.generateToken` не вызывался ни одним контроллером)
+  - `TelegramInitDataValidator` (новый) — проверяет подпись `initData` по официальному алгоритму
+    Telegram (HMAC-SHA256, секрет — `HMAC_SHA256(<bot_token>, "WebAppData")`, дальше
+    `hash = hex(HMAC_SHA256(data_check_string, secret_key))`), сравнение хэшей — `MessageDigest.isEqual`
+    (защита от timing-атаки); `auth_date` не старше 24 часов
+  - `AuthService`/`AuthServiceImpl` — находит или создаёт пользователя (тот же путь, что `/start` в боте)
+    и выдаёт токен через существующий `JwtService`; роль в JWT берётся из `User.role` в БД, не из запроса
+  - `SecurityConfig` — `/api/v1/auth/**` теперь `permitAll` (это и есть точка выдачи токена)
+  - `InvalidTelegramAuthException` → 401 через `GlobalExceptionHandler`
+
+### Fixed
+- **PR #215 — Убран сломанный шаг выбора города из визарда поиска (issues #213, #214)**
+  - Поиск с заданным `cityId` крашился (`InvalidDataAccessApiUsageException`): `ListingServiceImpl.buildSearchSpec`
+    строил предикат по `root.get("cityRef")`, но у `Listing` нет такой relation, только строковое поле `city`
+  - Шаг `CITY` (ручной выбор + геолокация) убран из `SearchFilterWizard`, `FilterKeyboardFactory`,
+    `FilterCallbackHandler`, `FlatioBot` — после `OWNER_ONLY` визард ведёт прямо на `KEYWORD`
+  - `V30__add_city_to_search_vector.sql` — `city` добавлен в полнотекстовый `search_vector` вместе
+    с `title`/`description`/`address`, чтобы город можно было найти через обычный ключевой поиск
+
+### Added
+- **PR #216 — Нагрузочный тест GET /listings — p95<500ms (issue #37, NFR-PERF-1)**
+  - `scripts/load-test/listings-search.js` — k6-сценарий: 50 vUsers, 5 минут, `GET /api/v1/listings?dealType=RENT`,
+    пороги `p95<500ms`/`p99<1000ms`/`error rate<0.1%`
+  - `scripts/load-test/seed-listings.sql` — ручной (не Flyway) скрипт наполнения disposable БД
+  - Локальный прогон (нет доступа к staging/prod): p95=82.74ms, p99=118.39ms, error rate=0.01% —
+    пороги пройдены с большим запасом
+  - `docs/local-setup.md` — раздел «Load Testing»
 - **PR #209 — Двойная защита Telegram webhook от утечки токена (issue #205)**
   - `docker/nginx/nginx.conf` — `location ~* "^/[0-9]+:[A-Za-z0-9_-]+$"` с `access_log off`:
     токен бота больше не появляется в access-логах nginx на каждое входящее обновление от Telegram
