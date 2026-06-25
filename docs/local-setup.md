@@ -52,6 +52,37 @@ export TELEGRAM_BOT_USERNAME=your_bot_username
 
 ---
 
+## Load Testing
+
+NFR-PERF-1 (issue #37): `GET /api/v1/listings` must keep p95 < 500ms and p99 < 1000ms
+under 50 concurrent users, with < 0.1% errors, against a database with >=1000 listings.
+
+### 1. Seed data (disposable DB only)
+
+```bash
+docker exec -i <postgres-container> psql -U flatio -d flatio < scripts/load-test/seed-listings.sql
+```
+
+### 2. Obtain a JWT
+
+`/api/v1/**` requires authentication. There is currently no `/auth/login` endpoint in the
+codebase — `JwtService` exists but is not yet wired to an issuing endpoint. Until that exists,
+mint a token offline with the same `JWT_SECRET_KEY` used by the running app (HS256/HS384/HS512
+is chosen automatically based on key length, same rule as `Keys.hmacShaKeyFor`).
+
+### 3. Run k6
+
+```bash
+docker run --rm -i \
+  -e BASE_URL=http://host.docker.internal:8080 \
+  -e AUTH_TOKEN=<jwt> \
+  grafana/k6 run - < scripts/load-test/listings-search.js
+```
+
+Results are documented in `docs/qa-reports/milestone-1.7.md`.
+
+---
+
 ## Production Deploy
 
 ### Architecture
