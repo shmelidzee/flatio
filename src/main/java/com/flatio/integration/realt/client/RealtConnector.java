@@ -39,6 +39,7 @@ public class RealtConnector implements ListingConnector {
 
   private static final long DEFAULT_RETRY_AFTER_SECONDS = 5L;
   private static final long MAX_RETRY_AFTER_SECONDS = 60L;
+  private static final int MAX_PAGES = 100;
 
   private static final String DEAL_TYPE_RENT = "RENT";
   private static final String PROPERTY_TYPE_APARTMENT = "APARTMENT";
@@ -100,7 +101,7 @@ public class RealtConnector implements ListingConnector {
     int currentPage = 1;
     boolean hasNextPage = true;
     try {
-      while (hasNextPage) {
+      while (hasNextPage && currentPage <= MAX_PAGES) {
         String html = fetchPage(currentPage);
         if (html == null || html.isBlank()) {
           break;

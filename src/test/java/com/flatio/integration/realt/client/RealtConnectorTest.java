@@ -53,8 +53,7 @@ class RealtConnectorTest {
         "https://realt.by",
         "REALT",
         "BY",
-        "/rent/flats/",
-        30
+        "/rent/flats/"
     );
     connector = new RealtConnector(restClient, properties);
   }
@@ -281,6 +280,25 @@ class RealtConnectorTest {
 
     // Then — only listings from the single page are returned (no infinite loop)
     assertThat(result).hasSize(2);
+  }
+
+  @Test
+  @SuppressWarnings({"unchecked", "rawtypes"})
+  void should_fetch_second_page_when_first_page_has_next_link() throws IOException {
+    // Given — first page has rel="next" link, second page is empty (no more results)
+    String pageWithNext = loadFixture("fixtures/realt/listing-page-with-pagination.html");
+    String emptyPage = loadFixture("fixtures/realt/empty-listing-page.html");
+    when(restClient.get()).thenReturn(requestHeadersUriSpec);
+    when(requestHeadersUriSpec.uri(any(Function.class))).thenReturn(requestHeadersSpec);
+    when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
+    when(responseSpec.body(String.class)).thenReturn(pageWithNext, emptyPage);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then — one listing from the first page; empty second page stops pagination
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).externalId()).isEqualTo("44444444");
   }
 
   // -------------------------------------------------------------------------
