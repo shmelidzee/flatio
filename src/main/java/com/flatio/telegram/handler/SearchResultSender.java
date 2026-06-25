@@ -60,7 +60,7 @@ public class SearchResultSender {
   /** Callback data for going back to the previous page. */
   public static final String PAGE_PREV = "PAGE:PREV";
 
-  private static final int PAGE_SIZE = 5;
+  private static final int PAGE_SIZE = 3;
   private static final long SESSION_TTL_MINUTES = 30;
   private static final Duration SESSION_TTL = Duration.ofMinutes(SESSION_TTL_MINUTES);
 

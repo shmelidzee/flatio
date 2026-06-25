@@ -410,7 +410,7 @@ class SearchResultSenderTest {
 
   @SafeVarargs
   private static <T> Page<T> pageOf(T... items) {
-    return new PageImpl<>(List.of(items), PageRequest.of(0, 5), items.length);
+    return new PageImpl<>(List.of(items), PageRequest.of(0, 3), items.length);
   }
 
   private static CallbackQuery buildCallback(long userId, long chatId, int messageId) {
