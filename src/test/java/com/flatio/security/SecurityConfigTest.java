@@ -95,4 +95,21 @@ class SecurityConfigTest {
     mockMvc.perform(post("/some-random-unmapped-path"))
         .andExpect(status().isForbidden());
   }
+
+  @Test
+  void should_not_return_forbidden_when_posting_to_telegram_auth_endpoint_without_token() throws Exception {
+    // Given / When — /api/v1/auth/** must be reachable without a JWT, since it is where JWTs
+    // are issued. The request itself is rejected further downstream (401, invalid initData),
+    // but Spring Security must not block it with 403 before it reaches the controller.
+    // Then
+    mockMvc.perform(post("/api/v1/auth/telegram")
+            .contentType("application/json")
+            .content("{\"initData\":\"irrelevant\"}"))
+        .andExpect(result -> {
+          int status = result.getResponse().getStatus();
+          if (status == 403) {
+            throw new AssertionError("/api/v1/auth/telegram was rejected by Spring Security with 403 Forbidden");
+          }
+        });
+  }
 }

@@ -1,5 +1,6 @@
 package com.flatio.web.controller;
 
+import com.flatio.common.exception.InvalidTelegramAuthException;
 import com.flatio.common.exception.ListingNotFoundException;
 import com.flatio.web.dto.ErrorResponse;
 import com.flatio.web.dto.ValidationError;
@@ -29,6 +30,13 @@ public class GlobalExceptionHandler {
   public ErrorResponse handleListingNotFound(ListingNotFoundException ex, HttpServletRequest request) {
     log.warn("Resource not found on {}: {}", request.getRequestURI(), ex.getMessage());
     return buildError(HttpStatus.NOT_FOUND, ex.getMessage(), request.getRequestURI(), List.of());
+  }
+
+  @ExceptionHandler(InvalidTelegramAuthException.class)
+  @ResponseStatus(HttpStatus.UNAUTHORIZED)
+  public ErrorResponse handleInvalidTelegramAuth(InvalidTelegramAuthException ex, HttpServletRequest request) {
+    log.warn("Telegram initData validation failed on {}: {}", request.getRequestURI(), ex.getMessage());
+    return buildError(HttpStatus.UNAUTHORIZED, ex.getMessage(), request.getRequestURI(), List.of());
   }
 
   @ExceptionHandler(BindException.class)

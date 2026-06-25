@@ -81,8 +81,8 @@ com.flatio
 │   ├── ListingService             # interface (listing queries and management — M1.4)
 │   └── ListingServiceImpl         # placeholder (M1.4)
 ├── web/                 # REST controllers, DTOs, mappers
-│   ├── controller/      # (M1.4 — to be added)
-│   ├── dto/             # ListingResponse (19 fields + @Schema), ListingSummaryResponse (11 fields)
+│   ├── controller/      # ListingController (M1.4); AuthController — POST /api/v1/auth/telegram (#217)
+│   ├── dto/             # ListingResponse (19 fields + @Schema), ListingSummaryResponse (11 fields); TelegramAuthRequest, AuthResponse
 │   └── mapper/          # ListingMapper — MapStruct Listing ↔ ListingResponse / ListingSummaryResponse
 ├── integration/         # External source integrations
 │   ├── core/            # ListingConnector interface, RawListing record, RawListingMapper, ConnectorTransientException
@@ -104,7 +104,8 @@ com.flatio
 │   ├── JwtService       # Token generation and validation (HMAC-SHA256)
 │   ├── JwtAuthenticationFilter # OncePerRequestFilter — extracts Bearer token, populates SecurityContext
 │   ├── JwtProperties    # @ConfigurationProperties(prefix = "flatio.jwt"): secretKey, accessTokenExpiry
-│   └── SecurityConfig   # Spring Security filter chain: stateless, JWT-based, anyRequest().denyAll() (fail-closed)
+│   ├── TelegramInitDataValidator # validates Telegram WebApp initData (HMAC-SHA256, bot token as secret) — issue #217
+│   └── SecurityConfig   # Spring Security filter chain: stateless, JWT-based, /api/v1/auth/** permitAll (token issuance), anyRequest().denyAll() otherwise (fail-closed)
 └── util/                # Utilities
 ```
 
