@@ -53,7 +53,7 @@ class RealtConnectorTest {
         "https://realt.by",
         "REALT",
         "BY",
-        "/rent/flats/"
+        "/rent/flat-for-long/"
     );
     connector = new RealtConnector(restClient, properties);
   }
@@ -111,7 +111,7 @@ class RealtConnectorTest {
     assertThat(first.price()).isEqualByComparingTo(new BigDecimal("650"));
     assertThat(first.priceUsd()).isEqualByComparingTo(new BigDecimal("650"));
     assertThat(first.address()).isEqualTo("г. Минск, пр-т Независимости, 72");
-    assertThat(first.sourceUrl()).isEqualTo("https://realt.by/rent/flats/object/12345678/");
+    assertThat(first.sourceUrl()).isEqualTo("https://realt.by/rent/flat-for-long/object/12345678/");
     assertThat(first.photoUrls()).hasSize(1);
     assertThat(first.photoUrls().get(0)).isEqualTo("https://photo.realt.by/12/3456789.jpg");
   }

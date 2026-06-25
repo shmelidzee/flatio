@@ -64,7 +64,7 @@ connector:
     base-url: ${REALT_BASE_URL:https://realt.by}
     source-id: ${REALT_SOURCE_ID:REALT}
     region-code: ${REALT_REGION_CODE:BY}
-    listings-path: ${REALT_LISTINGS_PATH:/rent/flats/}
+    listings-path: ${REALT_LISTINGS_PATH:/rent/flat-for-long/}
 
 telegram:
   bot:
