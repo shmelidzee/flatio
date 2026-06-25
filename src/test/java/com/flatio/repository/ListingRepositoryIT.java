@@ -272,4 +272,43 @@ class ListingRepositoryIT {
     // Then
     assertThat(result).isEmpty();
   }
+
+  // -------------------------------------------------------------------------
+  // fullTextSearch — city is indexed in search_vector (#214)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_find_listing_by_city_keyword_when_city_not_mentioned_in_title_or_address() {
+    // Given — city is only in the dedicated `city` column, not in title/description/address
+    var listing = buildListing("ext-fts-city-1", ListingStatus.ACTIVE);
+    listing.setCity("Минск");
+    listingRepository.save(listing);
+    listingRepository.flush();
+
+    // When
+    var result = listingRepository.fullTextSearch(
+        "Минск", "russian", "ACTIVE", null, null, null, null, null, null, null, null, PageRequest.of(0, 10)
+    );
+
+    // Then
+    assertThat(result.getContent()).hasSize(1);
+    assertThat(result.getContent().get(0).getExternalId()).isEqualTo("ext-fts-city-1");
+  }
+
+  @Test
+  void should_not_find_listing_by_unrelated_city_keyword() {
+    // Given
+    var listing = buildListing("ext-fts-city-2", ListingStatus.ACTIVE);
+    listing.setCity("Минск");
+    listingRepository.save(listing);
+    listingRepository.flush();
+
+    // When — searching for a city this listing does not belong to
+    var result = listingRepository.fullTextSearch(
+        "Гомель", "russian", "ACTIVE", null, null, null, null, null, null, null, null, PageRequest.of(0, 10)
+    );
+
+    // Then
+    assertThat(result.getContent()).isEmpty();
+  }
 }
