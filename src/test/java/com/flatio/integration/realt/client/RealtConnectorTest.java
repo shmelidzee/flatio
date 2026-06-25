@@ -307,7 +307,7 @@ class RealtConnectorTest {
 
   @Test
   void should_throw_connector_transient_exception_when_429_received() {
-    // Given — Retry-After: 0 so test does not sleep
+    // Given
     var retryHeaders = new HttpHeaders();
     retryHeaders.set(HttpHeaders.RETRY_AFTER, "0");
     var exception = HttpClientErrorException.create(

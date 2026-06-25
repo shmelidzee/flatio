@@ -57,8 +57,11 @@ public class RealtConnector implements ListingConnector {
   private static final String TITLE_FALLBACK_SELECTOR = "p.text-headline";
   private static final String NEXT_PAGE_SELECTOR = "a[data-testid='nextBtn']";
 
-  // Extracts the numeric object ID from a path like /rent-flat-for-long/object/4154534/
-  private static final Pattern OBJECT_ID_PATTERN = Pattern.compile("object/(\\d+)/");
+  // Validates full relative path and extracts the numeric object ID.
+  // Using matches() (not find()) prevents protocol-relative or absolute URLs like //evil.com/object/1/
+  // from passing validation and being concatenated into sourceUrl.
+  private static final Pattern OBJECT_ID_PATTERN =
+      Pattern.compile("^/[a-zA-Z0-9/_-]+/object/(\\d+)/$");
 
   private final RestClient restClient;
   private final RealtProperties properties;
@@ -152,7 +155,9 @@ public class RealtConnector implements ListingConnector {
 
   private void safeAdd(List<RawListing> result, Element card) {
     Element cardLink = card.selectFirst(CARD_LINK_SELECTOR);
-    String hintId = cardLink != null ? cardLink.attr("href") : "unknown";
+    String hintId = cardLink != null
+        ? cardLink.attr("href").replaceAll("[\\r\\n\\t]", "_")
+        : "unknown";
     try {
       result.add(toRawListing(card));
     } catch (Exception e) {
@@ -168,8 +173,8 @@ public class RealtConnector implements ListingConnector {
 
     String href = cardLink.attr("href");
     Matcher idMatcher = OBJECT_ID_PATTERN.matcher(href);
-    if (!idMatcher.find()) {
-      throw new IllegalArgumentException("Cannot extract external ID from href: " + href);
+    if (!idMatcher.matches()) {
+      throw new IllegalArgumentException("Invalid or unsafe href format: " + href);
     }
     String externalId = idMatcher.group(1);
     String sourceUrl = properties.baseUrl() + href;
@@ -228,9 +233,8 @@ public class RealtConnector implements ListingConnector {
 
   private void handleRateLimit(HttpClientErrorException.TooManyRequests e) {
     long retryAfterSeconds = parseRetryAfterSeconds(e.getResponseHeaders());
-    log.warn("Rate limited by realt.by (429): source={}, retryAfterSeconds={}",
+    log.warn("Rate limited by realt.by (429): source={}, retryAfter={}s — Resilience4j will back off",
         properties.sourceId(), retryAfterSeconds);
-    sleepQuietly(retryAfterSeconds * 1_000L);
     throw new ConnectorTransientException("Rate limited: source=" + properties.sourceId(), e);
   }
 
@@ -249,11 +253,5 @@ public class RealtConnector implements ListingConnector {
     }
   }
 
-  private void sleepQuietly(long millis) {
-    try {
-      Thread.sleep(millis);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-    }
-  }
 }
+
