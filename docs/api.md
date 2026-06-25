@@ -26,6 +26,37 @@ Base URL: `/api/v1`
 
 ---
 
+## Auth
+
+### POST /api/v1/auth/telegram
+
+Публичный эндпоинт (не требует токена — это и есть точка его выдачи). Принимает
+`initData` из Telegram WebApp (`window.Telegram.WebApp.initData`), проверяет подпись и
+свежесть (`auth_date` не старше 24 часов) по алгоритму, описанному в
+[документации Telegram](https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app),
+находит или создаёт пользователя (как и `/start` в боте) и выдаёт JWT.
+
+**Тело запроса:**
+
+```json
+{ "initData": "query_id=AAH...&user=%7B%22id%22%3A123%7D&auth_date=1700000000&hash=abc123" }
+```
+
+**Ответ 200:**
+
+```json
+{ "accessToken": "eyJhbGciOiJIUzI1NiJ9...", "expiresIn": 3600 }
+```
+
+**Ошибки:**
+
+| Код | Описание |
+|-----|----------|
+| 400 | `initData` пустой или отсутствует в теле запроса |
+| 401 | Подпись `initData` невалидна или просрочена |
+
+---
+
 ## Listings
 
 ### GET /api/v1/listings
