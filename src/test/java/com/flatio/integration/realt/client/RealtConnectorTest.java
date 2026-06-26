@@ -1,5 +1,6 @@
 package com.flatio.integration.realt.client;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.flatio.integration.core.ConnectorTransientException;
 import com.flatio.integration.core.RawListing;
 import com.flatio.integration.realt.config.RealtProperties;
@@ -53,9 +54,10 @@ class RealtConnectorTest {
         "https://realt.by",
         "REALT",
         "BY",
-        "/rent/flat-for-long/"
+        "/rent/flat-for-long/",
+        "/rent-flat-for-long/object/"
     );
-    connector = new RealtConnector(restClient, properties);
+    connector = new RealtConnector(restClient, properties, new ObjectMapper());
   }
 
   // -------------------------------------------------------------------------
@@ -114,6 +116,13 @@ class RealtConnectorTest {
     assertThat(first.sourceUrl()).isEqualTo("https://realt.by/rent-flat-for-long/object/12345678/");
     assertThat(first.photoUrls()).hasSize(1);
     assertThat(first.photoUrls().get(0)).isEqualTo("https://cdn.realt.by/img/12/3456789.jpg");
+    assertThat(first.rooms()).isEqualTo(2);
+    assertThat(first.floorNumber()).isEqualTo(5);
+    assertThat(first.floorsTotal()).isEqualTo(9);
+    assertThat(first.areaTotalM2()).isEqualByComparingTo(new BigDecimal("58"));
+    assertThat(first.city()).isEqualTo("Минск");
+    assertThat(first.isOwner()).isTrue();
+    assertThat(first.publishedAt()).isNotNull();
   }
 
   @Test
@@ -133,16 +142,29 @@ class RealtConnectorTest {
   }
 
   @Test
-  void should_return_empty_photo_list_when_card_has_no_photo() throws IOException {
-    // Given — second listing in fixture has no photo img
+  void should_return_empty_photo_list_when_listing_has_no_images() throws IOException {
+    // Given — second listing in fixture has empty images array
     String html = loadFixture("fixtures/realt/valid-listing-page.html");
     mockRestClientReturning(html);
 
     // When
     List<RawListing> result = connector.fetch();
 
-    // Then — second listing has no photo, must return empty list (not null)
+    // Then — second listing has no photos, must return empty list (not null)
     assertThat(result.get(1).photoUrls()).isEmpty();
+  }
+
+  @Test
+  void should_use_fallback_title_when_both_title_and_headline_are_null() throws IOException {
+    // Given — second listing in fixture has null title and null headline
+    String html = loadFixture("fixtures/realt/valid-listing-page.html");
+    mockRestClientReturning(html);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then — falls back to FALLBACK_TITLE constant
+    assertThat(result.get(1).title()).isEqualTo("Квартира на Realt.by");
   }
 
   // -------------------------------------------------------------------------
@@ -150,8 +172,8 @@ class RealtConnectorTest {
   // -------------------------------------------------------------------------
 
   @Test
-  void should_return_empty_list_when_page_has_no_listing_cards() throws IOException {
-    // Given — HTML page without div[data-index] elements
+  void should_return_empty_list_when_page_has_no_listing_objects() throws IOException {
+    // Given — HTML page with __NEXT_DATA__ JSON containing empty objects array
     String html = loadFixture("fixtures/realt/empty-listing-page.html");
     mockRestClientReturning(html);
 
@@ -192,51 +214,51 @@ class RealtConnectorTest {
 
   @Test
   void should_skip_listing_without_price_and_return_valid_ones() throws IOException {
-    // Given — first listing valid, second has no price element
+    // Given — first listing valid, second has price=0 and is skipped
     String html = loadFixture("fixtures/realt/listing-page-without-price.html");
     mockRestClientReturning(html);
 
     // When
     List<RawListing> result = connector.fetch();
 
-    // Then — listing without price is skipped, valid listing returned
+    // Then — listing with zero price is skipped, valid listing returned
     assertThat(result).hasSize(1);
     assertThat(result.get(0).externalId()).isEqualTo("11111111");
   }
 
   @Test
   void should_skip_card_without_external_id_and_return_valid_ones() throws IOException {
-    // Given — first card valid, second has no card link so external ID cannot be extracted
+    // Given — first listing valid (code=33333333), second has code=0 so external ID cannot be extracted
     String html = loadFixture("fixtures/realt/listing-page-with-broken-card.html");
     mockRestClientReturning(html);
 
     // When
     List<RawListing> result = connector.fetch();
 
-    // Then — card without extractable ID is skipped, valid one returned
+    // Then — listing with invalid code is skipped, valid one returned
     assertThat(result).hasSize(1);
     assertThat(result.get(0).externalId()).isEqualTo("33333333");
   }
 
   @Test
   void should_not_throw_exception_when_single_card_is_broken() throws IOException {
-    // Given — page with one broken card among valid ones
+    // Given — page with one broken entry (code=0) among valid ones
     String html = loadFixture("fixtures/realt/listing-page-with-broken-card.html");
     mockRestClientReturning(html);
 
-    // When / Then — no exception propagated from the broken card
+    // When / Then — no exception propagated from the broken entry
     assertThatNoException().isThrownBy(() -> connector.fetch());
   }
 
   @Test
-  void should_return_empty_list_when_html_is_completely_broken() {
-    // Given — server returned non-HTML gibberish
-    mockRestClientReturning("<garbled>!!!</garbled>");
+  void should_return_empty_list_when_html_has_no_next_data_script() {
+    // Given — server returned HTML without __NEXT_DATA__ (no Next.js data)
+    mockRestClientReturning("<html><body>Service unavailable</body></html>");
 
     // When
     List<RawListing> result = connector.fetch();
 
-    // Then — Jsoup parses without throwing; no div[data-index] found → empty
+    // Then — no __NEXT_DATA__ found → empty list, no exception
     assertThat(result).isEmpty();
   }
 

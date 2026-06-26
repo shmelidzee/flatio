@@ -65,6 +65,7 @@ connector:
     source-id: ${REALT_SOURCE_ID:REALT}
     region-code: ${REALT_REGION_CODE:BY}
     listings-path: ${REALT_LISTINGS_PATH:/rent/flat-for-long/}
+    object-path-prefix: ${REALT_OBJECT_PATH_PREFIX:/rent-flat-for-long/object/}
 
 telegram:
   bot:

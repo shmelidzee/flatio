@@ -11,5 +11,6 @@ public record RealtProperties(
     String baseUrl,
     String sourceId,
     String regionCode,
-    String listingsPath
+    String listingsPath,
+    String objectPathPrefix
 ) {}

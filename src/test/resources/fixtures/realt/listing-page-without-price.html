@@ -5,56 +5,47 @@
   <title>Аренда квартир в Минске — Realt.by</title>
 </head>
 <body>
-<div class="-mx-1.5 sm:-mx-2.5 flex flex-wrap md:mb-[60px]">
-
-  <!-- valid listing -->
-  <div data-index="0">
-    <div class="sm:w-full w-full p-1.5 sm:p-2.5">
-      <div class="hover:shadow-10bottom overflow-hidden rounded-md">
-        <div class="bg-white flex flex-col md:flex-row relative">
-          <a aria-label="&quot;Ссылка на объект №11111111&quot;" class="z-1 absolute top-0 left-0 w-full h-full cursor-pointer" target="_blank" href="/rent-flat-for-long/object/11111111/"></a>
-          <div class="flex flex-col w-full h-full p-5">
-            <div class="-order-3 flex justify-between">
-              <div>
-                <div>
-                  <span class="md:mr-0 flex items-center mr-1">
-                    <span class="text-title font-semibold text-basic-900 bg-primary-300">400&nbsp;р./мес.</span>
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div class="w-full">
-              <div class="text-basic-900 overflow-hidden">
-                <p class="text-basic w-full text-subhead md:text-body">г. Минск, ул. Ленина, 10</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- listing without price — should be skipped -->
-  <div data-index="1">
-    <div class="sm:w-full w-full p-1.5 sm:p-2.5">
-      <div class="hover:shadow-10bottom overflow-hidden rounded-md">
-        <div class="bg-white flex flex-col md:flex-row relative">
-          <a aria-label="&quot;Ссылка на объект №22222222&quot;" class="z-1 absolute top-0 left-0 w-full h-full cursor-pointer" target="_blank" href="/rent-flat-for-long/object/22222222/"></a>
-          <div class="flex flex-col w-full h-full p-5">
-            <div class="-order-3 flex justify-between">
-              <!-- price span intentionally absent -->
-            </div>
-            <div class="w-full">
-              <div class="text-basic-900 overflow-hidden">
-                <p class="text-basic w-full text-subhead md:text-body">г. Минск, ул. Советская, 7</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-</div>
+<script id="__NEXT_DATA__" type="application/json">
+{
+  "props": {
+    "pageProps": {
+      "objects": [
+        {
+          "code": 11111111,
+          "title": "Квартира в Минске",
+          "headline": null,
+          "price": 400,
+          "priceCurrency": 840,
+          "address": "г. Минск, ул. Ленина, 10",
+          "townName": "Минск",
+          "images": [],
+          "rooms": 1,
+          "storey": 3,
+          "storeys": 9,
+          "areaTotal": 35,
+          "companyUuid": null,
+          "createdAt": null
+        },
+        {
+          "code": 22222222,
+          "title": "Квартира без цены",
+          "headline": null,
+          "price": 0,
+          "priceCurrency": 840,
+          "address": "г. Минск, ул. Советская, 7",
+          "townName": "Минск",
+          "images": [],
+          "rooms": 1,
+          "storey": 2,
+          "storeys": 5,
+          "areaTotal": 30,
+          "companyUuid": null,
+          "createdAt": null
+        }
+      ]
+    }
+  }
+}
+</script>
 </body>
 </html>
