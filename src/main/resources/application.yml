@@ -60,6 +60,12 @@ connector:
     region-code: ${ONLINER_SALE_REGION_CODE:BY}
     apartments-path: /search/apartments
     page-size: 50
+  realt:
+    base-url: ${REALT_BASE_URL:https://realt.by}
+    source-id: ${REALT_SOURCE_ID:REALT}
+    region-code: ${REALT_REGION_CODE:BY}
+    listings-path: ${REALT_LISTINGS_PATH:/rent/flat-for-long/}
+    object-path-prefix: ${REALT_OBJECT_PATH_PREFIX:/rent-flat-for-long/object/}
 
 telegram:
   bot:
@@ -127,6 +133,10 @@ resilience4j:
         limit-for-period: 1
         limit-refresh-period: 1s
         timeout-duration: 5s
+      connector-realt:
+        limit-for-period: 1
+        limit-refresh-period: 2s
+        timeout-duration: 5s
       nominatim:
         limit-for-period: 1
         limit-refresh-period: 1s
@@ -169,6 +179,17 @@ resilience4j:
           - com.flatio.integration.core.ConnectorTransientException
         ignore-exceptions:
           - io.github.resilience4j.circuitbreaker.CallNotPermittedException
+      connector-realt:
+        max-attempts: 3
+        wait-duration: 2s
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - org.springframework.web.client.HttpServerErrorException
+          - org.springframework.web.client.ResourceAccessException
+          - com.flatio.integration.core.ConnectorTransientException
+        ignore-exceptions:
+          - io.github.resilience4j.circuitbreaker.CallNotPermittedException
   circuitbreaker:
     instances:
       connector-onliner:
@@ -180,6 +201,14 @@ resilience4j:
         automatic-transition-from-open-to-half-open-enabled: true
         permitted-number-of-calls-in-half-open-state: 1
       connector-onliner-sale:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 5
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 100
+        wait-duration-in-open-state: 60s
+        automatic-transition-from-open-to-half-open-enabled: true
+        permitted-number-of-calls-in-half-open-state: 1
+      connector-realt:
         sliding-window-type: COUNT_BASED
         sliding-window-size: 5
         minimum-number-of-calls: 5

@@ -52,14 +52,15 @@ class SourceRepositoryIT {
 
   @Test
   void should_return_active_sources_for_country_code() {
-    // Given — V3 seeds ONLINER, V28 seeds ONLINER_SALE, both active for BY
+    // Given — V3 seeds ONLINER, V28 seeds ONLINER_SALE, V31 seeds REALT, all active for BY
 
     // When
     var result = sourceRepository.findActiveByCountryCode("BY");
 
     // Then
-    assertThat(result).hasSize(2);
-    assertThat(result).extracting(Source::getCode).containsExactlyInAnyOrder("ONLINER", "ONLINER_SALE");
+    assertThat(result).hasSize(3);
+    assertThat(result).extracting(Source::getCode)
+        .containsExactlyInAnyOrder("ONLINER", "ONLINER_SALE", "REALT");
   }
 
   @Test
@@ -88,15 +89,16 @@ class SourceRepositoryIT {
     // When
     var result = sourceRepository.findActiveByCountryCode("BY");
 
-    // Then — Onliner and Onliner Sale (active), not Kufar (inactive)
-    assertThat(result).hasSize(2);
-    assertThat(result).extracting(Source::getCode).containsExactlyInAnyOrder("ONLINER", "ONLINER_SALE");
+    // Then — Onliner, Onliner Sale and Realt (active), not Kufar (inactive)
+    assertThat(result).hasSize(3);
+    assertThat(result).extracting(Source::getCode)
+        .containsExactlyInAnyOrder("ONLINER", "ONLINER_SALE", "REALT");
   }
 
   @Test
   void should_return_empty_when_source_code_not_found() {
-    // Given
-    var nonExistentCode = "REALT";
+    // Given — KUFAR has not been seeded in any migration
+    var nonExistentCode = "KUFAR";
 
     // When
     var result = sourceRepository.findByCode(nonExistentCode);

@@ -25,6 +25,7 @@ repositories {
   mavenCentral()
 }
 
+val jsoupVersion = "1.17.2"
 val mapstructVersion = "1.5.5.Final"
 val resilience4jVersion = "2.2.0"
 val testcontainersVersion = "1.19.7"
@@ -58,6 +59,7 @@ dependencies {
   implementation("org.telegram:telegrambots-springboot-webhook-starter:$telegramBotsVersion")
   implementation("org.telegram:telegrambots-client:$telegramBotsVersion")
 
+  implementation("org.jsoup:jsoup:$jsoupVersion")
   implementation("org.mapstruct:mapstruct:$mapstructVersion")
   annotationProcessor("org.mapstruct:mapstruct-processor:$mapstructVersion")
 
