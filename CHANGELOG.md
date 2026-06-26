@@ -8,6 +8,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **PR #226 — RealtFullSyncJob: ежедневный полный обход realt.by (issue #225)**
+  - `RealtFullSyncJob` (`com.flatio.integration.realt.scheduler`) — ежедневный полный синк по образцу
+    `OnlinerFullSyncJob`; `@Scheduled(cron = "${flatio.sync.realt.full.cron}")` — запуск в 04:00
+    (после Onliner 02:00 / OnlinerSale 03:00)
+  - `@EventListener(ApplicationReadyEvent.class)` — при старте запускает полный синк если БД пуста по источнику REALT
+  - Пустой `fetch()` → деактивация пропускается (защита от массового удаления при временной недоступности источника)
+  - `SyncRunService.record()` фиксирует SUCCESS / FAILURE с полными счётчиками и длительностью
+  - `CallNotPermittedException` от circuit breaker — `log.warn`, не пробрасывается
+  - `application.yml` — `flatio.sync.realt.full.cron: ${FLATIO_SYNC_REALT_FULL_CRON:0 0 4 * * *}`
+  - `RealtFullSyncJobTest` — 10 unit-тестов (startup: пустая БД / непустая БД / исключение;
+    scheduled: happy path / пустой fetch / deactivation; изоляция ошибок: source not found / fetch throws / CB open;
+    запись результатов: SUCCESS / FAILURE)
+
 - **PR #224 — RealtConnector: парсер объявлений realt.by через __NEXT_DATA__ JSON (issue #42)**
   - `RealtConnector` (`com.flatio.integration.realt.client`) — коннектор для Realt.by (Next.js SSR);
     данные извлекаются из `<script id="__NEXT_DATA__" type="application/json">`, а не из HTML-разметки;
