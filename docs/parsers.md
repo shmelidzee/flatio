@@ -8,15 +8,17 @@ Each connector is an independent Spring `@Service` implementing `com.flatio.inte
 ## Architecture
 
 ```
-OnlinerDeltaSyncJob (every 10 min)    OnlinerFullSyncJob (daily 02:00)
-  ↓                                       ↓
-ListingConnector.fetchDelta(since)    ListingConnector.fetchAll()
-  ↓                                       ↓
-  ←── @RateLimiter + @Retry + @CircuitBreaker ──→
-  ↓                                       ↓
-List<RawListing>              ←── never raw HTML ──→
+OnlinerDeltaSyncJob (every 10 min)    OnlinerFullSyncJob (daily 02:00)    RealtFullSyncJob (daily 04:00)
+  ↓                                       ↓                                    ↓
+ListingConnector.fetchDelta(since)    ListingConnector.fetchAll()         RealtConnector.fetch()
+  ↓                                       ↓                                    ↓
+  ←────────────── @RateLimiter + @Retry + @CircuitBreaker ──────────────────→
+  ↓                                       ↓                                    ↓
+List<RawListing>                     ←── never raw HTML ──→
   ↓
 ListingIngestionService (dedup + persist)
+  ↓
+SyncRunService (record SUCCESS / FAILURE)
 ```
 
 All connectors share the same contract — see `docs/architecture.md`, section **Connector Contract**.
@@ -258,6 +260,27 @@ resilience4j:
 | `photoUrls` | `images` | Array of CDN URLs; `List.of()` when field absent |
 | `isOwner` | `companyUuid` | `null` when field missing; `true` when JSON null (private owner); `false` when UUID present (agency) |
 | `priceUnit` | — | Always `null` |
+
+### Scheduler (`RealtFullSyncJob`)
+
+**Package:** `com.flatio.integration.realt.scheduler`
+
+| Trigger | Schedule | Behaviour |
+|---------|----------|-----------|
+| `@Scheduled` | `${flatio.sync.realt.full.cron}` (default `0 0 4 * * *`) | Daily full crawl — all pages |
+| `@EventListener(ApplicationReadyEvent)` | On startup | Runs immediately if DB has 0 listings for source REALT |
+
+- Empty `fetch()` response → deactivation skipped (prevents mass-deactivation on source downtime)
+- `CallNotPermittedException` → `log.warn`, not propagated
+- `SyncRunService.record()` always called on completion (SUCCESS or FAILURE)
+
+```yaml
+flatio:
+  sync:
+    realt:
+      full:
+        cron: ${FLATIO_SYNC_REALT_FULL_CRON:0 0 4 * * *}
+```
 
 ### Error handling
 
