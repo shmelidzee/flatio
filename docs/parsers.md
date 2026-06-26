@@ -265,6 +265,9 @@ resilience4j:
 - **HTTP 429 Too Many Requests:** `Retry-After` header is read, `ConnectorTransientException` is thrown to trigger retry
 - **HTTP 4xx (non-429):** logged at ERROR, returns `List.of()` without retry
 - **`__NEXT_DATA__` missing or unparseable:** `log.warn` / `log.error`, returns `List.of()` without retry
+- **`__NEXT_DATA__` exceeds 5 MB:** `log.error` + returns `List.of()` — OOM guard before `objectMapper.readTree()`
+- **Photo URLs:** filtered by `isSafeImageUrl()` — only `https://` scheme with non-empty host accepted; protects against SSRF via crafted CDN URLs
+- **Log injection:** `code` field and `createdAt` strings sanitized with `.replaceAll("[\r\n\t]", "_")` before logging
 - **Single broken listing** (e.g., `code: 0`, `price: 0`): skipped with `log.warn`, rest are processed
 
 ### Test coverage
@@ -299,6 +302,10 @@ Fixtures: `src/test/resources/fixtures/realt/`
 | `should_return_parsed_retry_after_when_header_contains_valid_seconds` | Retry-After: valid value |
 | `should_cap_retry_after_at_60_seconds_when_header_exceeds_maximum` | Retry-After: cap at 60s |
 | `should_return_default_retry_after_when_header_is_not_numeric` | Retry-After: non-numeric |
+| `should_return_null_is_owner_when_company_uuid_field_is_absent` | `companyUuid` MissingNode → `isOwner = null` |
+| `should_return_false_is_owner_when_company_uuid_is_present` | `companyUuid` UUID string → `isOwner = false` |
+| `should_filter_out_non_https_photo_urls` | SSRF guard: non-`https://` URLs excluded from `photoUrls` |
+| `should_return_empty_list_when_next_data_exceeds_size_limit` | OOM guard: `__NEXT_DATA__` > 5 MB → `List.of()` |
 
 ---
 

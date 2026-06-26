@@ -7,6 +7,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **PR #224 — RealtConnector: парсер объявлений realt.by через __NEXT_DATA__ JSON (issue #42)**
+  - `RealtConnector` (`com.flatio.integration.realt.client`) — коннектор для Realt.by (Next.js SSR);
+    данные извлекаются из `<script id="__NEXT_DATA__" type="application/json">`, а не из HTML-разметки;
+    пагинация через `a[data-testid='nextBtn']`; ограничение `MAX_PAGES = 100` страниц за один запуск
+  - `RealtProperties` — `@ConfigurationProperties(prefix = "connector.realt")`: `baseUrl`, `sourceId`,
+    `regionCode`, `listingsPath`, `objectPathPrefix`
+  - `RealtClientConfig` — `@Bean("realtRestClient")` с Chrome User-Agent, connect timeout 5s, read timeout 10s
+  - Цена из JSON `price` (USD, `priceCurrency=840` → `"USD"`); `companyUuid` → `isOwner`: `null` — поле
+    отсутствует (field missing), JSON null → `true` (private owner), UUID-строка → `false` (агентство)
+  - Resilience4j: rate limiter 1 req/2s, retry 3 попытки (2s→4s→8s), circuit breaker (5 сбоев, 60s)
+  - Защита: `isSafeImageUrl()` — SSRF guard (только `https://` схемы с непустым хостом для фото);
+    `MAX_NEXT_DATA_SIZE = 5 MB` — OOM guard до `objectMapper.readTree()`;
+    `.replaceAll("[\r\n\t]", "_")` на внешних данных в логах — защита от log injection
+  - Flyway V31 — запись источника `REALT` в таблице `sources`
+  - `RealtConnectorTest` — 29 unit-тестов; фикстуры: `src/test/resources/fixtures/realt/`
+
 ### Security
 - **PR #220 — Rate limiting для публичных/аутентифицированных REST-эндпоинтов (issue #219)**
   - `RateLimitFilter` (новый) — `OncePerRequestFilter`, лимитирует `/api/v1/**` по вызывающей стороне:
