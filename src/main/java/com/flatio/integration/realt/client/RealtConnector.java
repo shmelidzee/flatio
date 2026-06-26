@@ -50,6 +50,10 @@ public class RealtConnector implements ListingConnector {
   private static final String DEAL_TYPE_RENT = "RENT";
   private static final String PROPERTY_TYPE_APARTMENT = "APARTMENT";
   private static final String FALLBACK_TITLE = "Квартира на Realt.by";
+  private static final String CURRENCY_USD = "USD";
+  private static final String CURRENCY_BYN = "BYN";
+  // ISO 4217 numeric code for BYN (Belarusian Ruble); realt.by uses 840 (USD) for most listings.
+  private static final int ISO_CURRENCY_BYN = 933;
 
   // Selects the embedded Next.js JSON script; all listing fields are read from it.
   private static final String NEXT_DATA_SELECTOR = "script#__NEXT_DATA__";
@@ -185,17 +189,19 @@ public class RealtConnector implements ListingConnector {
     String externalId = extractExternalId(obj);
     BigDecimal price = extractPrice(obj, externalId);
     String title = extractTitle(obj);
+    String currency = resolveCurrency(obj);
+    BigDecimal priceUsd = CURRENCY_USD.equals(currency) ? price : null;
     String address = Optional.ofNullable(obj.path("address").textValue())
         .filter(t -> !t.isBlank())
         .orElse(null);
     String city = obj.path("townName").textValue();
     Instant publishedAt = parseInstant(obj.path("createdAt").textValue(), externalId);
-    Boolean isOwner = obj.path("companyUuid").isNull();
+    Boolean isOwner = extractIsOwner(obj);
 
     return new RawListing(
         externalId, title, null,
         DEAL_TYPE_RENT, PROPERTY_TYPE_APARTMENT,
-        price, "BYN", null,
+        price, currency, priceUsd,
         jsonIntOrNull(obj, "rooms"),
         jsonIntOrNull(obj, "storey"),
         jsonIntOrNull(obj, "storeys"),
@@ -206,6 +212,18 @@ public class RealtConnector implements ListingConnector {
         extractPhotos(obj),
         isOwner, null
     );
+  }
+
+  private String resolveCurrency(JsonNode obj) {
+    return obj.path("priceCurrency").asInt(0) == ISO_CURRENCY_BYN ? CURRENCY_BYN : CURRENCY_USD;
+  }
+
+  private Boolean extractIsOwner(JsonNode obj) {
+    JsonNode companyNode = obj.path("companyUuid");
+    if (companyNode.isMissingNode()) {
+      return null;
+    }
+    return companyNode.isNull();
   }
 
   private String extractExternalId(JsonNode obj) {

@@ -166,6 +166,142 @@ Fixtures: `src/test/resources/fixtures/onliner/`
 
 ---
 
+## RealtConnector
+
+**Source:** Realt.by (SSR HTML with embedded `__NEXT_DATA__` JSON)
+**Region:** BY (Belarus)
+**Package:** `com.flatio.integration.realt.client`
+**Endpoint:** `GET {baseUrl}{listingsPath}?page={n}` — paginated listing pages
+
+### How data is extracted
+
+Realt.by is a Next.js application. Each SSR page embeds a `<script id="__NEXT_DATA__" type="application/json">` tag containing the full listing payload in `props.pageProps.objects`. The connector extracts this JSON using Jsoup (`script#__NEXT_DATA__`), parses it with Jackson, and maps each object in the array to a `RawListing`. HTML is only used to detect the next page link (`a[data-testid='nextBtn']`). No raw HTML is stored.
+
+**Note:** The JSON `price` field is in USD (ISO 4217 code 840). The site displays BYN prices (converted client-side), but the canonical data source is USD.
+
+### Configuration (`application.yml`)
+
+```yaml
+connector:
+  realt:
+    base-url: ${REALT_BASE_URL:https://realt.by}
+    source-id: ${REALT_SOURCE_ID:REALT}
+    region-code: ${REALT_REGION_CODE:BY}
+    listings-path: ${REALT_LISTINGS_PATH:/rent/flat-for-long/}
+    object-path-prefix: ${REALT_OBJECT_PATH_PREFIX:/rent-flat-for-long/object/}
+```
+
+### Resilience4j config
+
+```yaml
+resilience4j:
+  ratelimiter:
+    instances:
+      connector-realt:
+        limit-for-period: 1
+        limit-refresh-period: 2s
+        timeout-duration: 5s
+  retry:
+    instances:
+      connector-realt:
+        max-attempts: 3
+        wait-duration: 2s
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+  circuitbreaker:
+    instances:
+      connector-realt:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 5
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 100
+        wait-duration-in-open-state: 60s
+```
+
+**Aspect order:** `@RateLimiter` (outermost) → `@CircuitBreaker` → `@Retry` (innermost with fallback).
+
+- **Rate limiter:** 1 request per 2 seconds.
+- **Retry:** 3 attempts with exponential backoff 2s → 4s → 8s.
+- **Circuit breaker:** opens after 5 consecutive failures; stays open 60s.
+- **Fallback:** `fetchFallback(Exception e)` — returns `List.of()`.
+
+### HTTP client (`RealtClientConfig`)
+
+`RestClient` bean `"realtRestClient"` configured with:
+- Base URL from `RealtProperties`
+- `User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36`
+- Connect timeout: **5 seconds**
+- Read timeout: **10 seconds**
+
+### RawListing field mapping
+
+| `RawListing` field | JSON field (`__NEXT_DATA__`) | Notes |
+|--------------------|------------------------------|-------|
+| `externalId` | `code` | Integer → String |
+| `title` | `title` → `headline` fallback | Stripped; final fallback: `"Квартира на Realt.by"` |
+| `description` | — | Always `null` |
+| `dealType` | — | Always `"RENT"` |
+| `propertyType` | — | Always `"APARTMENT"` |
+| `price` | `price` | USD amount (see note above) |
+| `currency` | `priceCurrency` | ISO 4217: `840` → `"USD"`; `933` → `"BYN"` |
+| `priceUsd` | `price` | Same as `price` when `currency = "USD"`; `null` otherwise |
+| `rooms` | `rooms` | nullable |
+| `floorNumber` | `storey` | nullable |
+| `floorsTotal` | `storeys` | nullable |
+| `areaTotalM2` | `areaTotal` | nullable |
+| `address` | `address` | nullable |
+| `latitude` | — | Always `null` (not in `__NEXT_DATA__`) |
+| `longitude` | — | Always `null` (not in `__NEXT_DATA__`) |
+| `city` | `townName` | nullable |
+| `sourceUrl` | Constructed | `baseUrl + objectPathPrefix + code + "/"` |
+| `publishedAt` | `createdAt` | ISO-8601 with offset → `Instant`; `null` when absent |
+| `photoUrls` | `images` | Array of CDN URLs; `List.of()` when field absent |
+| `isOwner` | `companyUuid` | `null` when field missing; `true` when JSON null (private owner); `false` when UUID present (agency) |
+| `priceUnit` | — | Always `null` |
+
+### Error handling
+
+- **HTTP 5xx / network failure:** propagates from `fetch()`, `@Retry` triggers; after 3 failures `fetchFallback` returns `List.of()`
+- **HTTP 429 Too Many Requests:** `Retry-After` header is read, `ConnectorTransientException` is thrown to trigger retry
+- **HTTP 4xx (non-429):** logged at ERROR, returns `List.of()` without retry
+- **`__NEXT_DATA__` missing or unparseable:** `log.warn` / `log.error`, returns `List.of()` without retry
+- **Single broken listing** (e.g., `code: 0`, `price: 0`): skipped with `log.warn`, rest are processed
+
+### Test coverage
+
+File: `src/test/java/com/flatio/integration/realt/client/RealtConnectorTest.java`
+Fixtures: `src/test/resources/fixtures/realt/`
+
+| Test | Scenario |
+|------|----------|
+| `should_return_listings_when_valid_html_fixture_provided` | Happy path — 2 listings mapped |
+| `should_return_source_id_and_region_from_properties` | No hard-coded values |
+| `should_map_all_required_fields_when_valid_card_parsed` | Full field mapping including photos, rooms, floor, area, city, isOwner, publishedAt |
+| `should_set_currency_to_usd_and_price_usd_to_same_value_when_price_currency_is_840` | USD pricing (priceCurrency=840) |
+| `should_return_empty_photo_list_when_listing_has_no_images` | Empty `images` array |
+| `should_use_fallback_title_when_both_title_and_headline_are_null` | Title fallback |
+| `should_return_empty_list_when_page_has_no_listing_objects` | Empty objects array |
+| `should_return_empty_list_when_response_is_null` | Null body |
+| `should_return_empty_list_when_response_is_blank_string` | Blank body |
+| `should_skip_listing_without_price_and_return_valid_ones` | Per-listing error isolation (price=0) |
+| `should_skip_card_without_external_id_and_return_valid_ones` | Per-listing error isolation (code=0) |
+| `should_not_throw_exception_when_single_card_is_broken` | Exception isolation |
+| `should_return_empty_list_when_html_has_no_next_data_script` | Missing `__NEXT_DATA__` |
+| `should_return_empty_list_when_fallback_is_invoked_after_exhausted_retries` | Fallback safety |
+| `should_not_throw_from_fallback_method` | Fallback never throws |
+| `should_stop_pagination_when_no_next_page_link_in_html` | Pagination stop condition |
+| `should_fetch_second_page_when_first_page_has_next_link` | Multi-page fetch |
+| `should_throw_connector_transient_exception_when_429_received` | HTTP 429 |
+| `should_return_empty_list_when_non_retryable_4xx_received` | HTTP 4xx (non-429) |
+| `should_propagate_server_exception_when_5xx_received` | HTTP 5xx propagates |
+| `should_return_default_retry_after_when_headers_are_null` | Retry-After: null headers |
+| `should_return_default_retry_after_when_header_is_absent` | Retry-After: header absent |
+| `should_return_parsed_retry_after_when_header_contains_valid_seconds` | Retry-After: valid value |
+| `should_cap_retry_after_at_60_seconds_when_header_exceeds_maximum` | Retry-After: cap at 60s |
+| `should_return_default_retry_after_when_header_is_not_numeric` | Retry-After: non-numeric |
+
+---
+
 ## Adding a New Connector
 
 1. Create package `com.flatio.integration.{source}` with sub-packages `client`, `config`, `dto`
