@@ -263,6 +263,88 @@ class RealtConnectorTest {
   }
 
   // -------------------------------------------------------------------------
+  // isOwner extraction
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_return_null_is_owner_when_company_uuid_field_is_absent() {
+    // Given — JSON with no companyUuid field at all
+    String html = buildPageWithSingleListing(
+        "{\"code\":55555555,\"title\":\"Test\",\"price\":500,\"priceCurrency\":840,\"images\":[]}");
+    mockRestClientReturning(html);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then — MissingNode → isOwner must be null (field not present in response)
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).isOwner()).isNull();
+  }
+
+  @Test
+  void should_return_false_is_owner_when_company_uuid_is_present() {
+    // Given — listing belongs to an agency (companyUuid is a non-null UUID string)
+    String html = buildPageWithSingleListing(
+        "{\"code\":66666666,\"title\":\"Agency flat\",\"price\":600,\"priceCurrency\":840,"
+            + "\"companyUuid\":\"abc-123-def-456\",\"images\":[]}");
+    mockRestClientReturning(html);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then — companyUuid present and non-null → isOwner = false (agency listing)
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).isOwner()).isFalse();
+  }
+
+  // -------------------------------------------------------------------------
+  // Photo URL security — SSRF guard
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_filter_out_non_https_photo_urls() {
+    // Given — listing images array with one safe and three unsafe URLs
+    String html = buildPageWithSingleListing(
+        "{\"code\":77777777,\"title\":\"Test\",\"price\":500,\"priceCurrency\":840,"
+            + "\"companyUuid\":null,"
+            + "\"images\":["
+            + "  \"https://cdn.realt.by/img/valid.jpg\","
+            + "  \"http://cdn.realt.by/img/insecure.jpg\","
+            + "  \"javascript:alert(1)\","
+            + "  \"data:image/png;base64,abc\""
+            + "]}");
+    mockRestClientReturning(html);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then — only the https URL passes the safe-image check
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).photoUrls()).containsExactly("https://cdn.realt.by/img/valid.jpg");
+  }
+
+  // -------------------------------------------------------------------------
+  // Size limit guard — OOM protection
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_return_empty_list_when_next_data_exceeds_size_limit() {
+    // Given — __NEXT_DATA__ payload larger than MAX_NEXT_DATA_SIZE (5 MB)
+    String oversizedJson = "{\"props\":{\"pageProps\":{\"objects\":[{\"x\":\""
+        + "a".repeat(6 * 1024 * 1024)
+        + "\"}]}}}";
+    String html = "<html><body><script id=\"__NEXT_DATA__\" type=\"application/json\">"
+        + oversizedJson + "</script></body></html>";
+    mockRestClientReturning(html);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then — oversized payload rejected before parsing, empty result, no exception
+    assertThat(result).isEmpty();
+  }
+
+  // -------------------------------------------------------------------------
   // Fallback — exhausted retries
   // -------------------------------------------------------------------------
 
@@ -449,6 +531,12 @@ class RealtConnectorTest {
     when(requestHeadersUriSpec.uri(any(Function.class))).thenReturn(requestHeadersSpec);
     when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
     when(responseSpec.body(String.class)).thenThrow(exception);
+  }
+
+  private String buildPageWithSingleListing(String listingJson) {
+    return "<html><body><script id=\"__NEXT_DATA__\" type=\"application/json\">"
+        + "{\"props\":{\"pageProps\":{\"objects\":[" + listingJson + "]}}}"
+        + "</script></body></html>";
   }
 
   private String loadFixture(String path) throws IOException {

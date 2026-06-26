@@ -21,6 +21,7 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
 import java.math.BigDecimal;
+import java.net.URI;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
@@ -54,6 +55,9 @@ public class RealtConnector implements ListingConnector {
   private static final String CURRENCY_BYN = "BYN";
   // ISO 4217 numeric code for BYN (Belarusian Ruble); realt.by uses 840 (USD) for most listings.
   private static final int ISO_CURRENCY_BYN = 933;
+
+  // Guard against OOM if a response embeds unexpectedly large payloads.
+  private static final int MAX_NEXT_DATA_SIZE = 5 * 1_024 * 1_024;
 
   // Selects the embedded Next.js JSON script; all listing fields are read from it.
   private static final String NEXT_DATA_SELECTOR = "script#__NEXT_DATA__";
@@ -160,8 +164,13 @@ public class RealtConnector implements ListingConnector {
       log.warn("__NEXT_DATA__ script not found on page: source={}", properties.sourceId());
       return List.of();
     }
+    String data = scriptEl.data();
+    if (data.length() > MAX_NEXT_DATA_SIZE) {
+      log.error("__NEXT_DATA__ exceeds size limit: size={}, source={}", data.length(), properties.sourceId());
+      return List.of();
+    }
     try {
-      JsonNode objects = objectMapper.readTree(scriptEl.data()).at(JSON_OBJECTS_PATH);
+      JsonNode objects = objectMapper.readTree(data).at(JSON_OBJECTS_PATH);
       if (!objects.isArray() || objects.isEmpty()) {
         return List.of();
       }
@@ -177,7 +186,7 @@ public class RealtConnector implements ListingConnector {
   }
 
   private void safeAddFromJson(List<RawListing> result, JsonNode obj) {
-    String hint = obj.path("code").asText("unknown");
+    String hint = obj.path("code").asText("unknown").replaceAll("[\r\n\t]", "_");
     try {
       result.add(toRawListing(obj));
     } catch (Exception e) {
@@ -259,11 +268,25 @@ public class RealtConnector implements ListingConnector {
     List<String> photos = new ArrayList<>();
     for (JsonNode img : imagesNode) {
       String url = img.asText();
-      if (!url.isBlank()) {
+      if (isSafeImageUrl(url)) {
         photos.add(url);
       }
     }
     return List.copyOf(photos);
+  }
+
+  private boolean isSafeImageUrl(String url) {
+    if (url == null || url.isBlank()) {
+      return false;
+    }
+    try {
+      URI uri = URI.create(url);
+      return "https".equalsIgnoreCase(uri.getScheme())
+          && uri.getHost() != null
+          && !uri.getHost().isBlank();
+    } catch (IllegalArgumentException e) {
+      return false;
+    }
   }
 
   private Integer jsonIntOrNull(JsonNode obj, String fieldName) {
@@ -283,7 +306,8 @@ public class RealtConnector implements ListingConnector {
     try {
       return OffsetDateTime.parse(dateTimeStr).toInstant();
     } catch (DateTimeParseException e) {
-      log.debug("Cannot parse createdAt={} for listing code={}", dateTimeStr, externalId);
+      log.debug("Cannot parse createdAt={} for listing code={}",
+          dateTimeStr.replaceAll("[\r\n\t]", "_"), externalId);
       return null;
     }
   }
