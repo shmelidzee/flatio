@@ -4,8 +4,8 @@ import com.flatio.domain.source.Source;
 import com.flatio.domain.source.SyncType;
 import com.flatio.integration.core.RawListing;
 import com.flatio.integration.realt.client.RealtSaleConnector;
-import com.flatio.repository.SourceRepository;
 import com.flatio.service.ListingIngestionService;
+import com.flatio.service.SourceService;
 import com.flatio.service.SyncRunService;
 import com.flatio.service.domain.BatchIngestResult;
 import com.flatio.service.domain.SyncRunRequest;
@@ -16,9 +16,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataAccessException;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -41,21 +39,30 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @Slf4j
-@RequiredArgsConstructor
 public class RealtSaleDeltaSyncJob {
 
   private final RealtSaleConnector realtSaleConnector;
-  private final SourceRepository sourceRepository;
+  private final SourceService sourceService;
   private final ListingIngestionService listingIngestionService;
   private final SyncRunService syncRunService;
-
   /**
-   * Injected lazily to avoid circular-dependency issues; null-safe usage via {@link #fullSyncIsRunning()}.
-   * Used to skip the full-sync fallback when {@link RealtSaleFullSyncJob} is still executing.
+   * Injected lazily via constructor parameter to break the circular dependency with
+   * {@link RealtSaleFullSyncJob}. Spring creates a proxy on first access instead of at startup.
    */
-  @Lazy
-  @Autowired
-  private RealtSaleFullSyncJob realtSaleFullSyncJob;
+  private final RealtSaleFullSyncJob realtSaleFullSyncJob;
+
+  public RealtSaleDeltaSyncJob(
+      RealtSaleConnector realtSaleConnector,
+      SourceService sourceService,
+      ListingIngestionService listingIngestionService,
+      SyncRunService syncRunService,
+      @Lazy RealtSaleFullSyncJob realtSaleFullSyncJob) {
+    this.realtSaleConnector = realtSaleConnector;
+    this.sourceService = sourceService;
+    this.listingIngestionService = listingIngestionService;
+    this.syncRunService = syncRunService;
+    this.realtSaleFullSyncJob = realtSaleFullSyncJob;
+  }
 
   /**
    * Determines sync mode from the last successful run and fetches accordingly.
@@ -67,15 +74,13 @@ public class RealtSaleDeltaSyncJob {
   public void runDeltaSync() {
     Instant runStart = Instant.now();
     try {
-      Source source = sourceRepository.findByCode(realtSaleConnector.getSourceId())
-          .orElseThrow(() -> new IllegalStateException(
-              "Source not registered in DB: " + realtSaleConnector.getSourceId()));
+      Source source = sourceService.findByCodeOrThrow(realtSaleConnector.getSourceId());
 
       Optional<Instant> lastRunAt = syncRunService.findLastSuccessfulRunAt(realtSaleConnector.getSourceId());
 
       if (lastRunAt.isPresent()) {
         performDeltaSync(source, lastRunAt.get(), runStart);
-      } else if (fullSyncIsRunning()) {
+      } else if (realtSaleFullSyncJob.isRunning()) {
         log.info("RealtSale delta sync: FullSyncJob is already running, skipping fallback: source={}",
             realtSaleConnector.getSourceId());
       } else {
@@ -93,10 +98,6 @@ public class RealtSaleDeltaSyncJob {
       syncRunService.record(SyncRunRequest.failure(
           realtSaleConnector.getSourceId(), SyncType.DELTA, runStart, Instant.now()));
     }
-  }
-
-  private boolean fullSyncIsRunning() {
-    return realtSaleFullSyncJob != null && realtSaleFullSyncJob.isRunning();
   }
 
   private void performDeltaSync(Source source, Instant since, Instant runStart) {

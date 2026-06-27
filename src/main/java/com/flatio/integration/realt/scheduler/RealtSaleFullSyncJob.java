@@ -4,8 +4,8 @@ import com.flatio.domain.source.Source;
 import com.flatio.domain.source.SyncType;
 import com.flatio.integration.core.RawListing;
 import com.flatio.integration.realt.client.RealtSaleConnector;
-import com.flatio.repository.SourceRepository;
 import com.flatio.service.ListingIngestionService;
+import com.flatio.service.SourceService;
 import com.flatio.service.SyncRunService;
 import com.flatio.service.domain.BatchIngestResult;
 import com.flatio.service.domain.SyncRunRequest;
@@ -42,7 +42,7 @@ import org.springframework.stereotype.Component;
 public class RealtSaleFullSyncJob {
 
   private final RealtSaleConnector realtSaleConnector;
-  private final SourceRepository sourceRepository;
+  private final SourceService sourceService;
   private final ListingIngestionService listingIngestionService;
   private final SyncRunService syncRunService;
 
@@ -130,8 +130,6 @@ public class RealtSaleFullSyncJob {
   }
 
   private Source resolveSource() {
-    return sourceRepository.findByCode(realtSaleConnector.getSourceId())
-        .orElseThrow(() -> new IllegalStateException(
-            "Source not registered in DB: " + realtSaleConnector.getSourceId()));
+    return sourceService.findByCodeOrThrow(realtSaleConnector.getSourceId());
   }
 }

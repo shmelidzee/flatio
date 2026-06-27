@@ -8,6 +8,7 @@ import com.flatio.service.CurrencyRateService;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
@@ -436,6 +437,92 @@ class RealtSaleConnectorTest {
 
     // Then
     assertThat(result).isEqualTo(60L);
+  }
+
+  // -------------------------------------------------------------------------
+  // fetchDelta — happy path
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_return_listing_when_published_after_since_timestamp() {
+    // Given — listing published on 2026-01-10, since = 2026-01-09
+    String html = buildPageWithSingleListing(
+        "{\"code\":99900001,\"title\":\"New Sale\",\"price\":100000,\"priceCurrency\":840,"
+            + "\"createdAt\":\"2026-01-10T12:00:00+03:00\",\"images\":[]}");
+    mockRestClientReturning(html);
+    Instant since = Instant.parse("2026-01-09T00:00:00Z");
+
+    // When
+    List<RawListing> result = connector.fetchDelta(since);
+
+    // Then — listing is newer than `since`, included in result
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).externalId()).isEqualTo("99900001");
+    assertThat(result.get(0).dealType()).isEqualTo("SELL");
+  }
+
+  @Test
+  void should_exclude_listing_and_stop_when_published_before_since() {
+    // Given — listing published on 2026-01-01, since = 2026-01-05
+    String html = buildPageWithSingleListing(
+        "{\"code\":99900002,\"title\":\"Old Sale\",\"price\":100000,\"priceCurrency\":840,"
+            + "\"createdAt\":\"2026-01-01T12:00:00+03:00\",\"images\":[]}");
+    mockRestClientReturning(html);
+    Instant since = Instant.parse("2026-01-05T00:00:00Z");
+
+    // When
+    List<RawListing> result = connector.fetchDelta(since);
+
+    // Then — listing is older than `since`, pagination stops, nothing returned
+    assertThat(result).isEmpty();
+  }
+
+  @Test
+  void should_include_listing_when_published_at_is_null_in_delta_fetch() {
+    // Given — createdAt field absent, publishedAt will be null
+    String html = buildPageWithSingleListing(
+        "{\"code\":99900003,\"title\":\"No Date Sale\",\"price\":80000,\"priceCurrency\":840,"
+            + "\"images\":[]}");
+    mockRestClientReturning(html);
+    Instant since = Instant.parse("2026-01-05T00:00:00Z");
+
+    // When
+    List<RawListing> result = connector.fetchDelta(since);
+
+    // Then — null publishedAt is treated as "unknown, include it"
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).externalId()).isEqualTo("99900003");
+  }
+
+  @Test
+  void should_throw_connector_transient_exception_when_429_received_during_delta_fetch() {
+    // Given
+    var retryHeaders = new HttpHeaders();
+    retryHeaders.set(HttpHeaders.RETRY_AFTER, "10");
+    var exception = HttpClientErrorException.create(
+        HttpStatus.TOO_MANY_REQUESTS, "Too Many Requests", retryHeaders, null, null);
+    mockRestClientThrowing(exception);
+    Instant since = Instant.parse("2026-01-09T00:00:00Z");
+
+    // When / Then — 429 becomes ConnectorTransientException for Resilience4j retry
+    assertThatThrownBy(() -> connector.fetchDelta(since))
+        .isInstanceOf(ConnectorTransientException.class)
+        .hasCauseInstanceOf(HttpClientErrorException.TooManyRequests.class);
+  }
+
+  @Test
+  void should_return_empty_list_when_non_retryable_4xx_received_during_delta_fetch() {
+    // Given — HTTP 404 during delta: non-retryable
+    var exception = HttpClientErrorException.create(
+        HttpStatus.NOT_FOUND, "Not Found", HttpHeaders.EMPTY, null, null);
+    mockRestClientThrowing(exception);
+    Instant since = Instant.parse("2026-01-09T00:00:00Z");
+
+    // When
+    List<RawListing> result = connector.fetchDelta(since);
+
+    // Then — returns empty list without propagating exception
+    assertThat(result).isEmpty();
   }
 
   // -------------------------------------------------------------------------
