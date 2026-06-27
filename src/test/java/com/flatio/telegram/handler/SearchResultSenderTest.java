@@ -7,9 +7,15 @@ import com.flatio.telegram.formatter.ListingFormatter;
 import com.flatio.telegram.state.SearchFilterState;
 import com.flatio.telegram.state.SearchFilterWizard;
 import com.flatio.web.dto.ListingSummaryResponse;
+import com.flatio.telegram.callback.FilterCallbackHandler;
+import com.flatio.telegram.state.SearchSession;
+import com.flatio.web.dto.ListingSearchCriteria;
 import java.math.BigDecimal;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -30,6 +36,7 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMa
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -128,6 +135,75 @@ class SearchResultSenderTest {
 
     // Then
     verify(telegramClient).execute(any(SendMessage.class));
+  }
+
+  @Test
+  void should_include_change_filters_and_main_menu_buttons_when_handle_returns_empty() throws TelegramApiException {
+    // Given
+    when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
+    when(listingService.search(any(), any())).thenReturn(Page.empty());
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+
+    // When
+    searchResultSender.handle(buildCallback(1L, 100L, 10));
+
+    // Then — SendMessage carries keyboard with "Изменить фильтры" and "Главное меню" buttons
+    verify(telegramClient).execute(captor.capture());
+    var keyboard = (InlineKeyboardMarkup) captor.getValue().getReplyMarkup();
+    assertThat(keyboard).isNotNull();
+    var allButtons = keyboard.getKeyboard().stream().flatMap(Collection::stream).toList();
+    assertThat(allButtons).anySatisfy(btn ->
+        assertThat(btn.getCallbackData()).isEqualTo(FilterCallbackHandler.ACTION_SEARCH));
+    assertThat(allButtons).anySatisfy(btn ->
+        assertThat(btn.getCallbackData()).isEqualTo(SearchResultSender.ACTION_MENU));
+  }
+
+  @Test
+  void should_include_change_filters_and_main_menu_buttons_when_last_search_returns_empty() throws TelegramApiException {
+    // Given
+    var savedFilter = new SearchFilter(null, null, null, null, null, null, null, null, null, null);
+    when(userSavedSearchService.getByTelegramUserId(1L)).thenReturn(Optional.of(savedFilter));
+    when(listingService.search(any(), any())).thenReturn(Page.empty());
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+
+    // When
+    searchResultSender.handleLastSearch(buildCallback(1L, 100L, 10));
+
+    // Then — SendMessage carries keyboard with "Изменить фильтры" and "Главное меню" buttons
+    verify(telegramClient).execute(captor.capture());
+    var keyboard = (InlineKeyboardMarkup) captor.getValue().getReplyMarkup();
+    assertThat(keyboard).isNotNull();
+    var allButtons = keyboard.getKeyboard().stream().flatMap(Collection::stream).toList();
+    assertThat(allButtons).anySatisfy(btn ->
+        assertThat(btn.getCallbackData()).isEqualTo(FilterCallbackHandler.ACTION_SEARCH));
+    assertThat(allButtons).anySatisfy(btn ->
+        assertThat(btn.getCallbackData()).isEqualTo(SearchResultSender.ACTION_MENU));
+  }
+
+  @Test
+  void should_include_navigation_keyboard_when_page_navigation_returns_empty() throws TelegramApiException {
+    // Given — inject an active session to simulate prior search
+    var session = new SearchSession(
+        new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null),
+        0, 5);
+    var sessions = new ConcurrentHashMap<Long, SearchSession>();
+    sessions.put(1L, session);
+    ReflectionTestUtils.setField(searchResultSender, "sessions", sessions);
+    when(listingService.search(any(), any())).thenReturn(Page.empty());
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+
+    // When
+    searchResultSender.handlePageCallback(buildPageCallback(1L, 100L, SearchResultSender.PAGE_NEXT));
+
+    // Then — SendMessage carries keyboard with navigation buttons
+    verify(telegramClient).execute(captor.capture());
+    var keyboard = (InlineKeyboardMarkup) captor.getValue().getReplyMarkup();
+    assertThat(keyboard).isNotNull();
+    var allButtons = keyboard.getKeyboard().stream().flatMap(Collection::stream).toList();
+    assertThat(allButtons).anySatisfy(btn ->
+        assertThat(btn.getCallbackData()).isEqualTo(FilterCallbackHandler.ACTION_SEARCH));
+    assertThat(allButtons).anySatisfy(btn ->
+        assertThat(btn.getCallbackData()).isEqualTo(SearchResultSender.ACTION_MENU));
   }
 
   // -------------------------------------------------------------------------
@@ -424,6 +500,12 @@ class SearchResultSenderTest {
     var callback = mock(CallbackQuery.class);
     when(callback.getFrom()).thenReturn(user);
     when(callback.getMessage()).thenReturn(message);
+    return callback;
+  }
+
+  private static CallbackQuery buildPageCallback(long userId, long chatId, String data) {
+    var callback = buildCallback(userId, chatId, 0);
+    when(callback.getData()).thenReturn(data);
     return callback;
   }
 }

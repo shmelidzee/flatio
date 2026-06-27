@@ -111,11 +111,43 @@ class FlatioBotTest {
     verify(searchResultSender).handle(any());
   }
 
+  @Test
+  void should_send_main_menu_when_action_menu_callback_received() throws TelegramApiException {
+    // Given
+    var telegramClient = mock(TelegramClient.class);
+    var startCommandHandler = mock(StartCommandHandler.class);
+    var menuMessage = mock(SendMessage.class);
+    when(startCommandHandler.buildMenuMessage("100")).thenReturn(menuMessage);
+    var bot = buildBot(telegramClient, startCommandHandler, mock(SearchResultSender.class), executor);
+    var update = buildCallbackUpdate(1, 100L, "action:menu");
+
+    // When
+    bot.handleUpdate(update);
+
+    // Then
+    verify(startCommandHandler).buildMenuMessage("100");
+    verify(telegramClient).execute(menuMessage);
+  }
+
   private static FlatioBot buildBot(
       TelegramClient telegramClient, SearchResultSender searchResultSender, ThreadPoolTaskExecutor executor) {
     return new FlatioBot(
         telegramClient,
         mock(StartCommandHandler.class),
+        mock(HelpCommandHandler.class),
+        mock(SearchCommandHandler.class),
+        mock(FilterCallbackHandler.class),
+        searchResultSender,
+        executor
+    );
+  }
+
+  private static FlatioBot buildBot(
+      TelegramClient telegramClient, StartCommandHandler startCommandHandler,
+      SearchResultSender searchResultSender, ThreadPoolTaskExecutor executor) {
+    return new FlatioBot(
+        telegramClient,
+        startCommandHandler,
         mock(HelpCommandHandler.class),
         mock(SearchCommandHandler.class),
         mock(FilterCallbackHandler.class),
