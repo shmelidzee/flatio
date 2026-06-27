@@ -44,4 +44,11 @@ public class SyncRunServiceImpl implements SyncRunService {
         .findTopByStatusOrderByFinishedAtDesc(SyncRunStatus.SUCCESS)
         .map(SyncRun::getFinishedAt);
   }
+
+  @Override
+  public Optional<Instant> findLastSuccessfulRunAt(String sourceId) {
+    return syncRunRepository
+        .findTopBySourceIdAndStatusOrderByFinishedAtDesc(sourceId, SyncRunStatus.SUCCESS)
+        .map(SyncRun::getFinishedAt);
+  }
 }
