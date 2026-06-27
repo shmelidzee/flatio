@@ -26,9 +26,13 @@ import javax.imageio.ImageWriteParam;
 import javax.imageio.ImageWriter;
 import javax.imageio.stream.ImageOutputStream;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -110,6 +114,9 @@ public class SearchResultSender {
 
   private final Map<Long, SearchSession> sessions = new ConcurrentHashMap<>();
 
+  // Virtual-thread executor: one lightweight thread per card send; ideal for I/O-bound Telegram API calls.
+  private final Executor cardSendExecutor = Executors.newVirtualThreadPerTaskExecutor();
+
   /**
    * Executes the search flow for a {@code FILTER:SEARCH} callback.
    *
@@ -147,7 +154,7 @@ public class SearchResultSender {
     autoSaveFilter(telegramId, stateOpt.get());
     sessions.put(telegramId, new SearchSession(criteria, 0, page.getTotalPages()));
     log.debug("Sending {} result cards: telegramId={}, totalPages={}", page.getNumberOfElements(), telegramId, page.getTotalPages());
-    page.getContent().forEach(listing -> sendCard(chatId, listing));
+    sendCardsParallel(chatId, page.getContent());
     sendNavigationMessage(chatId, 0, page.getTotalPages());
   }
 
@@ -189,8 +196,35 @@ public class SearchResultSender {
     session.touch();
 
     log.debug("Sending page {} of {}: telegramId={}", newPage + 1, page.getTotalPages(), telegramId);
-    page.getContent().forEach(listing -> sendCard(chatId, listing));
+    sendCardsParallel(chatId, page.getContent());
     sendNavigationMessage(chatId, newPage, page.getTotalPages());
+  }
+
+  /**
+   * Sends listing cards for a single page in parallel using virtual threads.
+   *
+   * <p>All cards are submitted concurrently and the method blocks until every card is delivered
+   * (or has failed with a logged error). The total page elapsed time is logged at DEBUG level.
+   * An error on one card does not prevent the remaining cards from being sent.
+   *
+   * @param chatId   Telegram chat identifier
+   * @param listings listings to send, preserving their order at submission time
+   */
+  private void sendCardsParallel(String chatId, List<ListingSummaryResponse> listings) {
+    Instant pageStart = Instant.now();
+    List<CompletableFuture<Void>> futures = listings.stream()
+        .map(listing -> CompletableFuture.runAsync(
+            () -> {
+              try {
+                sendCard(chatId, listing);
+              } catch (Exception e) {
+                log.error("Unexpected error sending card: listingId={}", listing.id(), e);
+              }
+            }, cardSendExecutor))
+        .toList();
+    CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+    log.debug("Page sent in parallel: cards={}, elapsed={}ms",
+        listings.size(), Duration.between(pageStart, Instant.now()).toMillis());
   }
 
   private record PhotoCard(
@@ -500,7 +534,7 @@ public class SearchResultSender {
     sessions.put(telegramId, new SearchSession(criteria, 0, page.getTotalPages()));
     log.debug("Sending {} last-search cards: telegramId={}, totalPages={}",
         page.getNumberOfElements(), telegramId, page.getTotalPages());
-    page.getContent().forEach(listing -> sendCard(chatId, listing));
+    sendCardsParallel(chatId, page.getContent());
     sendNavigationMessage(chatId, 0, page.getTotalPages());
   }
 

@@ -443,6 +443,56 @@ class SearchResultSenderTest {
   }
 
   // -------------------------------------------------------------------------
+  // parallel card sending — full page
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_send_all_three_cards_when_page_is_full() throws TelegramApiException {
+    // Given — a full page of three listings
+    var listing1 = buildListing(70L, null, "https://realt.by/70");
+    var listing2 = buildListing(71L, null, "https://realt.by/71");
+    var listing3 = buildListing(72L, null, "https://realt.by/72");
+    when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
+    when(listingService.search(any(), any())).thenReturn(pageOf(listing1, listing2, listing3));
+    when(listingFormatter.buildCaption(any())).thenReturn("caption");
+    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+
+    // When
+    assertThatNoException().isThrownBy(
+        () -> searchResultSender.handle(buildCallback(1L, 100L, 10))
+    );
+
+    // Then — all three cards sent as photos + one navigation message
+    verify(telegramClient, times(3)).execute(any(SendPhoto.class));
+    verify(telegramClient, times(1)).execute(any(SendMessage.class));
+  }
+
+  @Test
+  void should_deliver_remaining_cards_when_unexpected_exception_escapes_send_card() throws TelegramApiException {
+    // Given — buildCaption throws for listing 1; listings 2 and 3 succeed
+    // This simulates an unexpected RuntimeException propagating out of sendCard,
+    // which is caught by the per-card try-catch inside sendCardsParallel.
+    var listing1 = buildListing(73L, null, "https://realt.by/73");
+    var listing2 = buildListing(74L, null, "https://realt.by/74");
+    var listing3 = buildListing(75L, null, "https://realt.by/75");
+    when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
+    when(listingService.search(any(), any())).thenReturn(pageOf(listing1, listing2, listing3));
+    when(listingFormatter.buildCaption(listing1)).thenThrow(new RuntimeException("unexpected caption error"));
+    when(listingFormatter.buildCaption(listing2)).thenReturn("caption");
+    when(listingFormatter.buildCaption(listing3)).thenReturn("caption");
+    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+
+    // When / Then — no exception propagated to caller
+    assertThatNoException().isThrownBy(
+        () -> searchResultSender.handle(buildCallback(1L, 100L, 10))
+    );
+
+    // Listings 2 and 3 still sent; navigation message still sent
+    verify(telegramClient, times(2)).execute(any(SendPhoto.class));
+    verify(telegramClient, times(1)).execute(any(SendMessage.class));
+  }
+
+  // -------------------------------------------------------------------------
   // fault isolation per card
   // -------------------------------------------------------------------------
 
