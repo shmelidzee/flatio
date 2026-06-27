@@ -206,6 +206,7 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
                  l.missed_syncs_count, l.published_at, l.created_at, l.updated_at,
                  l.photo_url
           FROM listings l
+          LEFT JOIN source src_filter ON src_filter.code = CAST(:sourceCode AS varchar)
           WHERE l.search_vector @@ websearch_to_tsquery(CAST(:ftsLanguage AS regconfig), :query)
             AND l.status = :status
             AND (CAST(:dealType AS varchar) IS NULL OR l.deal_type = :dealType)
@@ -213,12 +214,13 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
             AND (CAST(:priceMax AS numeric) IS NULL OR COALESCE(l.price_byn, l.price) <= CAST(:priceMax AS numeric))
             AND (CAST(:rooms AS integer) IS NULL OR l.rooms = :rooms)
             AND (CAST(:cityPattern AS varchar) IS NULL OR LOWER(l.city) LIKE :cityPattern)
-            AND (CAST(:sourceCode AS varchar) IS NULL OR l.source_id = (SELECT id FROM source WHERE code = :sourceCode))
+            AND (CAST(:sourceCode AS varchar) IS NULL OR l.source_id = src_filter.id)
             AND (CAST(:propertyType AS varchar) IS NULL OR l.property_type = :propertyType)
             AND (CAST(:ownerOnly AS boolean) IS NULL OR l.is_owner IS TRUE OR l.is_owner IS NULL)
           """,
       countQuery = """
           SELECT count(*) FROM listings l
+          LEFT JOIN source src_filter ON src_filter.code = CAST(:sourceCode AS varchar)
           WHERE l.search_vector @@ websearch_to_tsquery(CAST(:ftsLanguage AS regconfig), :query)
             AND l.status = :status
             AND (CAST(:dealType AS varchar) IS NULL OR l.deal_type = :dealType)
@@ -226,7 +228,7 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
             AND (CAST(:priceMax AS numeric) IS NULL OR COALESCE(l.price_byn, l.price) <= CAST(:priceMax AS numeric))
             AND (CAST(:rooms AS integer) IS NULL OR l.rooms = :rooms)
             AND (CAST(:cityPattern AS varchar) IS NULL OR LOWER(l.city) LIKE :cityPattern)
-            AND (CAST(:sourceCode AS varchar) IS NULL OR l.source_id = (SELECT id FROM source WHERE code = :sourceCode))
+            AND (CAST(:sourceCode AS varchar) IS NULL OR l.source_id = src_filter.id)
             AND (CAST(:propertyType AS varchar) IS NULL OR l.property_type = :propertyType)
             AND (CAST(:ownerOnly AS boolean) IS NULL OR l.is_owner IS TRUE OR l.is_owner IS NULL)
           """,

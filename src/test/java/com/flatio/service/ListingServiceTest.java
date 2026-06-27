@@ -7,6 +7,7 @@ import com.flatio.domain.listing.ListingStatus;
 import com.flatio.domain.listing.PriceHistory;
 import com.flatio.repository.ListingRepository;
 import com.flatio.repository.PriceHistoryRepository;
+import com.flatio.service.CurrencyRateService;
 import com.flatio.service.impl.ListingServiceImpl;
 import com.flatio.web.dto.ListingResponse;
 import com.flatio.web.dto.ListingSearchCriteria;
@@ -39,6 +40,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -56,12 +58,18 @@ class ListingServiceTest {
   @Mock
   private ListingMapper listingMapper;
 
+  @Mock
+  private CurrencyRateService currencyRateService;
+
   @InjectMocks
   private ListingServiceImpl listingService;
 
   @BeforeEach
   void setUp() {
     ReflectionTestUtils.setField(listingService, "ftsLanguage", "russian");
+    // Default: NBRB rate unavailable — no enrichment; tests that need enrichment override this.
+    // lenient() prevents UnnecessaryStubbingException in findById tests that never call search().
+    lenient().when(currencyRateService.getUsdToByn()).thenReturn(Optional.empty());
   }
 
   // -------------------------------------------------------------------------
@@ -513,6 +521,142 @@ class ListingServiceTest {
     verify(listingRepository).fullTextSearch(
         any(), any(), any(), any(), any(), any(), any(), eq("%минск%"), any(), any(), any(), any()
     );
+  }
+
+  // -------------------------------------------------------------------------
+  // search — BYN price enrichment with NBRB rate (#257)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_enrich_byn_listing_with_usd_equivalent_when_nbrb_rate_available() {
+    // Given — Onliner listing: price in BYN, priceUsd not set in entity
+    var pageable = PageRequest.of(0, 20);
+    var listing = buildListing(1L);
+    var summaryByn = new ListingSummaryResponse(
+        1L, "Test", BigDecimal.valueOf(3_387.36), "BYN",
+        null, null, 1, null, null, "Минск", null, null,
+        "onliner", Instant.now(), null, "https://onliner.by/1"
+    );
+    var page = new PageImpl<>(List.of(listing), pageable, 1);
+
+    when(listingRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(page);
+    when(listingMapper.toSummaryResponse(listing)).thenReturn(summaryByn);
+    when(currencyRateService.getUsdToByn()).thenReturn(Optional.of(BigDecimal.valueOf(2.8228)));
+
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
+
+    // When
+    var result = listingService.search(criteria, pageable);
+
+    // Then — priceUsd is derived from BYN / rate; currency and price remain unchanged
+    var enriched = result.getContent().get(0);
+    assertThat(enriched.currency()).isEqualTo("BYN");
+    assertThat(enriched.price()).isEqualByComparingTo(BigDecimal.valueOf(3_387.36));
+    assertThat(enriched.priceUsd()).isNotNull();
+    assertThat(enriched.priceUsd()).isGreaterThan(BigDecimal.ZERO);
+  }
+
+  @Test
+  void should_not_enrich_byn_listing_when_nbrb_rate_unavailable() {
+    // Given — NBRB unavailable; BYN listing must be returned as-is without priceUsd
+    var pageable = PageRequest.of(0, 20);
+    var listing = buildListing(1L);
+    var summaryByn = new ListingSummaryResponse(
+        1L, "Test", BigDecimal.valueOf(1_000), "BYN",
+        null, null, 1, null, null, "Минск", null, null,
+        "onliner", Instant.now(), null, "https://onliner.by/1"
+    );
+    var page = new PageImpl<>(List.of(listing), pageable, 1);
+
+    when(listingRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(page);
+    when(listingMapper.toSummaryResponse(listing)).thenReturn(summaryByn);
+    // currencyRateService.getUsdToByn() returns empty by default (set in setUp)
+
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
+
+    // When
+    var result = listingService.search(criteria, pageable);
+
+    // Then — priceUsd remains null; no enrichment without rate
+    assertThat(result.getContent().get(0).priceUsd()).isNull();
+  }
+
+  @Test
+  void should_not_enrich_when_price_usd_already_set() {
+    // Given — Realt listing: priceUsd already set from source; must not be overwritten
+    var pageable = PageRequest.of(0, 20);
+    var listing = buildListing(1L);
+    var realtSummary = new ListingSummaryResponse(
+        1L, "Test", BigDecimal.valueOf(1_200), "USD",
+        BigDecimal.valueOf(1_200), BigDecimal.valueOf(3_387.36), 2, null, null, "Минск", null, null,
+        "realt", Instant.now(), null, "https://realt.by/1"
+    );
+    var page = new PageImpl<>(List.of(listing), pageable, 1);
+
+    when(listingRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(page);
+    when(listingMapper.toSummaryResponse(listing)).thenReturn(realtSummary);
+    when(currencyRateService.getUsdToByn()).thenReturn(Optional.of(BigDecimal.valueOf(3.3228)));
+
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
+
+    // When
+    var result = listingService.search(criteria, pageable);
+
+    // Then — priceUsd stays as set by source (1200), not recomputed
+    assertThat(result.getContent().get(0).priceUsd()).isEqualByComparingTo(BigDecimal.valueOf(1_200));
+  }
+
+  @Test
+  void should_not_enrich_when_currency_is_not_byn() {
+    // Given — USD-priced listing without priceUsd yet (edge case), rate available; must be skipped
+    var pageable = PageRequest.of(0, 20);
+    var listing = buildListing(1L);
+    var usdSummary = new ListingSummaryResponse(
+        1L, "Test", BigDecimal.valueOf(500), "USD",
+        null, null, 1, null, null, "Минск", null, null,
+        "onliner", Instant.now(), null, "https://onliner.by/1"
+    );
+    var page = new PageImpl<>(List.of(listing), pageable, 1);
+
+    when(listingRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(page);
+    when(listingMapper.toSummaryResponse(listing)).thenReturn(usdSummary);
+    when(currencyRateService.getUsdToByn()).thenReturn(Optional.of(BigDecimal.valueOf(3.3228)));
+
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
+
+    // When
+    var result = listingService.search(criteria, pageable);
+
+    // Then — non-BYN listings are not touched by enrichment
+    assertThat(result.getContent().get(0).priceUsd()).isNull();
+  }
+
+  @Test
+  void should_enrich_byn_listing_via_fts_path_when_rate_available() {
+    // Given — FTS search path: query is present, listing is BYN-priced
+    var pageable = PageRequest.of(0, 20);
+    var listing = buildListing(1L);
+    var summaryByn = new ListingSummaryResponse(
+        1L, "Test", BigDecimal.valueOf(3_322.80), "BYN",
+        null, null, 1, null, null, "Минск", null, null,
+        "onliner", Instant.now(), null, "https://onliner.by/1"
+    );
+    var page = new PageImpl<>(List.of(listing), pageable, 1);
+
+    when(listingRepository.fullTextSearch(
+        eq("квартира"), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()
+    )).thenReturn(page);
+    when(listingMapper.toSummaryResponse(listing)).thenReturn(summaryByn);
+    when(currencyRateService.getUsdToByn()).thenReturn(Optional.of(BigDecimal.valueOf(3.3228)));
+
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, "квартира", null);
+
+    // When
+    var result = listingService.search(criteria, pageable);
+
+    // Then — FTS path also enriches priceUsd from BYN rate
+    assertThat(result.getContent().get(0).priceUsd()).isNotNull();
+    assertThat(result.getContent().get(0).priceUsd()).isGreaterThan(BigDecimal.ZERO);
   }
 
   // -------------------------------------------------------------------------
