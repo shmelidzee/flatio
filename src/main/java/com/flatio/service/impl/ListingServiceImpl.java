@@ -43,6 +43,9 @@ public class ListingServiceImpl implements ListingService {
       "created_at", "updated_at", "published_at"
   );
 
+  private static final String CURRENCY_BYN = "BYN";
+  private static final int USD_DISPLAY_SCALE = 2;
+
   @Value("${flatio.search.fts-language:russian}")
   private String ftsLanguage;
 
@@ -108,10 +111,11 @@ public class ListingServiceImpl implements ListingService {
    * @return the response with {@code priceUsd} populated, or the original if enrichment is skipped
    */
   private ListingSummaryResponse enrichWithPriceUsd(ListingSummaryResponse response, BigDecimal usdToByn) {
-    if (response.priceUsd() != null || usdToByn == null || !"BYN".equals(response.currency())) {
+    if (response.priceUsd() != null || usdToByn == null
+        || response.price() == null || !CURRENCY_BYN.equals(response.currency())) {
       return response;
     }
-    BigDecimal priceUsd = response.price().divide(usdToByn, 2, RoundingMode.HALF_UP);
+    BigDecimal priceUsd = response.price().divide(usdToByn, USD_DISPLAY_SCALE, RoundingMode.HALF_UP);
     return new ListingSummaryResponse(
         response.id(), response.title(), response.price(), response.currency(),
         priceUsd, response.priceByn(), response.rooms(), response.propertyType(),
