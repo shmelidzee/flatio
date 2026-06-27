@@ -13,10 +13,12 @@ import com.flatio.telegram.state.SearchSession;
 import com.flatio.telegram.state.SearchFilterWizard;
 import com.flatio.web.dto.ListingSearchCriteria;
 import com.flatio.web.dto.ListingSummaryResponse;
+import java.io.ByteArrayInputStream;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -84,6 +86,7 @@ public class SearchResultSender {
   private final ListingFormatter listingFormatter;
   private final TelegramClient telegramClient;
   private final UserSavedSearchService userSavedSearchService;
+  private final PhotoProxyClient photoProxyClient;
 
   private final Map<Long, SearchSession> sessions = new ConcurrentHashMap<>();
 
@@ -175,18 +178,34 @@ public class SearchResultSender {
     var keyboard = listingFormatter.buildKeyboard(listing.sourceUrl());
     String photoUrl = resolvePhotoUrl(listing);
 
+    Optional<byte[]> photoBytes = photoProxyClient.download(photoUrl, listing.id());
+    if (photoBytes.isEmpty()) {
+      sendTextCard(chatId, caption, keyboard);
+      return;
+    }
+
     try {
+      String filename = extractPhotoFilename(photoUrl);
       telegramClient.execute(SendPhoto.builder()
           .chatId(chatId)
-          .photo(new InputFile(photoUrl))
+          .photo(new InputFile(new ByteArrayInputStream(photoBytes.get()), filename))
           .caption(caption)
           .parseMode("HTML")
           .replyMarkup(keyboard)
           .build());
     } catch (TelegramApiException e) {
-      log.warn("Failed to send photo card, falling back to text: listingId={}, url={}", listing.id(), photoUrl, e);
+      log.warn("Failed to send binary photo, falling back to text: listingId={}, url={}", listing.id(), photoUrl, e);
       sendTextCard(chatId, caption, keyboard);
     }
+  }
+
+  private String extractPhotoFilename(String url) {
+    int slash = url.lastIndexOf('/');
+    int query = url.indexOf('?');
+    String name = slash >= 0
+        ? (query > slash ? url.substring(slash + 1, query) : url.substring(slash + 1))
+        : "photo.jpg";
+    return name.isBlank() ? "photo.jpg" : name;
   }
 
   private String resolvePhotoUrl(ListingSummaryResponse listing) {
