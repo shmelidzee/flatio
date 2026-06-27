@@ -8,13 +8,13 @@ Each connector is an independent Spring `@Service` implementing `com.flatio.inte
 ## Architecture
 
 ```
-OnlinerDeltaSyncJob (every 10 min)    OnlinerFullSyncJob (daily 02:00)    RealtFullSyncJob (daily 04:00)
-  ↓                                       ↓                                    ↓
-ListingConnector.fetchDelta(since)    ListingConnector.fetchAll()         RealtConnector.fetch()
-  ↓                                       ↓                                    ↓
-  ←────────────── @RateLimiter + @Retry + @CircuitBreaker ──────────────────→
-  ↓                                       ↓                                    ↓
-List<RawListing>                     ←── never raw HTML ──→
+OnlinerDeltaSyncJob (every 10 min)    OnlinerFullSyncJob (daily 02:00)    RealtDeltaSyncJob (every 15 min)    RealtFullSyncJob (daily 04:00)
+  ↓                                       ↓                                    ↓                                    ↓
+ListingConnector.fetchDelta(since)    ListingConnector.fetchAll()         RealtConnector.fetchDelta(since)    RealtConnector.fetch()
+  ↓                                       ↓                                    ↓                                    ↓
+  ←───────────────────────── @RateLimiter + @Retry + @CircuitBreaker ──────────────────────────────────────────→
+  ↓                                       ↓                                    ↓                                    ↓
+List<RawListing>                     ←──────────────────── never raw HTML ────────────────────────────────────→
   ↓
 ListingIngestionService (dedup + persist)
   ↓
@@ -246,7 +246,7 @@ resilience4j:
 | `propertyType` | — | Always `"APARTMENT"` |
 | `price` | `price` | USD amount (see note above) |
 | `currency` | `priceCurrency` | ISO 4217: `840` → `"USD"`; `933` → `"BYN"` |
-| `priceUsd` | `price` | Same as `price` when `currency = "USD"`; `null` otherwise |
+| `priceUsd` | — | Always `null`; `price` is already in USD — BYN equivalent filled by a future exchange-rate layer |
 | `rooms` | `rooms` | nullable |
 | `floorNumber` | `storey` | nullable |
 | `floorsTotal` | `storeys` | nullable |
@@ -261,9 +261,30 @@ resilience4j:
 | `isOwner` | `companyUuid` | `null` when field missing; `true` when JSON null (private owner); `false` when UUID present (agency) |
 | `priceUnit` | — | Always `null` |
 
-### Scheduler (`RealtFullSyncJob`)
+### Schedulers
 
 **Package:** `com.flatio.integration.realt.scheduler`
+
+#### RealtDeltaSyncJob
+
+| Trigger | Schedule | Behaviour |
+|---------|----------|-----------|
+| `@Scheduled(fixedDelay)` | `${flatio.sync.realt.delta.interval-ms}` (default every 15 min) | Incremental sync — only listings newer than last successful run |
+
+- Reads last successful `SyncRun` for source REALT from DB via `SyncRunService.findLastSuccessfulRunAt(sourceId)`
+- If cursor found → `fetchDelta(since)` (DELTA mode); if no cursor (first run or prolonged outage) → `fetch()` (FULL mode)
+- realt.by has no server-side date filter; delta is implemented client-side: pages are sorted newest-first, pagination stops on the first listing with `publishedAt < since`
+- `CallNotPermittedException` → `log.warn`, not propagated
+
+```yaml
+flatio:
+  sync:
+    realt:
+      delta:
+        interval-ms: ${FLATIO_SYNC_REALT_DELTA_INTERVAL_MS:900000}
+```
+
+#### RealtFullSyncJob
 
 | Trigger | Schedule | Behaviour |
 |---------|----------|-----------|
@@ -303,7 +324,8 @@ Fixtures: `src/test/resources/fixtures/realt/`
 | `should_return_listings_when_valid_html_fixture_provided` | Happy path — 2 listings mapped |
 | `should_return_source_id_and_region_from_properties` | No hard-coded values |
 | `should_map_all_required_fields_when_valid_card_parsed` | Full field mapping including photos, rooms, floor, area, city, isOwner, publishedAt |
-| `should_set_currency_to_usd_and_price_usd_to_same_value_when_price_currency_is_840` | USD pricing (priceCurrency=840) |
+| `should_set_currency_to_usd_and_price_usd_to_null_when_price_currency_is_840` | USD pricing (priceCurrency=840): currency="USD", priceUsd=null |
+| `should_parse_usd_price_with_null_price_usd_from_dedicated_fixture` | Full parse chain via `listing-with-usd-price.html` fixture |
 | `should_return_empty_photo_list_when_listing_has_no_images` | Empty `images` array |
 | `should_use_fallback_title_when_both_title_and_headline_are_null` | Title fallback |
 | `should_return_empty_list_when_page_has_no_listing_objects` | Empty objects array |
