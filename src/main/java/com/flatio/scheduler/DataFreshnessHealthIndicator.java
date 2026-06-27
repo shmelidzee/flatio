@@ -35,17 +35,22 @@ public class DataFreshnessHealthIndicator implements HealthIndicator {
   /**
    * Checks the age of the most recent successful sync run.
    *
+   * <p>Returns {@code UNKNOWN} when no sync has ever completed — this is expected on first boot
+   * while the initial sync is still running, and must not cause a deployment healthcheck failure.
+   * Returns {@code DOWN} only when a prior sync exists but has exceeded the freshness threshold.
+   *
    * @return {@code UP} if a successful sync finished within the threshold,
-   *         {@code DOWN} otherwise
+   *         {@code UNKNOWN} if no sync has run yet (initial boot),
+   *         {@code DOWN} if the last sync is older than the threshold
    */
   @Override
   public Health health() {
     Optional<Instant> lastSuccessfulAt = syncRunService.findLastSuccessfulRunAt();
 
     if (lastSuccessfulAt.isEmpty()) {
-      log.warn("Data freshness alert: lastSync=none, ageMinutes=∞");
-      return Health.down()
-          .withDetail("reason", "No successful sync runs recorded yet")
+      log.info("Data freshness: no sync runs recorded yet — initial sync pending");
+      return Health.unknown()
+          .withDetail("reason", "Initial sync pending — no successful sync runs recorded yet")
           .build();
     }
 
