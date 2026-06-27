@@ -52,15 +52,15 @@ class SourceRepositoryIT {
 
   @Test
   void should_return_active_sources_for_country_code() {
-    // Given — V3 seeds ONLINER, V28 seeds ONLINER_SALE, V31 seeds REALT, all active for BY
+    // Given — V3 seeds ONLINER, V28 seeds ONLINER_SALE, V31 seeds REALT, V36 seeds REALT_SALE, all active for BY
 
     // When
     var result = sourceRepository.findActiveByCountryCode("BY");
 
     // Then
-    assertThat(result).hasSize(3);
+    assertThat(result).hasSize(4);
     assertThat(result).extracting(Source::getCode)
-        .containsExactlyInAnyOrder("ONLINER", "ONLINER_SALE", "REALT");
+        .containsExactlyInAnyOrder("ONLINER", "ONLINER_SALE", "REALT", "REALT_SALE");
   }
 
   @Test
@@ -89,10 +89,10 @@ class SourceRepositoryIT {
     // When
     var result = sourceRepository.findActiveByCountryCode("BY");
 
-    // Then — Onliner, Onliner Sale and Realt (active), not Kufar (inactive)
-    assertThat(result).hasSize(3);
+    // Then — Onliner, Onliner Sale, Realt and Realt Sale (active), not Kufar (inactive)
+    assertThat(result).hasSize(4);
     assertThat(result).extracting(Source::getCode)
-        .containsExactlyInAnyOrder("ONLINER", "ONLINER_SALE", "REALT");
+        .containsExactlyInAnyOrder("ONLINER", "ONLINER_SALE", "REALT", "REALT_SALE");
   }
 
   @Test
