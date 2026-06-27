@@ -47,6 +47,16 @@ public class StartCommandHandler {
     return buildWelcomeMessage(chatId, firstName);
   }
 
+  /**
+   * Builds the main menu message for a callback context where no user name is available.
+   *
+   * @param chatId target chat identifier, never null
+   * @return SendMessage with main menu keyboard, never null
+   */
+  public SendMessage buildMenuMessage(String chatId) {
+    return buildWelcomeMessage(chatId, null);
+  }
+
   private SendMessage buildWelcomeMessage(String chatId, String firstName) {
     String greeting = firstName != null && !firstName.isBlank()
         ? "Привет, " + firstName + "!"
