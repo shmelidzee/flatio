@@ -23,6 +23,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
@@ -49,6 +50,9 @@ class RealtDeltaSyncJobTest {
   @Mock
   private SyncRunService syncRunService;
 
+  @Mock
+  private RealtFullSyncJob realtFullSyncJob;
+
   @InjectMocks
   private RealtDeltaSyncJob job;
 
@@ -56,6 +60,8 @@ class RealtDeltaSyncJobTest {
   void setUp() {
     when(realtConnector.getSourceId()).thenReturn(SOURCE_ID);
     when(sourceRepository.findByCode(SOURCE_ID)).thenReturn(Optional.of(new Source()));
+    // @Lazy @Autowired field is not set by @InjectMocks constructor injection; inject explicitly
+    ReflectionTestUtils.setField(job, "realtFullSyncJob", realtFullSyncJob);
   }
 
   // -------------------------------------------------------------------------
@@ -167,6 +173,22 @@ class RealtDeltaSyncJobTest {
     job.runDeltaSync();
 
     // Then — no ingest, no record (guard against mass-deactivation)
+    verify(listingIngestionService, never()).ingestBatch(any(), any());
+    verify(syncRunService, never()).record(any());
+  }
+
+  @Test
+  void should_skip_full_sync_fallback_when_full_sync_job_is_already_running() {
+    // Given — no prior successful run, but FullSyncJob is currently running on another thread
+    when(syncRunService.findLastSuccessfulRunAt(SOURCE_ID)).thenReturn(Optional.empty());
+    when(realtFullSyncJob.isRunning()).thenReturn(true);
+
+    // When
+    job.runDeltaSync();
+
+    // Then — neither fetch nor ingest are triggered; no SyncRun is recorded
+    verify(realtConnector, never()).fetch();
+    verify(realtConnector, never()).fetchDelta(any());
     verify(listingIngestionService, never()).ingestBatch(any(), any());
     verify(syncRunService, never()).record(any());
   }

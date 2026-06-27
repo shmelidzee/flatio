@@ -27,6 +27,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.Set;
@@ -706,6 +707,62 @@ class ListingIngestionServiceImplTest {
     assertThat(result.added()).isEqualTo(0);
     assertThat(result.updated()).isEqualTo(0);
     assertThat(result.errors()).isEqualTo(0);
+  }
+
+  // -------------------------------------------------------------------------
+  // ingestBatch — concurrent insert conflict handling (#241)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_not_count_error_when_concurrent_insert_conflict_is_resolved_on_retry() {
+    // Given — first call throws constraint violation (race), retry finds the record and updates it
+    var raw = buildRawListing("ext-conflict-1", BigDecimal.valueOf(500));
+    when(self.ingest(raw, source))
+        .thenThrow(new DataIntegrityViolationException("duplicate key: uq_listing_external_source"))
+        .thenReturn(IngestOutcome.UPDATED);
+
+    // When
+    var result = ingestionService.ingestBatch(List.of(raw), source);
+
+    // Then — conflict is resolved by retry; no error counted
+    assertThat(result.errors()).isZero();
+    assertThat(result.updated()).isEqualTo(1);
+    assertThat(result.added()).isZero();
+  }
+
+  @Test
+  void should_count_error_when_retry_also_fails_after_conflict() {
+    // Given — first call throws constraint violation; retry also fails
+    var raw = buildRawListing("ext-conflict-2", BigDecimal.valueOf(500));
+    when(self.ingest(raw, source))
+        .thenThrow(new DataIntegrityViolationException("duplicate key"))
+        .thenThrow(new RuntimeException("DB unreachable"));
+
+    // When
+    var result = ingestionService.ingestBatch(List.of(raw), source);
+
+    // Then — unrecoverable failure counted as error
+    assertThat(result.errors()).isEqualTo(1);
+    assertThat(result.updated()).isZero();
+  }
+
+  @Test
+  void should_process_remaining_items_after_conflict_on_one_item() {
+    // Given — first item causes conflict (resolved by retry), second succeeds normally
+    var rawConflict = buildRawListing("ext-conflict-3", BigDecimal.valueOf(500));
+    var rawNormal = buildRawListing("ext-normal-3", BigDecimal.valueOf(600));
+    when(self.ingest(rawConflict, source))
+        .thenThrow(new DataIntegrityViolationException("duplicate key"))
+        .thenReturn(IngestOutcome.UPDATED);
+    when(self.ingest(rawNormal, source)).thenReturn(IngestOutcome.CREATED);
+
+    // When
+    var result = ingestionService.ingestBatch(List.of(rawConflict, rawNormal), source);
+
+    // Then — conflict resolved, batch continues without errors
+    assertThat(result.errors()).isZero();
+    assertThat(result.updated()).isEqualTo(1);
+    assertThat(result.added()).isEqualTo(1);
   }
 
   // -------------------------------------------------------------------------

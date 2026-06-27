@@ -26,6 +26,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -85,6 +86,14 @@ public class ListingIngestionServiceImpl implements ListingIngestionService {
         } else if (outcome == IngestOutcome.UPDATED) {
           updated++;
         }
+      } catch (DataIntegrityViolationException e) {
+        // Concurrent INSERT by another sync job — retry in a fresh transaction to UPDATE the existing record.
+        IngestOutcome retried = retryAfterConflict(raw, source);
+        if (retried != null) {
+          if (retried == IngestOutcome.UPDATED) updated++;
+        } else {
+          errors++;
+        }
       } catch (Exception e) {
         errors++;
         log.error("Failed to ingest listing: externalId={}, source={}",
@@ -95,6 +104,18 @@ public class ListingIngestionServiceImpl implements ListingIngestionService {
     log.info("Batch ingestion complete: source={}, added={}, updated={}, errors={}",
         source.getCode(), added, updated, errors);
     return new BatchIngestResult(added, updated, errors);
+  }
+
+  private IngestOutcome retryAfterConflict(RawListing raw, Source source) {
+    log.debug("Concurrent insert conflict, retrying ingest: externalId={}, source={}",
+        raw.externalId(), source.getCode());
+    try {
+      return self.ingest(raw, source);
+    } catch (Exception e) {
+      log.error("Failed to ingest listing after conflict retry: externalId={}, source={}",
+          raw.externalId(), source.getCode(), e);
+      return null;
+    }
   }
 
   private IngestOutcome createListing(RawListing raw, Source source, Currency currency) {

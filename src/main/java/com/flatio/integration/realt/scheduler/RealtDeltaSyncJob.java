@@ -18,6 +18,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataAccessException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -48,6 +50,14 @@ public class RealtDeltaSyncJob {
   private final SyncRunService syncRunService;
 
   /**
+   * Injected lazily to avoid circular-dependency issues; null-safe usage via {@link #fullSyncIsRunning()}.
+   * Used to skip the full-sync fallback when {@link RealtFullSyncJob} is still executing.
+   */
+  @Lazy
+  @Autowired
+  private RealtFullSyncJob realtFullSyncJob;
+
+  /**
    * Determines sync mode from the last successful run and fetches accordingly.
    *
    * <p>The delta cursor is not updated on failure to avoid skipping listings after a
@@ -65,6 +75,9 @@ public class RealtDeltaSyncJob {
 
       if (lastRunAt.isPresent()) {
         performDeltaSync(source, lastRunAt.get(), runStart);
+      } else if (fullSyncIsRunning()) {
+        log.info("Realt delta sync: FullSyncJob is already running, skipping fallback: source={}",
+            realtConnector.getSourceId());
       } else {
         log.info("Realt: no prior successful run found — falling back to full sync");
         performFullSyncFallback(source, runStart);
@@ -79,6 +92,10 @@ public class RealtDeltaSyncJob {
       syncRunService.record(SyncRunRequest.failure(
           realtConnector.getSourceId(), SyncType.DELTA, runStart, Instant.now()));
     }
+  }
+
+  private boolean fullSyncIsRunning() {
+    return realtFullSyncJob != null && realtFullSyncJob.isRunning();
   }
 
   private void performDeltaSync(Source source, Instant since, Instant runStart) {
