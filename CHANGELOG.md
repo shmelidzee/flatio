@@ -7,6 +7,52 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **PR #238 — Проверка размера фото до отправки в Telegram; SendDocument для файлов 10–50 MB (issue #233)**
+  - `SearchResultSender.sendCard()` — размер буфера проверяется **до** вызова Telegram API:
+    файлы ≤ 10 MB → `SendPhoto` (основной путь); 10–50 MB → `SendDocument` (документ вместо фото);
+    > 50 MB → текстовая карточка
+  - Лимиты вынесены в `@Value`-поля (`${telegram.bot.max-photo-bytes:10485760}`,
+    `${telegram.bot.max-document-bytes:52428800}`) для инъекции в тестах без аллокации 50 MB-массивов
+  - `PhotoCard` — приватный record для группировки параметров отправки (устраняет 7-параметрные сигнатуры)
+  - Elapsed time download + send логируется на DEBUG (`elapsed=Nms`) для измерения P95
+  - 3 новых теста: document path, too-large fallback, document upload failure
+
+- **PR #237 — Исправлено некорректное отображение USD-цены в картчоках Realt.by (issue #232)**
+  - `RealtConnector.toRawListing()` — `priceUsd` теперь всегда `null` для объявлений Realt:
+    поле `price` уже в USD, BYN-эквивалент будет заполнен будущим слоем конвертации курсов
+  - До фикса: `priceUsd = price` при `currency = "USD"` → `ListingFormatter` рендерил `$650 (650 BYN)`
+  - После фикса: `priceUsd = null` → ветка `"USD".equals(currency) → $650` работает корректно
+  - Обновлены 3 существующих теста (валидировали неверное поведение), добавлен тест с фикстурой
+    `listing-with-usd-price.html` (`priceCurrency=840`, `price=650`)
+
+- **PR #236 — Proxy-загрузка фото CDN перед отправкой в Telegram (issue #233)**
+  - `PhotoProxyClient` (`telegram/handler/`) — загружает байты фото на нашей стороне через RestClient;
+    `download(url, listingId)` → `Optional<byte[]>`; `Optional.empty()` при любой ошибке (4xx, 5xx, timeout)
+  - `PhotoDownloadConfig` (`telegram/config/`) — `@Bean("photoDownloadRestClient")` с таймаутами 5s/5s
+  - `SearchResultSender.sendCard()` — вместо передачи URL в Telegram теперь: скачать байты →
+    при пустом Optional → текстовая карточка; при байтах → `InputFile(ByteArrayInputStream, filename)` → `SendPhoto`
+  - Устраняет `400 Bad Request: failed to get HTTP URL content` при попытке Telegram получить фото
+    с CDN `content.onliner.by` (CDN блокирует IP-адреса серверов Telegram)
+  - 7 новых тестов `PhotoProxyClientTest`, обновлён `SearchResultSenderTest`
+
+- **PR #235 — Delta sync для RealtConnector + RealtDeltaSyncJob (issue #231)**
+  - `RealtConnector.fetchDelta(Instant since)` — проходит страницы realt.by (новейшие первые),
+    останавливается при `publishedAt < since`; та же Resilience4j-цепочка что у `fetch()`
+  - `RealtDeltaSyncJob` (`com.flatio.integration.realt.scheduler`) — каждые 15 минут;
+    читает последний успешный `SyncRun` из БД: при наличии курсора → DELTA, иначе → FULL (первый запуск / длительный сбой)
+  - `SyncRunService.findLastSuccessfulRunAt(String sourceId)` — новый метод для source-специфичного курсора;
+    использует индекс `(source_id, started_at DESC)` из Flyway V27
+  - `SyncRunServiceImplTest` — 3 новых теста на `findLastSuccessfulRunAt`
+  - 536 тестов, 0 failures
+
+- **PR #234 — Кнопки навигации при пустых результатах поиска (issue #230)**
+  - `SearchResultSender.sendNoResultsMessage()` — при пустом поиске бот показывает inline-клавиатуру
+    с кнопками «Изменить фильтры» и «Главное меню» вместо голого текстового сообщения
+  - Все три точки входа (`handle`, `handleLastSearch`, `handlePageCallback`) используют единый метод
+  - `ACTION_MENU = "action:menu"` — новая публичная константа для роутинга в `FlatioBot`
+  - `StartCommandHandler.buildMenuMessage(chatId)` — публичный метод для вызова из callback-контекста
+
 ### Added
 - **PR #226 — RealtFullSyncJob: ежедневный полный обход realt.by (issue #225)**
   - `RealtFullSyncJob` (`com.flatio.integration.realt.scheduler`) — ежедневный полный синк по образцу
