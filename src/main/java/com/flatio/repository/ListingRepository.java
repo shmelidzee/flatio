@@ -186,8 +186,9 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
    * @param ftsLanguage PostgreSQL text-search configuration name (e.g. "russian", "english")
    * @param status      listing status filter, as enum name string (e.g. "ACTIVE")
    * @param dealType    deal type filter (e.g. "RENT"), or null to skip
-   * @param priceMin    minimum price inclusive, or null to skip
-   * @param priceMax    maximum price inclusive, or null to skip
+   * @param priceMin    minimum BYN price inclusive, or null to skip; listings priced in a
+   *                    non-BYN currency without a stored BYN conversion bypass this filter
+   * @param priceMax    maximum BYN price inclusive, or null to skip; same bypass applies
    * @param rooms       number of rooms filter, or null to skip
    * @param cityPattern SQL LIKE pattern for city name (e.g. "%минск%"), or null to skip
    * @param sourceCode  source platform code (e.g. "ONLINER"), or null to skip
@@ -207,11 +208,12 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
                  l.photo_url
           FROM listings l
           LEFT JOIN source src_filter ON src_filter.code = CAST(:sourceCode AS varchar)
+          INNER JOIN currency cur ON cur.id = l.currency_id
           WHERE l.search_vector @@ websearch_to_tsquery(CAST(:ftsLanguage AS regconfig), :query)
             AND l.status = :status
             AND (CAST(:dealType AS varchar) IS NULL OR l.deal_type = :dealType)
-            AND (CAST(:priceMin AS numeric) IS NULL OR COALESCE(l.price_byn, l.price) >= CAST(:priceMin AS numeric))
-            AND (CAST(:priceMax AS numeric) IS NULL OR COALESCE(l.price_byn, l.price) <= CAST(:priceMax AS numeric))
+            AND (CAST(:priceMin AS numeric) IS NULL OR (l.price_byn IS NULL AND cur.code != 'BYN') OR COALESCE(l.price_byn, l.price) >= CAST(:priceMin AS numeric))
+            AND (CAST(:priceMax AS numeric) IS NULL OR (l.price_byn IS NULL AND cur.code != 'BYN') OR COALESCE(l.price_byn, l.price) <= CAST(:priceMax AS numeric))
             AND (CAST(:rooms AS integer) IS NULL OR l.rooms = :rooms)
             AND (CAST(:cityPattern AS varchar) IS NULL OR LOWER(l.city) LIKE :cityPattern)
             AND (CAST(:sourceCode AS varchar) IS NULL OR l.source_id = src_filter.id)
@@ -221,11 +223,12 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
       countQuery = """
           SELECT count(*) FROM listings l
           LEFT JOIN source src_filter ON src_filter.code = CAST(:sourceCode AS varchar)
+          INNER JOIN currency cur ON cur.id = l.currency_id
           WHERE l.search_vector @@ websearch_to_tsquery(CAST(:ftsLanguage AS regconfig), :query)
             AND l.status = :status
             AND (CAST(:dealType AS varchar) IS NULL OR l.deal_type = :dealType)
-            AND (CAST(:priceMin AS numeric) IS NULL OR COALESCE(l.price_byn, l.price) >= CAST(:priceMin AS numeric))
-            AND (CAST(:priceMax AS numeric) IS NULL OR COALESCE(l.price_byn, l.price) <= CAST(:priceMax AS numeric))
+            AND (CAST(:priceMin AS numeric) IS NULL OR (l.price_byn IS NULL AND cur.code != 'BYN') OR COALESCE(l.price_byn, l.price) >= CAST(:priceMin AS numeric))
+            AND (CAST(:priceMax AS numeric) IS NULL OR (l.price_byn IS NULL AND cur.code != 'BYN') OR COALESCE(l.price_byn, l.price) <= CAST(:priceMax AS numeric))
             AND (CAST(:rooms AS integer) IS NULL OR l.rooms = :rooms)
             AND (CAST(:cityPattern AS varchar) IS NULL OR LOWER(l.city) LIKE :cityPattern)
             AND (CAST(:sourceCode AS varchar) IS NULL OR l.source_id = src_filter.id)

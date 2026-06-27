@@ -13,9 +13,11 @@ import com.flatio.web.dto.ListingSearchCriteria;
 import com.flatio.web.dto.ListingSummaryResponse;
 import com.flatio.web.dto.PriceHistoryEntry;
 import com.flatio.web.mapper.ListingMapper;
+import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
@@ -160,6 +162,40 @@ public class ListingServiceImpl implements ListingService {
     return camelCase.replaceAll("([a-z])([A-Z])", "$1_$2").toLowerCase();
   }
 
+  /**
+   * Builds price range predicates for the Specification-based search.
+   *
+   * <p>Uses {@code COALESCE(priceByn, price)} as the effective price when the stored BYN
+   * conversion is available. When a listing has no BYN price and its currency is not BYN
+   * (e.g., a USD-priced Realt listing where the NBRB rate was unavailable at ingestion time),
+   * comparing the raw USD value against a BYN filter would produce wrong results, so such
+   * listings are excluded from the price filter altogether.
+   *
+   * @param cb       JPA criteria builder
+   * @param root     root of the query over {@link Listing}
+   * @param criteria search criteria with optional price bounds
+   * @return list of price predicates, empty when both bounds are null
+   */
+  private List<Predicate> buildPricePredicates(CriteriaBuilder cb, Root<Listing> root,
+      ListingSearchCriteria criteria) {
+    if (criteria.priceMin() == null && criteria.priceMax() == null) {
+      return List.of();
+    }
+    Expression<BigDecimal> effectivePrice = cb.coalesce(root.get("priceByn"), root.get("price"));
+    Predicate noBynConversion = cb.and(
+        cb.isNull(root.get("priceByn")),
+        cb.notEqual(root.get("currency").<String>get("code"), CURRENCY_BYN)
+    );
+    List<Predicate> result = new ArrayList<>();
+    if (criteria.priceMin() != null) {
+      result.add(cb.or(noBynConversion, cb.greaterThanOrEqualTo(effectivePrice, criteria.priceMin())));
+    }
+    if (criteria.priceMax() != null) {
+      result.add(cb.or(noBynConversion, cb.lessThanOrEqualTo(effectivePrice, criteria.priceMax())));
+    }
+    return result;
+  }
+
   private Specification<Listing> buildSearchSpec(ListingSearchCriteria criteria) {
     return (root, query, cb) -> {
       List<Predicate> predicates = new ArrayList<>();
@@ -183,16 +219,7 @@ public class ListingServiceImpl implements ListingService {
       if (criteria.rooms() != null) {
         predicates.add(cb.equal(root.get("rooms"), criteria.rooms()));
       }
-      if (criteria.priceMin() != null) {
-        // Use priceByn when available (USD-priced sources); fall back to price (BYN-priced sources).
-        // This ensures the filter always operates in BYN regardless of the listing's stored currency.
-        Expression<BigDecimal> effectivePrice = cb.coalesce(root.get("priceByn"), root.get("price"));
-        predicates.add(cb.greaterThanOrEqualTo(effectivePrice, criteria.priceMin()));
-      }
-      if (criteria.priceMax() != null) {
-        Expression<BigDecimal> effectivePrice = cb.coalesce(root.get("priceByn"), root.get("price"));
-        predicates.add(cb.lessThanOrEqualTo(effectivePrice, criteria.priceMax()));
-      }
+      predicates.addAll(buildPricePredicates(cb, root, criteria));
       if (criteria.city() != null && !criteria.city().isBlank()) {
         predicates.add(cb.like(cb.lower(root.get("city")), "%" + criteria.city().toLowerCase() + "%"));
       }
