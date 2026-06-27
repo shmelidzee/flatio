@@ -8,10 +8,12 @@ import com.flatio.repository.CurrencyRepository;
 import com.flatio.repository.ListingRepository;
 import com.flatio.repository.PriceHistoryRepository;
 import com.flatio.repository.SourceRepository;
+import com.flatio.service.CurrencyRateService;
 import com.flatio.web.dto.ListingSearchCriteria;
 import com.flatio.web.dto.ListingSummaryResponse;
 import com.flatio.web.mapper.ListingMapper;
 import java.math.BigDecimal;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -71,7 +73,9 @@ class ListingServiceImplIT {
     var listingMapper = mock(ListingMapper.class);
     when(listingMapper.toSummaryResponse(org.mockito.ArgumentMatchers.any()))
         .thenReturn(mock(ListingSummaryResponse.class));
-    var listingService = new ListingServiceImpl(listingRepository, priceHistoryRepository, listingMapper);
+    var currencyRateService = mock(CurrencyRateService.class);
+    when(currencyRateService.getUsdToByn()).thenReturn(Optional.empty());
+    var listingService = new ListingServiceImpl(listingRepository, priceHistoryRepository, listingMapper, currencyRateService);
 
     var source = sourceRepository.findByCode("ONLINER").orElseThrow();
     var currency = currencyRepository.findByCode("BYN").orElseThrow();
