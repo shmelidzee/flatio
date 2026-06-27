@@ -261,7 +261,9 @@ public class RealtConnector implements ListingConnector {
     BigDecimal price = extractPrice(obj, externalId);
     String title = extractTitle(obj);
     String currency = resolveCurrency(obj);
-    BigDecimal priceUsd = CURRENCY_USD.equals(currency) ? price : null;
+    // priceUsd is null because price is already in USD; the BYN equivalent is not
+    // available at parse time and will be filled by a future currency-conversion layer.
+    BigDecimal priceUsd = null;
     String address = Optional.ofNullable(obj.path("address").textValue())
         .filter(t -> !t.isBlank())
         .orElse(null);

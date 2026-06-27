@@ -79,7 +79,7 @@ class RealtConnectorTest {
     assertThat(result.get(0).dealType()).isEqualTo("RENT");
     assertThat(result.get(0).currency()).isEqualTo("USD");
     assertThat(result.get(0).price()).isEqualByComparingTo(new BigDecimal("2500"));
-    assertThat(result.get(0).priceUsd()).isEqualByComparingTo(new BigDecimal("2500"));
+    assertThat(result.get(0).priceUsd()).isNull();
     assertThat(result.get(1).externalId()).isEqualTo("87654321");
   }
 
@@ -111,7 +111,7 @@ class RealtConnectorTest {
     assertThat(first.propertyType()).isEqualTo("APARTMENT");
     assertThat(first.currency()).isEqualTo("USD");
     assertThat(first.price()).isEqualByComparingTo(new BigDecimal("2500"));
-    assertThat(first.priceUsd()).isEqualByComparingTo(new BigDecimal("2500"));
+    assertThat(first.priceUsd()).isNull();
     assertThat(first.address()).isEqualTo("г. Минск, пр-т Независимости, 72");
     assertThat(first.sourceUrl()).isEqualTo("https://realt.by/rent-flat-for-long/object/12345678/");
     assertThat(first.photoUrls()).hasSize(1);
@@ -126,7 +126,7 @@ class RealtConnectorTest {
   }
 
   @Test
-  void should_set_currency_to_usd_and_price_usd_to_same_value_when_price_currency_is_840() throws IOException {
+  void should_set_currency_to_usd_and_price_usd_to_null_when_price_currency_is_840() throws IOException {
     // Given — realt.by stores prices in USD (priceCurrency=840, ISO 4217: 840=USD)
     String html = loadFixture("fixtures/realt/valid-listing-page.html");
     mockRestClientReturning(html);
@@ -134,11 +134,30 @@ class RealtConnectorTest {
     // When
     List<RawListing> result = connector.fetch();
 
-    // Then — currency = USD, priceUsd = same as price (no conversion; connector passes USD through)
+    // Then — currency = USD, priceUsd = null (price field already holds USD; BYN equivalent
+    // is not available at parse time and must not be fabricated from the same value)
     for (RawListing listing : result) {
       assertThat(listing.currency()).isEqualTo("USD");
-      assertThat(listing.priceUsd()).isEqualByComparingTo(listing.price());
+      assertThat(listing.priceUsd()).isNull();
     }
+  }
+
+  @Test
+  void should_parse_usd_price_with_null_price_usd_from_dedicated_fixture() throws IOException {
+    // Given — dedicated fixture: one listing, priceCurrency=840 (USD), price=650
+    String html = loadFixture("fixtures/realt/listing-with-usd-price.html");
+    mockRestClientReturning(html);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then — currency stored as USD, price not duplicated into priceUsd
+    assertThat(result).hasSize(1);
+    RawListing listing = result.get(0);
+    assertThat(listing.externalId()).isEqualTo("99001122");
+    assertThat(listing.currency()).isEqualTo("USD");
+    assertThat(listing.price()).isEqualByComparingTo(new BigDecimal("650"));
+    assertThat(listing.priceUsd()).isNull();
   }
 
   @Test
