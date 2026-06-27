@@ -13,9 +13,18 @@ import com.flatio.telegram.state.SearchSession;
 import com.flatio.telegram.state.SearchFilterWizard;
 import com.flatio.web.dto.ListingSearchCriteria;
 import com.flatio.web.dto.ListingSummaryResponse;
+import java.awt.Image;
+import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
+import javax.imageio.IIOImage;
+import javax.imageio.ImageIO;
+import javax.imageio.ImageWriteParam;
+import javax.imageio.ImageWriter;
+import javax.imageio.stream.ImageOutputStream;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.Optional;
@@ -68,6 +77,9 @@ public class SearchResultSender {
   private static final int PAGE_SIZE = 3;
   private static final long SESSION_TTL_MINUTES = 30;
   private static final Duration SESSION_TTL = Duration.ofMinutes(SESSION_TTL_MINUTES);
+
+  /** JPEG quality factor applied during compression (0.0–1.0). */
+  private static final float COMPRESS_QUALITY = 0.7f;
 
   private static final String SEARCHING_TEXT = "🔍 Ищу объявления...";
   private static final String NO_RESULTS_TEXT =
@@ -211,15 +223,96 @@ public class SearchResultSender {
   }
 
   private void handleOversizedPhoto(PhotoCard card) {
+    Optional<byte[]> compressed = compressPhoto(card.bytes(), card.listingId());
+    if (compressed.isPresent()) {
+      sendPhotoBytes(new PhotoCard(card.chatId(), card.listingId(), compressed.get(),
+          card.filename(), card.caption(), card.keyboard(), card.photoUrl()));
+      return;
+    }
     if (card.bytes().length <= maxSendDocumentBytes) {
-      log.warn("Photo too large for SendPhoto: {}bytes, sending as document: listingId={}",
-          card.bytes().length, card.listingId());
+      log.warn("Compression insufficient or unsupported, sending as document: " +
+          "originalSize={}bytes, listingId={}", card.bytes().length, card.listingId());
       sendDocumentBytes(card);
     } else {
-      log.warn("Photo too large for SendDocument: {}bytes, falling back to text: listingId={}",
-          card.bytes().length, card.listingId());
+      log.warn("Photo too large for both SendPhoto and SendDocument, falling back to text: " +
+          "{}bytes, listingId={}", card.bytes().length, card.listingId());
       sendTextCard(card.chatId(), card.caption(), card.keyboard());
     }
+  }
+
+  /**
+   * Attempts to compress image bytes to fit within {@link #maxSendPhotoBytes}.
+   *
+   * <p>Two-stage strategy:
+   * <ol>
+   *   <li>JPEG quality reduction to {@link #COMPRESS_QUALITY} (0.7).</li>
+   *   <li>Proportional dimension scaling if quality reduction is insufficient.</li>
+   * </ol>
+   *
+   * <p>Returns {@link Optional#empty()} when the input is not a supported image format,
+   * or when neither strategy reduces the size below the limit.
+   * Package-private for unit-testing.
+   *
+   * @param original    raw image bytes, never null
+   * @param listingId   used only for debug logging
+   * @return compressed bytes within limit, or empty if compression was insufficient
+   */
+  Optional<byte[]> compressPhoto(byte[] original, Long listingId) {
+    try {
+      BufferedImage img = ImageIO.read(new ByteArrayInputStream(original));
+      if (img == null) {
+        log.debug("Image format not supported for compression, skipping: listingId={}", listingId);
+        return Optional.empty();
+      }
+
+      byte[] qualityBytes = encodeJpeg(img, COMPRESS_QUALITY);
+      log.debug("Compression — quality pass: original={}b, after={}b, listingId={}",
+          original.length, qualityBytes.length, listingId);
+      if (qualityBytes.length <= maxSendPhotoBytes) {
+        return Optional.of(qualityBytes);
+      }
+
+      double scale = Math.sqrt((double) maxSendPhotoBytes / qualityBytes.length);
+      int newW = Math.max(1, (int) (img.getWidth() * scale));
+      int newH = Math.max(1, (int) (img.getHeight() * scale));
+      var scaled = new BufferedImage(newW, newH, BufferedImage.TYPE_INT_RGB);
+      scaled.createGraphics().drawImage(
+          img.getScaledInstance(newW, newH, Image.SCALE_SMOOTH), 0, 0, null);
+
+      byte[] scaledBytes = encodeJpeg(scaled, COMPRESS_QUALITY);
+      log.debug("Compression — scale pass: original={}b, newDims={}x{}, after={}b, listingId={}",
+          original.length, newW, newH, scaledBytes.length, listingId);
+      if (scaledBytes.length <= maxSendPhotoBytes) {
+        return Optional.of(scaledBytes);
+      }
+
+      log.debug("Compression insufficient after scale pass: size={}b, listingId={}",
+          scaledBytes.length, listingId);
+      return Optional.empty();
+
+    } catch (Exception e) {
+      log.debug("Photo compression error: listingId={}, error={}", listingId, e.getMessage());
+      return Optional.empty();
+    }
+  }
+
+  private byte[] encodeJpeg(BufferedImage img, float quality) throws IOException {
+    var writers = ImageIO.getImageWritersByFormatName("jpeg");
+    if (!writers.hasNext()) {
+      throw new IOException("No JPEG ImageWriter available in this JVM");
+    }
+    ImageWriter writer = writers.next();
+    ImageWriteParam param = writer.getDefaultWriteParam();
+    param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+    param.setCompressionQuality(quality);
+    var baos = new ByteArrayOutputStream();
+    try (ImageOutputStream ios = ImageIO.createImageOutputStream(baos)) {
+      writer.setOutput(ios);
+      writer.write(null, new IIOImage(img, null, null), param);
+    } finally {
+      writer.dispose();
+    }
+    return baos.toByteArray();
   }
 
   private void sendPhotoBytes(PhotoCard card) {

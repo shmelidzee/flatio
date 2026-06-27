@@ -1,6 +1,8 @@
 spring:
   application:
     name: flatio
+  main:
+    headless: true  # required for java.awt (ImageIO compression) in headless server environments
   datasource:
     url: ${DB_FLATIO_URL:jdbc:postgresql://localhost:5432/flatio}
     username: ${DB_FLATIO_USER:flatio}

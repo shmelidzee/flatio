@@ -10,11 +10,15 @@ import com.flatio.web.dto.ListingSummaryResponse;
 import com.flatio.telegram.callback.FilterCallbackHandler;
 import com.flatio.telegram.state.SearchSession;
 import com.flatio.web.dto.ListingSearchCriteria;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import javax.imageio.ImageIO;
 import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -236,6 +240,81 @@ class SearchResultSenderTest {
     verify(telegramClient).execute(any(SendDocument.class));
     verify(telegramClient, never()).execute(any(SendPhoto.class));
     verify(telegramClient, times(2)).execute(any(SendMessage.class));
+  }
+
+  // -------------------------------------------------------------------------
+  // compressPhoto — image compression
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_return_empty_when_bytes_are_not_parseable_as_image() {
+    // Given — raw bytes that are not a valid image format
+    byte[] notImage = new byte[]{0x00, 0x11, 0x22, 0x33, 0x44, 0x55};
+
+    // When
+    Optional<byte[]> result = searchResultSender.compressPhoto(notImage, 99L);
+
+    // Then — graceful failure, no exception
+    assertThat(result).isEmpty();
+  }
+
+  @Test
+  void should_return_empty_when_compressed_size_still_exceeds_limit() throws IOException {
+    // Given — valid JPEG; set photo limit to 1 byte (impossible to satisfy via compression)
+    var img = new BufferedImage(10, 10, BufferedImage.TYPE_INT_RGB);
+    var baos = new ByteArrayOutputStream();
+    ImageIO.write(img, "jpeg", baos);
+    byte[] jpegBytes = baos.toByteArray();
+    ReflectionTestUtils.setField(searchResultSender, "maxSendPhotoBytes", 1L);
+
+    // When
+    Optional<byte[]> result = searchResultSender.compressPhoto(jpegBytes, 99L);
+
+    // Then — can't compress any JPEG to 1 byte
+    assertThat(result).isEmpty();
+  }
+
+  @Test
+  void should_return_compressed_bytes_within_limit_when_jpeg_is_provided() throws IOException {
+    // Given — valid JPEG; set limit to the original file size → compressed version must fit
+    var img = new BufferedImage(100, 100, BufferedImage.TYPE_INT_RGB);
+    for (int y = 0; y < 100; y++) {
+      for (int x = 0; x < 100; x++) {
+        img.setRGB(x, y, (x * 200 + y * 100) & 0xFFFFFF);
+      }
+    }
+    var baos = new ByteArrayOutputStream();
+    ImageIO.write(img, "jpeg", baos);
+    byte[] originalJpeg = baos.toByteArray();
+    // Limit = original size: a quality=0.7 re-encode is guaranteed to be ≤ original
+    ReflectionTestUtils.setField(searchResultSender, "maxSendPhotoBytes", (long) originalJpeg.length);
+
+    // When
+    Optional<byte[]> result = searchResultSender.compressPhoto(originalJpeg, 99L);
+
+    // Then — compression succeeds; result fits within limit
+    assertThat(result).isPresent();
+    assertThat(result.get().length).isLessThanOrEqualTo(originalJpeg.length);
+  }
+
+  @Test
+  void should_fall_back_to_document_when_photo_is_not_valid_image() throws TelegramApiException {
+    // Given — non-JPEG bytes exceed photo limit; compression fails → document fallback
+    var notJpegBytes = new byte[(int) TEST_MAX_PHOTO_BYTES + 1];
+    var listing = buildListing(60L, "https://cdn.realt.by/bad.bmp", "https://realt.by/60");
+    when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
+    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingFormatter.buildCaption(listing)).thenReturn("caption");
+    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(photoProxyClient.download(anyString(), eq(60L))).thenReturn(Optional.of(notJpegBytes));
+
+    // When
+    searchResultSender.handle(buildCallback(1L, 100L, 10));
+
+    // Then — compression fails, document fallback used
+    verify(telegramClient, never()).execute(any(SendPhoto.class));
+    verify(telegramClient).execute(any(SendDocument.class));
+    verify(telegramClient).execute(any(SendMessage.class));
   }
 
   // -------------------------------------------------------------------------
