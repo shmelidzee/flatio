@@ -41,6 +41,7 @@ import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
@@ -68,22 +69,29 @@ class SearchResultSenderTest {
   @Mock
   private UserSavedSearchService userSavedSearchService;
 
+  @Mock
+  private PhotoProxyClient photoProxyClient;
+
   @InjectMocks
   private SearchResultSender searchResultSender;
 
   private SearchFilterState defaultState;
 
   private static final String TEST_NO_PHOTO_URL = "https://placeholder.test/no-photo.png";
+  private static final byte[] DUMMY_PHOTO_BYTES = new byte[]{0x01, 0x02};
 
   @BeforeEach
   void setUp() {
     defaultState = new SearchFilterState();
     // @Value is not injected by Mockito — set the placeholder URL explicitly
     ReflectionTestUtils.setField(searchResultSender, "noPhotoUrl", TEST_NO_PHOTO_URL);
+    // Default: photo download succeeds for all URLs
+    lenient().when(photoProxyClient.download(anyString(), anyLong()))
+        .thenReturn(Optional.of(DUMMY_PHOTO_BYTES));
   }
 
   // -------------------------------------------------------------------------
-  // sendCard — photo vs text
+  // sendCard — photo proxy download
   // -------------------------------------------------------------------------
 
   @Test
@@ -98,7 +106,8 @@ class SearchResultSenderTest {
     // When
     searchResultSender.handle(buildCallback(1L, 100L, 10));
 
-    // Then — SendPhoto for the card (placeholder URL), SendMessage for navigation only
+    // Then — SendPhoto for the card (placeholder downloaded as binary), SendMessage for navigation only
+    verify(photoProxyClient).download(TEST_NO_PHOTO_URL, 1L);
     verify(telegramClient).execute(any(SendPhoto.class));
     verify(telegramClient).execute(any(SendMessage.class));
   }
@@ -115,9 +124,48 @@ class SearchResultSenderTest {
     // When
     searchResultSender.handle(buildCallback(1L, 100L, 10));
 
-    // Then — SendPhoto for the card + 1 SendMessage for navigation
+    // Then — photo downloaded by our server then uploaded as binary
+    verify(photoProxyClient).download("https://cdn.realt.by/photo.jpg", 2L);
     verify(telegramClient).execute(any(SendPhoto.class));
     verify(telegramClient).execute(any(SendMessage.class));
+  }
+
+  @Test
+  void should_send_text_card_when_photo_download_returns_empty() throws TelegramApiException {
+    // Given — proxy download fails for the listing photo
+    var listing = buildListing(3L, "https://content.onliner.by/photo.jpg", "https://onliner.by/3");
+    when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
+    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingFormatter.buildCaption(listing)).thenReturn("caption");
+    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(photoProxyClient.download(anyString(), eq(3L))).thenReturn(Optional.empty());
+
+    // When
+    searchResultSender.handle(buildCallback(1L, 100L, 10));
+
+    // Then — text card used instead of photo; 2 SendMessage (text card + navigation), 0 SendPhoto
+    verify(telegramClient, never()).execute(any(SendPhoto.class));
+    verify(telegramClient, times(2)).execute(any(SendMessage.class));
+  }
+
+  @Test
+  void should_send_text_card_when_binary_upload_to_telegram_fails() throws TelegramApiException {
+    // Given — download succeeds, but Telegram rejects the binary upload
+    var listing = buildListing(4L, "https://cdn.realt.by/photo.jpg", "https://realt.by/4");
+    when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
+    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingFormatter.buildCaption(listing)).thenReturn("caption");
+    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    lenient().when(telegramClient.execute(any(EditMessageText.class))).thenReturn(mock());
+    when(telegramClient.execute(any(SendPhoto.class)))
+        .thenThrow(new TelegramApiException("Binary upload rejected"));
+
+    // When
+    searchResultSender.handle(buildCallback(1L, 100L, 10));
+
+    // Then — text card fallback: 2 SendMessage (text card + navigation)
+    verify(telegramClient).execute(any(SendPhoto.class));
+    verify(telegramClient, times(2)).execute(any(SendMessage.class));
   }
 
   // -------------------------------------------------------------------------
@@ -230,7 +278,7 @@ class SearchResultSenderTest {
   @Test
   void should_edit_wizard_message_to_searching_before_sending_results() throws TelegramApiException {
     // Given
-    var listing = buildListing(3L, null, "https://realt.by/3");
+    var listing = buildListing(5L, null, "https://realt.by/5");
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
     when(listingService.search(any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
@@ -239,7 +287,7 @@ class SearchResultSenderTest {
     // When
     searchResultSender.handle(buildCallback(1L, 100L, 10));
 
-    // Then — EditMessageText once (searching indicator), SendPhoto for card (placeholder), SendMessage for navigation
+    // Then — EditMessageText once (searching indicator), SendPhoto for card (binary), SendMessage for navigation
     verify(telegramClient).execute(any(EditMessageText.class));
     verify(telegramClient).execute(any(SendPhoto.class));
     verify(telegramClient).execute(any(SendMessage.class));
@@ -252,9 +300,9 @@ class SearchResultSenderTest {
   @Test
   void should_not_throw_when_telegram_api_fails_for_one_card() throws TelegramApiException {
     // Given — three listings, telegram throws on first SendPhoto (card 1), succeeds for the rest
-    var listing1 = buildListing(4L, null, "https://realt.by/4");
-    var listing2 = buildListing(5L, null, "https://realt.by/5");
-    var listing3 = buildListing(6L, null, "https://realt.by/6");
+    var listing1 = buildListing(6L, null, "https://realt.by/6");
+    var listing2 = buildListing(7L, null, "https://realt.by/7");
+    var listing3 = buildListing(8L, null, "https://realt.by/8");
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
     when(listingService.search(any(), any())).thenReturn(pageOf(listing1, listing2, listing3));
     when(listingFormatter.buildCaption(any())).thenReturn("caption");
@@ -276,63 +324,47 @@ class SearchResultSenderTest {
   }
 
   // -------------------------------------------------------------------------
-  // photo URL validation — invalid schema fallback to placeholder
+  // photo URL validation — invalid schema resolves to placeholder before download
   // -------------------------------------------------------------------------
 
   @Test
-  void should_use_placeholder_when_photo_url_has_no_http_schema() throws TelegramApiException {
-    // Given — listing with a short invalid URL "g" (seen in production: url=g causes [400] Wrong string length)
+  void should_download_placeholder_when_photo_url_has_no_http_schema() throws TelegramApiException {
+    // Given — listing with a short invalid URL "g"; resolvePhotoUrl replaces it with the placeholder
     var listing = buildListing(10L, "g", "https://realt.by/10");
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
     when(listingService.search(any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
     when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
-    lenient().when(telegramClient.execute(any(EditMessageText.class))).thenReturn(mock());
-    // Simulate Telegram API rejecting the invalid URL "g"
-    when(telegramClient.execute(any(SendPhoto.class))).thenAnswer(invocation -> {
-      SendPhoto photo = invocation.getArgument(0);
-      if ("g".equals(photo.getPhoto().getAttachName())) {
-        throw new TelegramApiException("[400] Wrong string length");
-      }
-      return null;
-    });
 
     // When
     searchResultSender.handle(buildCallback(1L, 100L, 10));
 
-    // Then — no text card fallback: 1 SendMessage for navigation only (placeholder URL was used)
+    // Then — placeholder URL is downloaded (not "g"), binary photo is sent
+    verify(photoProxyClient).download(TEST_NO_PHOTO_URL, 10L);
     verify(telegramClient).execute(any(SendPhoto.class));
     verify(telegramClient).execute(any(SendMessage.class));
   }
 
   @Test
-  void should_use_placeholder_when_photo_url_has_javascript_schema() throws TelegramApiException {
+  void should_download_placeholder_when_photo_url_has_javascript_schema() throws TelegramApiException {
     // Given
     var listing = buildListing(11L, "javascript:void(0)", "https://realt.by/11");
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
     when(listingService.search(any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
     when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
-    lenient().when(telegramClient.execute(any(EditMessageText.class))).thenReturn(mock());
-    // Simulate Telegram API rejecting "javascript:void(0)"
-    when(telegramClient.execute(any(SendPhoto.class))).thenAnswer(invocation -> {
-      SendPhoto photo = invocation.getArgument(0);
-      if ("javascript:void(0)".equals(photo.getPhoto().getAttachName())) {
-        throw new TelegramApiException("[400] Wrong string length");
-      }
-      return null;
-    });
 
     // When
     searchResultSender.handle(buildCallback(1L, 100L, 10));
 
-    // Then — placeholder was used, no text card fallback
+    // Then — placeholder downloaded and uploaded as binary
+    verify(photoProxyClient).download(TEST_NO_PHOTO_URL, 11L);
     verify(telegramClient).execute(any(SendPhoto.class));
     verify(telegramClient).execute(any(SendMessage.class));
   }
 
   @Test
-  void should_use_placeholder_when_photo_url_is_blank_with_spaces() throws TelegramApiException {
+  void should_download_placeholder_when_photo_url_is_blank_with_spaces() throws TelegramApiException {
     // Given — listing with a whitespace-only URL
     var listing = buildListing(12L, "   ", "https://realt.by/12");
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
@@ -343,7 +375,8 @@ class SearchResultSenderTest {
     // When
     searchResultSender.handle(buildCallback(1L, 100L, 10));
 
-    // Then — photo card sent with placeholder, no text card fallback
+    // Then — placeholder URL is downloaded; binary photo card sent, no text fallback
+    verify(photoProxyClient).download(TEST_NO_PHOTO_URL, 12L);
     verify(telegramClient).execute(any(SendPhoto.class));
     verify(telegramClient).execute(any(SendMessage.class));
   }
