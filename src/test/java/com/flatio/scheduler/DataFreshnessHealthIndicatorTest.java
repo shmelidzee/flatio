@@ -66,15 +66,15 @@ class DataFreshnessHealthIndicatorTest {
   // -------------------------------------------------------------------------
 
   @Test
-  void should_return_down_when_no_successful_sync_run_exists() {
-    // Given
+  void should_return_unknown_when_no_successful_sync_run_exists() {
+    // Given — first boot, sync_runs table is empty
     when(syncRunService.findLastSuccessfulRunAt()).thenReturn(Optional.empty());
 
     // When
     var health = healthIndicator.health();
 
-    // Then
-    assertThat(health.getStatus()).isEqualTo(Status.DOWN);
+    // Then — UNKNOWN, not DOWN: initial sync pending is not a failure
+    assertThat(health.getStatus()).isEqualTo(Status.UNKNOWN);
     assertThat(health.getDetails()).containsKey("reason");
   }
 
