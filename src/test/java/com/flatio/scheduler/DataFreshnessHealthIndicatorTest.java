@@ -66,15 +66,15 @@ class DataFreshnessHealthIndicatorTest {
   // -------------------------------------------------------------------------
 
   @Test
-  void should_return_unknown_when_no_successful_sync_run_exists() {
+  void should_return_up_when_no_successful_sync_run_exists() {
     // Given — first boot, sync_runs table is empty
     when(syncRunService.findLastSuccessfulRunAt()).thenReturn(Optional.empty());
 
     // When
     var health = healthIndicator.health();
 
-    // Then — UNKNOWN, not DOWN: initial sync pending is not a failure
-    assertThat(health.getStatus()).isEqualTo(Status.UNKNOWN);
+    // Then — UP with detail: Railway requires UP to pass healthcheck on first boot
+    assertThat(health.getStatus()).isEqualTo(Status.UP);
     assertThat(health.getDetails()).containsKey("reason");
   }
 
