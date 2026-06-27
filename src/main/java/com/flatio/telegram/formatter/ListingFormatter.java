@@ -117,7 +117,7 @@ public class ListingFormatter {
    */
   private void appendZone1(StringBuilder sb, ListingSummaryResponse listing) {
     String roomPrefix = buildRoomTypePrefix(listing.rooms(), listing.propertyType());
-    String priceFormatted = formatPrice(listing.price(), listing.currency(), listing.priceUsd());
+    String priceFormatted = formatPrice(listing.price(), listing.currency(), listing.priceUsd(), listing.priceByn());
 
     if (roomPrefix.isEmpty()) {
       sb.append(priceFormatted);
@@ -160,25 +160,35 @@ public class ListingFormatter {
   /**
    * Formats the price for display.
    *
-   * <p>When {@code priceUsd} is provided the listing's source price is in USD:
-   * displays as {@code $X (Y BYN)} where X is USD and Y is BYN.
-   * When {@code currency} is BYN with no USD price: displays as {@code Y BYN}.
-   * Other currencies: {@code amount CURRENCY}.
+   * <p>Priority order:
+   * <ol>
+   *   <li>When {@code priceUsd} is present: source stores in BYN but has USD original —
+   *       displays as {@code $priceUsd (price BYN)}.</li>
+   *   <li>When {@code currency} is USD and {@code priceByn} is present: source stores in USD
+   *       but BYN equivalent is known — displays as {@code $price (priceByn BYN)}.</li>
+   *   <li>When {@code currency} is USD and {@code priceByn} is absent: displays as {@code $price}.</li>
+   *   <li>When {@code currency} is BYN: displays as {@code price BYN}.</li>
+   *   <li>Other currencies: {@code price CURRENCY}.</li>
+   * </ol>
    *
    * @param price    stored price in the main currency, never null
    * @param currency stored currency code, may be null
-   * @param priceUsd original USD price, null if not applicable
+   * @param priceUsd original USD price (for BYN-stored listings), null if not applicable
+   * @param priceByn BYN equivalent (for USD-stored listings), null if not available
    * @return formatted HTML price string, never null
    */
-  private String formatPrice(BigDecimal price, String currency, BigDecimal priceUsd) {
+  private String formatPrice(BigDecimal price, String currency, BigDecimal priceUsd, BigDecimal priceByn) {
     if (priceUsd != null) {
       return "<b>$" + formatNumber(priceUsd) + " (" + formatNumber(price) + " BYN)</b>";
     }
+    if ("USD".equals(currency)) {
+      if (priceByn != null) {
+        return "<b>$" + formatNumber(price) + " (" + formatNumber(priceByn) + " BYN)</b>";
+      }
+      return "<b>$" + formatNumber(price) + "</b>";
+    }
     if ("BYN".equals(currency)) {
       return "<b>" + formatNumber(price) + " BYN</b>";
-    }
-    if ("USD".equals(currency)) {
-      return "<b>$" + formatNumber(price) + "</b>";
     }
     return "<b>" + formatNumber(price) + " " + (currency != null ? currency : "") + "</b>";
   }

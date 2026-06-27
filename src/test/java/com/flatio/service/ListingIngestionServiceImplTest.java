@@ -371,7 +371,7 @@ class ListingIngestionServiceImplTest {
     // Given — seller kept USD price = $500; BYN equivalent changed due to exchange rate
     var raw = new RawListing(
         "ext-usd-1", "Test apartment", null, "RENT", "APARTMENT",
-        BigDecimal.valueOf(1650), "BYN", BigDecimal.valueOf(500),
+        BigDecimal.valueOf(1650), "BYN", BigDecimal.valueOf(500), null,
         2, 3, 9, BigDecimal.valueOf(55.5),
         "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
         "Минск", "https://onliner.by/usd-1",
@@ -396,7 +396,7 @@ class ListingIngestionServiceImplTest {
     // Given — seller reduced USD price from $500 to $450
     var raw = new RawListing(
         "ext-usd-2", "Test apartment", null, "RENT", "APARTMENT",
-        BigDecimal.valueOf(1440), "BYN", BigDecimal.valueOf(450),
+        BigDecimal.valueOf(1440), "BYN", BigDecimal.valueOf(450), null,
         2, 3, 9, BigDecimal.valueOf(55.5),
         "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
         "Минск", "https://onliner.by/usd-2",
@@ -421,7 +421,7 @@ class ListingIngestionServiceImplTest {
     // Given — raw has priceUsd but existing doesn't → fall back to BYN comparison; BYN unchanged
     var raw = new RawListing(
         "ext-usd-3", "Test apartment", null, "RENT", "APARTMENT",
-        BigDecimal.valueOf(1600), "BYN", BigDecimal.valueOf(500),
+        BigDecimal.valueOf(1600), "BYN", BigDecimal.valueOf(500), null,
         2, 3, 9, BigDecimal.valueOf(55.5),
         "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
         "Минск", "https://onliner.by/usd-3",
@@ -486,7 +486,7 @@ class ListingIngestionServiceImplTest {
     // Given
     var raw = new RawListing(
         "ext-pu2", "Test", null, "RENT_DAILY", "APARTMENT",
-        BigDecimal.valueOf(50), "BYN", null,
+        BigDecimal.valueOf(50), "BYN", null, null,
         2, 3, 9, BigDecimal.valueOf(55.5),
         "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
         "Минск", "https://onliner.by/pu2",
@@ -553,7 +553,7 @@ class ListingIngestionServiceImplTest {
     // Given — connector sends a deal_type value not in the DealType enum
     var raw = new RawListing(
         "ext-skip1", "Test", null, "AUCTION", "APARTMENT",
-        BigDecimal.valueOf(500), "BYN", null,
+        BigDecimal.valueOf(500), "BYN", null, null,
         2, 3, 9, BigDecimal.valueOf(55.5),
         "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
         "Минск", "https://onliner.by/skip1",
@@ -572,7 +572,7 @@ class ListingIngestionServiceImplTest {
     // Given — connector sends null deal_type
     var raw = new RawListing(
         "ext-skip2", "Test", null, null, "APARTMENT",
-        BigDecimal.valueOf(500), "BYN", null,
+        BigDecimal.valueOf(500), "BYN", null, null,
         2, 3, 9, BigDecimal.valueOf(55.5),
         "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
         "Минск", "https://onliner.by/skip2",
@@ -591,7 +591,7 @@ class ListingIngestionServiceImplTest {
     // Given
     var raw = new RawListing(
         "ext-skip3", "Test", null, "EXCHANGE", "APARTMENT",
-        BigDecimal.valueOf(500), "BYN", null,
+        BigDecimal.valueOf(500), "BYN", null, null,
         2, 3, 9, BigDecimal.valueOf(55.5),
         "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
         "Минск", "https://onliner.by/skip3",
@@ -611,7 +611,7 @@ class ListingIngestionServiceImplTest {
     // Given — one unknown deal_type, one valid listing
     var rawUnknown = new RawListing(
         "ext-batch-skip", "Test", null, "AUCTION", "APARTMENT",
-        BigDecimal.valueOf(500), "BYN", null,
+        BigDecimal.valueOf(500), "BYN", null, null,
         2, 3, 9, BigDecimal.valueOf(55.5),
         "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
         "Минск", "https://onliner.by/batch-skip",
@@ -837,7 +837,7 @@ class ListingIngestionServiceImplTest {
   private RawListing buildRawListing(String externalId, BigDecimal price) {
     return new RawListing(
         externalId, "Test apartment", "Description", "RENT", "APARTMENT",
-        price, "BYN", null,
+        price, "BYN", null, null,
         2, 3, 9, BigDecimal.valueOf(55.5),
         "Минск, Немига 5",
         BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),

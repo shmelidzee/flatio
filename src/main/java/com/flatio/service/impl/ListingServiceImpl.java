@@ -12,8 +12,10 @@ import com.flatio.web.dto.ListingSearchCriteria;
 import com.flatio.web.dto.ListingSummaryResponse;
 import com.flatio.web.dto.PriceHistoryEntry;
 import com.flatio.web.mapper.ListingMapper;
+import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -148,10 +150,14 @@ public class ListingServiceImpl implements ListingService {
         predicates.add(cb.equal(root.get("rooms"), criteria.rooms()));
       }
       if (criteria.priceMin() != null) {
-        predicates.add(cb.greaterThanOrEqualTo(root.get("price"), criteria.priceMin()));
+        // Use priceByn when available (USD-priced sources); fall back to price (BYN-priced sources).
+        // This ensures the filter always operates in BYN regardless of the listing's stored currency.
+        Expression<BigDecimal> effectivePrice = cb.coalesce(root.get("priceByn"), root.get("price"));
+        predicates.add(cb.greaterThanOrEqualTo(effectivePrice, criteria.priceMin()));
       }
       if (criteria.priceMax() != null) {
-        predicates.add(cb.lessThanOrEqualTo(root.get("price"), criteria.priceMax()));
+        Expression<BigDecimal> effectivePrice = cb.coalesce(root.get("priceByn"), root.get("price"));
+        predicates.add(cb.lessThanOrEqualTo(effectivePrice, criteria.priceMax()));
       }
       if (criteria.city() != null && !criteria.city().isBlank()) {
         predicates.add(cb.like(cb.lower(root.get("city")), "%" + criteria.city().toLowerCase() + "%"));

@@ -574,6 +574,7 @@ class SearchResultSenderTest {
         BigDecimal.valueOf(500),
         "USD",
         null,
+        null,
         2,
         null,
         BigDecimal.valueOf(52.0),

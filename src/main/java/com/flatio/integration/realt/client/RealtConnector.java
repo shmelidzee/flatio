@@ -7,6 +7,7 @@ import com.flatio.integration.core.ConnectorTransientException;
 import com.flatio.integration.core.ListingConnector;
 import com.flatio.integration.core.RawListing;
 import com.flatio.integration.realt.config.RealtProperties;
+import com.flatio.service.CurrencyRateService;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
 import io.github.resilience4j.retry.annotation.Retry;
@@ -21,6 +22,7 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.net.URI;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -69,13 +71,16 @@ public class RealtConnector implements ListingConnector {
   private final RestClient restClient;
   private final RealtProperties properties;
   private final ObjectMapper objectMapper;
+  private final CurrencyRateService currencyRateService;
 
   public RealtConnector(@Qualifier("realtRestClient") RestClient restClient,
       RealtProperties properties,
-      ObjectMapper objectMapper) {
+      ObjectMapper objectMapper,
+      CurrencyRateService currencyRateService) {
     this.restClient = restClient;
     this.properties = properties;
     this.objectMapper = objectMapper;
+    this.currencyRateService = currencyRateService;
   }
 
   @Override
@@ -261,9 +266,9 @@ public class RealtConnector implements ListingConnector {
     BigDecimal price = extractPrice(obj, externalId);
     String title = extractTitle(obj);
     String currency = resolveCurrency(obj);
-    // priceUsd is null because price is already in USD; the BYN equivalent is not
-    // available at parse time and will be filled by a future currency-conversion layer.
+    // priceUsd is null: price is already in USD for Realt listings.
     BigDecimal priceUsd = null;
+    BigDecimal priceByn = computePriceByn(price, currency, externalId);
     String address = Optional.ofNullable(obj.path("address").textValue())
         .filter(t -> !t.isBlank())
         .orElse(null);
@@ -274,7 +279,7 @@ public class RealtConnector implements ListingConnector {
     return new RawListing(
         externalId, title, null,
         DEAL_TYPE_RENT, PROPERTY_TYPE_APARTMENT,
-        price, currency, priceUsd,
+        price, currency, priceUsd, priceByn,
         jsonIntOrNull(obj, "rooms"),
         jsonIntOrNull(obj, "storey"),
         jsonIntOrNull(obj, "storeys"),
@@ -285,6 +290,18 @@ public class RealtConnector implements ListingConnector {
         extractPhotos(obj),
         isOwner, null
     );
+  }
+
+  private BigDecimal computePriceByn(BigDecimal price, String currency, String externalId) {
+    if (!CURRENCY_USD.equals(currency)) {
+      return null;
+    }
+    return currencyRateService.getUsdToByn()
+        .map(rate -> price.multiply(rate).setScale(2, RoundingMode.HALF_UP))
+        .orElseGet(() -> {
+          log.debug("USD/BYN rate unavailable, priceByn not set: externalId={}", externalId);
+          return null;
+        });
   }
 
   private String resolveCurrency(JsonNode obj) {

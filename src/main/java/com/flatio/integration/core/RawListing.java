@@ -27,6 +27,7 @@ public record RawListing(
     BigDecimal price,
     String currency,
     BigDecimal priceUsd,
+    BigDecimal priceByn,
     Integer rooms,
     Integer floorNumber,
     Integer floorsTotal,

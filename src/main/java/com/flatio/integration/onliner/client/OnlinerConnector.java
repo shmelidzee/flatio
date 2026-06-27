@@ -263,6 +263,7 @@ public class OnlinerConnector implements ListingConnector {
         price,
         "BYN",
         priceUsd,
+        null,
         rooms,
         null,
         null,

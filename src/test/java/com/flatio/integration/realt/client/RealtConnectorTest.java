@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.flatio.integration.core.ConnectorTransientException;
 import com.flatio.integration.core.RawListing;
 import com.flatio.integration.realt.config.RealtProperties;
+import com.flatio.service.CurrencyRateService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,6 +22,7 @@ import java.io.InputStream;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -46,6 +48,9 @@ class RealtConnectorTest {
   @Mock
   private RestClient.ResponseSpec responseSpec;
 
+  @Mock
+  private CurrencyRateService currencyRateService;
+
   private RealtConnector connector;
 
   @BeforeEach
@@ -57,7 +62,7 @@ class RealtConnectorTest {
         "/rent/flat-for-long/",
         "/rent-flat-for-long/object/"
     );
-    connector = new RealtConnector(restClient, properties, new ObjectMapper());
+    connector = new RealtConnector(restClient, properties, new ObjectMapper(), currencyRateService);
   }
 
   // -------------------------------------------------------------------------
@@ -184,6 +189,60 @@ class RealtConnectorTest {
 
     // Then — falls back to FALLBACK_TITLE constant
     assertThat(result.get(1).title()).isEqualTo("Квартира на Realt.by");
+  }
+
+  // -------------------------------------------------------------------------
+  // BYN price computation (computePriceByn)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_compute_price_byn_when_usd_rate_is_available() {
+    // Given — rate service returns 2.82 BYN/USD; listing price = 650 USD
+    String html = buildPageWithSingleListing(
+        "{\"code\":88800001,\"title\":\"Rate test\",\"price\":650,\"priceCurrency\":840,\"images\":[]}");
+    when(currencyRateService.getUsdToByn()).thenReturn(Optional.of(new BigDecimal("2.82")));
+    mockRestClientReturning(html);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then — priceByn = 650 * 2.82 = 1833.00
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).priceByn()).isNotNull();
+    assertThat(result.get(0).priceByn()).isEqualByComparingTo(new BigDecimal("1833.00"));
+  }
+
+  @Test
+  void should_set_price_byn_to_null_when_rate_service_returns_empty() {
+    // Given — rate unavailable (e.g. NBRb API down)
+    String html = buildPageWithSingleListing(
+        "{\"code\":88800002,\"title\":\"No rate\",\"price\":650,\"priceCurrency\":840,\"images\":[]}");
+    when(currencyRateService.getUsdToByn()).thenReturn(Optional.empty());
+    mockRestClientReturning(html);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then — priceByn is null, listing is still returned without error
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).priceByn()).isNull();
+    assertThat(result.get(0).currency()).isEqualTo("USD");
+  }
+
+  @Test
+  void should_set_price_byn_to_null_when_listing_currency_is_byn() {
+    // Given — listing priced in BYN (priceCurrency=933); no conversion needed
+    String html = buildPageWithSingleListing(
+        "{\"code\":88800003,\"title\":\"BYN listing\",\"price\":1500,\"priceCurrency\":933,\"images\":[]}");
+    mockRestClientReturning(html);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then — priceByn is null for BYN-priced listings; price is the BYN value directly
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).currency()).isEqualTo("BYN");
+    assertThat(result.get(0).priceByn()).isNull();
   }
 
   // -------------------------------------------------------------------------

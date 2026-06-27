@@ -234,7 +234,7 @@ class RealtFullSyncJobTest {
   private RawListing buildRawListing(String externalId) {
     return new RawListing(
         externalId, "Test apartment", null, "RENT", "APARTMENT",
-        BigDecimal.valueOf(680), "USD", BigDecimal.valueOf(680),
+        BigDecimal.valueOf(680), "USD", BigDecimal.valueOf(680), null,
         2, null, null, null,
         "Минск", null, null, null,
         "https://realt.by/rent-flat-for-long/object/" + externalId + "/",
