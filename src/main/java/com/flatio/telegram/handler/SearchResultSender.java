@@ -359,9 +359,34 @@ public class SearchResultSender {
           .replyMarkup(card.keyboard())
           .build());
     } catch (TelegramApiException e) {
-      log.warn("Failed to send binary photo, falling back to text: listingId={}, url={}",
-          card.listingId(), card.photoUrl(), e);
-      sendTextCard(card.chatId(), card.caption(), card.keyboard());
+      if (isInvalidDimensions(e)) {
+        log.warn("Photo rejected: PHOTO_INVALID_DIMENSIONS, retrying with placeholder: listingId={}, url={}",
+            card.listingId(), card.photoUrl());
+        sendPlaceholderPhoto(card.chatId(), card.caption(), card.keyboard(), card.listingId());
+      } else {
+        log.warn("Failed to send binary photo, falling back to text: listingId={}, url={}",
+            card.listingId(), card.photoUrl(), e);
+        sendTextCard(card.chatId(), card.caption(), card.keyboard());
+      }
+    }
+  }
+
+  private boolean isInvalidDimensions(TelegramApiException e) {
+    return e.getMessage() != null && e.getMessage().contains("PHOTO_INVALID_DIMENSIONS");
+  }
+
+  private void sendPlaceholderPhoto(String chatId, String caption, InlineKeyboardMarkup keyboard, Long listingId) {
+    try {
+      telegramClient.execute(SendPhoto.builder()
+          .chatId(chatId)
+          .photo(new InputFile(noPhotoUrl))
+          .caption(caption)
+          .parseMode("HTML")
+          .replyMarkup(keyboard)
+          .build());
+    } catch (TelegramApiException e) {
+      log.warn("Failed to send placeholder photo, falling back to text: listingId={}", listingId, e);
+      sendTextCard(chatId, caption, keyboard);
     }
   }
 
