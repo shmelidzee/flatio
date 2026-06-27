@@ -10,6 +10,7 @@ import com.flatio.service.SyncRunService;
 import com.flatio.service.domain.BatchIngestResult;
 import com.flatio.service.domain.SyncRunRequest;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -44,6 +45,20 @@ public class RealtFullSyncJob {
   private final SourceRepository sourceRepository;
   private final ListingIngestionService listingIngestionService;
   private final SyncRunService syncRunService;
+
+  private final AtomicBoolean running = new AtomicBoolean(false);
+
+  /**
+   * Returns true while a full sync is actively running.
+   *
+   * <p>Used by {@link RealtDeltaSyncJob} to skip a redundant full-sync fallback
+   * when no prior successful run exists yet (first deploy race condition).
+   *
+   * @return true if {@link #performFullSync} is currently executing
+   */
+  public boolean isRunning() {
+    return running.get();
+  }
 
   /**
    * Triggers an immediate full sync on startup if the database is empty for this source.
@@ -88,30 +103,29 @@ public class RealtFullSyncJob {
   }
 
   private void performFullSync(Source source) {
+    running.set(true);
     Instant start = Instant.now();
-    List<RawListing> rawListings = realtConnector.fetch();
-
-    if (rawListings.isEmpty()) {
-      log.warn("Realt full sync: fetch returned empty list — skipping deactivation to avoid data loss");
-      return;
+    try {
+      List<RawListing> rawListings = realtConnector.fetch();
+      if (rawListings.isEmpty()) {
+        log.warn("Realt full sync: fetch returned empty list — skipping deactivation to avoid data loss");
+        return;
+      }
+      BatchIngestResult result = listingIngestionService.ingestBatch(rawListings, source);
+      Set<String> activeExternalIds = rawListings.stream()
+          .map(RawListing::externalId)
+          .collect(Collectors.toSet());
+      int deactivated = listingIngestionService.applyMissedSyncPenalty(source, activeExternalIds);
+      Instant finish = Instant.now();
+      long durationMs = Duration.between(start, finish).toMillis();
+      syncRunService.record(SyncRunRequest.success(
+          realtConnector.getSourceId(), SyncType.FULL, start, finish,
+          rawListings.size(), result));
+      log.info("Realt full sync completed: fetched={}, added={}, updated={}, errors={}, deactivated={}, durationMs={}",
+          rawListings.size(), result.added(), result.updated(), result.errors(), deactivated, durationMs);
+    } finally {
+      running.set(false);
     }
-
-    BatchIngestResult result = listingIngestionService.ingestBatch(rawListings, source);
-
-    Set<String> activeExternalIds = rawListings.stream()
-        .map(RawListing::externalId)
-        .collect(Collectors.toSet());
-
-    int deactivated = listingIngestionService.applyMissedSyncPenalty(source, activeExternalIds);
-    Instant finish = Instant.now();
-    long durationMs = Duration.between(start, finish).toMillis();
-
-    syncRunService.record(SyncRunRequest.success(
-        realtConnector.getSourceId(), SyncType.FULL, start, finish,
-        rawListings.size(), result));
-
-    log.info("Realt full sync completed: fetched={}, added={}, updated={}, errors={}, deactivated={}, durationMs={}",
-        rawListings.size(), result.added(), result.updated(), result.errors(), deactivated, durationMs);
   }
 
   private Source resolveSource() {

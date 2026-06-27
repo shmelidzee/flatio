@@ -228,6 +228,36 @@ class RealtFullSyncJobTest {
   }
 
   // -------------------------------------------------------------------------
+  // isRunning — concurrent sync guard (#241)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_return_false_after_full_sync_completes_successfully() {
+    // Given
+    when(realtConnector.fetch()).thenReturn(List.of(buildRawListing("ext-flag-1")));
+    when(listingIngestionService.ingestBatch(any(), eq(source))).thenReturn(new BatchIngestResult(1, 0, 0));
+    when(listingIngestionService.applyMissedSyncPenalty(eq(source), any())).thenReturn(0);
+
+    // When
+    fullSyncJob.runFullSync();
+
+    // Then — flag is reset after completion
+    assertThat(fullSyncJob.isRunning()).isFalse();
+  }
+
+  @Test
+  void should_return_false_after_full_sync_fails_with_exception() {
+    // Given — fetch throws an unexpected error
+    when(realtConnector.fetch()).thenThrow(new RuntimeException("Network error"));
+
+    // When
+    fullSyncJob.runFullSync();
+
+    // Then — flag is reset even when sync throws (try/finally guarantee)
+    assertThat(fullSyncJob.isRunning()).isFalse();
+  }
+
+  // -------------------------------------------------------------------------
   // helpers
   // -------------------------------------------------------------------------
 
