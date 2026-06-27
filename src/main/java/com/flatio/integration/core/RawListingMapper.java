@@ -67,6 +67,7 @@ public interface RawListingMapper {
   @Mapping(target = "district", ignore = true)
   @Mapping(target = "createdAt", ignore = true)
   @Mapping(target = "updatedAt", ignore = true)
+  @Mapping(target = "publishedAt", ignore = true)
   @Mapping(source = "dealType", target = "dealType")
   @Mapping(target = "priceUnit", ignore = true)
   @Mapping(target = "repostedFrom", ignore = true)
