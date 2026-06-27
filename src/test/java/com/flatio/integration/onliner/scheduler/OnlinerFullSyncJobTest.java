@@ -233,7 +233,7 @@ class OnlinerFullSyncJobTest {
   private RawListing buildRawListing(String externalId) {
     return new RawListing(
         externalId, "Test apartment", null, "RENT", "APARTMENT",
-        BigDecimal.valueOf(50000), "BYN", null,
+        BigDecimal.valueOf(50000), "BYN", null, null,
         2, null, null, null,
         "Минск", null, null, null,
         "https://onliner.by/" + externalId,

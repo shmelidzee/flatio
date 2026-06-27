@@ -364,6 +364,44 @@ class ListingFormatterTest {
   }
 
   @Test
+  void should_format_usd_price_with_byn_equivalent_when_price_byn_is_not_null() {
+    // Given — Realt listing: price stored in USD, priceByn computed from NBRB rate, priceUsd is null
+    var listing = new ListingSummaryResponse(
+        40L, null, BigDecimal.valueOf(650), "USD",
+        null, BigDecimal.valueOf(1_835), null, null,
+        null, null, null, null,
+        "realt", null, null,
+        "https://realt.by/40"
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then — format: "$650 (1 835 BYN)" with thousands separator in BYN part
+    assertThat(caption).contains("$650");
+    assertThat(caption).containsPattern("1.835 BYN");
+  }
+
+  @Test
+  void should_format_usd_price_without_byn_when_price_byn_is_null() {
+    // Given — USD listing without BYN equivalent (rate was unavailable at parse time)
+    var listing = new ListingSummaryResponse(
+        41L, null, BigDecimal.valueOf(650), "USD",
+        null, null, null, null,
+        null, null, null, null,
+        "realt", null, null,
+        "https://realt.by/41"
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then — only USD shown, no BYN equivalent in brackets
+    assertThat(caption).contains("$650");
+    assertThat(caption).doesNotContain("BYN");
+  }
+
+  @Test
   void should_format_byn_price_with_byn_suffix() {
     // Given
     var listing = buildListing(
@@ -540,7 +578,7 @@ class ListingFormatterTest {
   void should_use_address_field_when_present() {
     // Given — address field set, district and city also present but should be ignored
     var listing = new ListingSummaryResponse(
-        30L, null, BigDecimal.valueOf(500), "USD", null, 2, null, null,
+        30L, null, BigDecimal.valueOf(500), "USD", null, null, 2, null, null,
         "Минск", "Советский район", "ул. Пушкина, 5", "realt", null, null,
         "https://realt.by/30"
     );
@@ -558,7 +596,7 @@ class ListingFormatterTest {
   void should_show_address_when_district_and_city_null() {
     // Given — only address field, no district or city
     var listing = new ListingSummaryResponse(
-        31L, null, BigDecimal.valueOf(500), "USD", null, 2, null, null,
+        31L, null, BigDecimal.valueOf(500), "USD", null, null, 2, null, null,
         null, null, "ул. Ленина, 10", "realt", null, null,
         "https://realt.by/31"
     );
@@ -575,7 +613,7 @@ class ListingFormatterTest {
   void should_omit_address_line_when_address_district_city_all_null() {
     // Given — all location fields null
     var listing = new ListingSummaryResponse(
-        32L, null, BigDecimal.valueOf(500), "USD", null, 2, null, null,
+        32L, null, BigDecimal.valueOf(500), "USD", null, null, 2, null, null,
         null, null, null, "realt", null, null,
         "https://realt.by/32"
     );
@@ -592,7 +630,7 @@ class ListingFormatterTest {
   void should_fallback_to_district_and_city_when_address_null() {
     // Given — address null, district and city present
     var listing = new ListingSummaryResponse(
-        33L, null, BigDecimal.valueOf(500), "USD", null, 2, null, null,
+        33L, null, BigDecimal.valueOf(500), "USD", null, null, 2, null, null,
         "Минск", "Советский район", null, "realt", null, null,
         "https://realt.by/33"
     );
@@ -717,6 +755,7 @@ class ListingFormatterTest {
         null,
         null,
         null,
+        null,
         BigDecimal.valueOf(52.5),
         null,
         longAddress,
@@ -838,7 +877,7 @@ class ListingFormatterTest {
   ) {
     return new ListingSummaryResponse(
         id, null, price, currency,
-        priceUsd, rooms, propertyType,
+        priceUsd, null, rooms, propertyType,
         null, city, district,
         null, sourceId, publishedAt, null, sourceUrl
     );
@@ -861,7 +900,7 @@ class ListingFormatterTest {
   ) {
     return new ListingSummaryResponse(
         id, null, price, currency,
-        null, null, null,
+        null, null, null, null,
         areaTotalM2, city, district,
         null, sourceId, publishedAt, photoUrl, sourceUrl
     );

@@ -21,6 +21,9 @@ public record ListingSummaryResponse(
     @Schema(description = "Original price in USD when source publishes in USD; null otherwise", example = "85000.00")
     BigDecimal priceUsd,
 
+    @Schema(description = "BYN equivalent of the price for USD-priced listings (e.g. Realt.by); null for BYN-priced sources", example = "2132.00")
+    BigDecimal priceByn,
+
     @Schema(description = "Number of rooms", example = "2")
     Integer rooms,
 

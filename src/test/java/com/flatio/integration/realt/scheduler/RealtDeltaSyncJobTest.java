@@ -223,7 +223,7 @@ class RealtDeltaSyncJobTest {
     return new RawListing(
         externalId, "Test Listing", null,
         "RENT", "APARTMENT",
-        BigDecimal.valueOf(500), "USD", null,
+        BigDecimal.valueOf(500), "USD", null, null,
         2, 3, 9, BigDecimal.valueOf(65),
         "ул. Тестовая, 1", null, null, "Минск",
         "https://realt.by/object/" + externalId + "/",

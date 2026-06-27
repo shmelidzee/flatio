@@ -72,6 +72,9 @@ public class Listing {
   @Column(name = "price_usd", precision = 15, scale = 2)
   private BigDecimal priceUsd;
 
+  @Column(name = "price_byn", precision = 15, scale = 2)
+  private BigDecimal priceByn;
+
   @Column
   private Integer rooms;
 

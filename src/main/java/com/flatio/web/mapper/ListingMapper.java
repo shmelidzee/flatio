@@ -40,6 +40,7 @@ public interface ListingMapper {
   @Mapping(source = "currency.code", target = "currency")
   @Mapping(source = "photoUrl", target = "photoUrl")
   @Mapping(source = "priceUsd", target = "priceUsd")
+  @Mapping(source = "priceByn", target = "priceByn")
   @Mapping(source = "propertyType", target = "propertyType")
   ListingSummaryResponse toSummaryResponse(Listing listing);
 

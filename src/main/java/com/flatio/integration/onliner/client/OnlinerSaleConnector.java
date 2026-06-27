@@ -244,6 +244,7 @@ public class OnlinerSaleConnector implements ListingConnector {
         price,
         "BYN",
         priceUsd,
+        null,
         apartment.numberOfRooms(),
         null,
         null,
