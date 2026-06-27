@@ -35,12 +35,13 @@ public class DataFreshnessHealthIndicator implements HealthIndicator {
   /**
    * Checks the age of the most recent successful sync run.
    *
-   * <p>Returns {@code UNKNOWN} when no sync has ever completed — this is expected on first boot
-   * while the initial sync is still running, and must not cause a deployment healthcheck failure.
+   * <p>Returns {@code UP} with an "Initial sync in progress" detail when no sync has ever
+   * completed — this is the expected state on first boot while the initial sync is running.
+   * Railway (and other deployment platforms) require {@code UP} to consider a replica healthy;
+   * {@code UNKNOWN} is treated as unavailable.
    * Returns {@code DOWN} only when a prior sync exists but has exceeded the freshness threshold.
    *
-   * @return {@code UP} if a successful sync finished within the threshold,
-   *         {@code UNKNOWN} if no sync has run yet (initial boot),
+   * @return {@code UP} if data is fresh or initial sync is in progress,
    *         {@code DOWN} if the last sync is older than the threshold
    */
   @Override
@@ -49,8 +50,8 @@ public class DataFreshnessHealthIndicator implements HealthIndicator {
 
     if (lastSuccessfulAt.isEmpty()) {
       log.info("Data freshness: no sync runs recorded yet — initial sync pending");
-      return Health.unknown()
-          .withDetail("reason", "Initial sync pending — no successful sync runs recorded yet")
+      return Health.up()
+          .withDetail("reason", "Initial sync in progress")
           .build();
     }
 
