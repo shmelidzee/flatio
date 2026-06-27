@@ -106,9 +106,71 @@ public class RealtConnector implements ListingConnector {
     return fetchAllInternal();
   }
 
+  /**
+   * Fetches listings published at or after the given timestamp (delta sync).
+   *
+   * <p>Realt.by pages are ordered by {@code createdAt} descending (newest first). Pagination
+   * stops as soon as a listing's {@code publishedAt} is strictly before {@code since}, so only
+   * new and recently updated listings are returned. Rate-limited, circuit-broken, and retried
+   * via Resilience4j; on exhausted retries {@link #fetchDeltaFallback} returns an empty list.
+   *
+   * @param since lower-bound timestamp; listings with {@code publishedAt} before this value
+   *              are skipped and stop further pagination
+   * @return list of recently published listings, never null, may be empty
+   */
+  @RateLimiter(name = "connector-realt")
+  @CircuitBreaker(name = "connector-realt")
+  @Retry(name = "connector-realt", fallbackMethod = "fetchDeltaFallback")
+  public List<RawListing> fetchDelta(Instant since) {
+    log.info("Delta fetch started: source={}, since={}", properties.sourceId(), since);
+    List<RawListing> result = new ArrayList<>();
+    int currentPage = 1;
+    boolean done = false;
+    try {
+      while (!done && currentPage <= MAX_PAGES) {
+        String html = fetchPage(currentPage);
+        if (html == null || html.isBlank()) {
+          break;
+        }
+        Document doc = Jsoup.parse(html, properties.baseUrl());
+        List<RawListing> pageListings = parseListingsFromJson(doc);
+        if (pageListings.isEmpty()) {
+          break;
+        }
+        for (RawListing listing : pageListings) {
+          if (listing.publishedAt() != null && listing.publishedAt().isBefore(since)) {
+            done = true;
+            break;
+          }
+          result.add(listing);
+        }
+        if (!done) {
+          boolean hasNextPage = doc.selectFirst(NEXT_PAGE_SELECTOR) != null;
+          if (!hasNextPage) {
+            break;
+          }
+        }
+        currentPage++;
+      }
+    } catch (HttpClientErrorException.TooManyRequests e) {
+      handleRateLimit(e);
+    } catch (HttpClientErrorException e) {
+      log.error("Non-retryable HTTP error during Realt delta fetch: status={}, page={}, source={}",
+          e.getStatusCode(), currentPage, properties.sourceId(), e);
+    }
+    log.info("Delta fetch completed: source={}, fetched={}", properties.sourceId(), result.size());
+    return result;
+  }
+
   // Package-private: Resilience4j AOP proxy requires fallback to be accessible from the same package.
   List<RawListing> fetchFallback(Exception e) {
     log.error("All retry attempts exhausted for Realt fetch: source={}", properties.sourceId(), e);
+    return List.of();
+  }
+
+  // Package-private: Resilience4j AOP proxy requires fallback to be accessible from the same package.
+  List<RawListing> fetchDeltaFallback(Instant since, Exception e) {
+    log.error("All retry attempts exhausted for Realt delta fetch: source={}, since={}", properties.sourceId(), since, e);
     return List.of();
   }
 

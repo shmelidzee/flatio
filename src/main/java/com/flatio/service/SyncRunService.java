@@ -22,4 +22,12 @@ public interface SyncRunService {
    * @return the latest successful finish time, or empty if no successful run exists
    */
   Optional<Instant> findLastSuccessfulRunAt();
+
+  /**
+   * Returns the finish timestamp of the most recent successful sync for the given source.
+   *
+   * @param sourceId connector source identifier
+   * @return the latest successful finish time for that source, or empty if none exists
+   */
+  Optional<Instant> findLastSuccessfulRunAt(String sourceId);
 }

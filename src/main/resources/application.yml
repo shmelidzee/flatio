@@ -99,6 +99,8 @@ flatio:
       full:
         cron: ${FLATIO_SYNC_ONLINER_SALE_FULL_CRON:0 0 3 * * *}
     realt:
+      delta:
+        cron: ${FLATIO_SYNC_REALT_DELTA_CRON:0 */15 * * * *}
       full:
         cron: ${FLATIO_SYNC_REALT_FULL_CRON:0 0 4 * * *}
   geocoding:
