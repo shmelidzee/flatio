@@ -232,7 +232,7 @@ public class OnlinerSaleConnector implements ListingConnector {
     String address = apartment.location() != null ? apartment.location().address() : null;
     String resolvedPhoto = resolvePhotoUrl(apartment.photo());
     List<String> photos = resolvedPhoto != null ? List.of(resolvedPhoto) : List.of();
-    Instant publishedAt = apartment.lastTimeUp() != null ? apartment.lastTimeUp().toInstant() : null;
+    Instant publishedAt = apartment.createdAt() != null ? apartment.createdAt().toInstant() : null;
     Boolean isOwner = apartment.seller() != null ? "owner".equals(apartment.seller().type()) : null;
 
     return new RawListing(
