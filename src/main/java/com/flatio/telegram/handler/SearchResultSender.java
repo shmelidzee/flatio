@@ -59,6 +59,8 @@ public class SearchResultSender {
   public static final String PAGE_NEXT = "PAGE:NEXT";
   /** Callback data for going back to the previous page. */
   public static final String PAGE_PREV = "PAGE:PREV";
+  /** Callback data for returning to the main menu from any state. */
+  public static final String ACTION_MENU = "action:menu";
 
   private static final int PAGE_SIZE = 3;
   private static final long SESSION_TTL_MINUTES = 30;
@@ -115,7 +117,7 @@ public class SearchResultSender {
 
     if (page.isEmpty()) {
       log.debug("No results found: telegramId={}, criteria={}", telegramId, criteria);
-      sendText(chatId, NO_RESULTS_TEXT);
+      sendNoResultsMessage(chatId);
       return;
     }
 
@@ -155,7 +157,7 @@ public class SearchResultSender {
     var page = listingService.search(session.getCriteria(), pageable);
 
     if (page.isEmpty()) {
-      sendText(chatId, NO_RESULTS_TEXT);
+      sendNoResultsMessage(chatId);
       return;
     }
 
@@ -255,6 +257,24 @@ public class SearchResultSender {
     }
   }
 
+  private void sendNoResultsMessage(String chatId) {
+    var changeFiltersBtn = navBtn("🔍 Изменить фильтры", FilterCallbackHandler.ACTION_SEARCH);
+    var mainMenuBtn = navBtn("🏠 Главное меню", ACTION_MENU);
+    var keyboard = InlineKeyboardMarkup.builder()
+        .keyboardRow(new InlineKeyboardRow(changeFiltersBtn))
+        .keyboardRow(new InlineKeyboardRow(mainMenuBtn))
+        .build();
+    try {
+      telegramClient.execute(SendMessage.builder()
+          .chatId(chatId)
+          .text(NO_RESULTS_TEXT)
+          .replyMarkup(keyboard)
+          .build());
+    } catch (TelegramApiException e) {
+      log.error("Failed to send no-results message: chatId={}", chatId, e);
+    }
+  }
+
   private void sendText(String chatId, String text) {
     try {
       telegramClient.execute(SendMessage.builder()
@@ -306,7 +326,7 @@ public class SearchResultSender {
 
     if (page.isEmpty()) {
       log.debug("No results for last-search: telegramId={}", telegramId);
-      sendText(chatId, NO_RESULTS_TEXT);
+      sendNoResultsMessage(chatId);
       return;
     }
 

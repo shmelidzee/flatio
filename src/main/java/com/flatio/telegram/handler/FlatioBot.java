@@ -45,6 +45,7 @@ public class FlatioBot {
   private static final String FILTER_CALLBACK_PREFIX = SearchFilterWizard.CALLBACK_PREFIX + ":";
   private static final String FILTER_SEARCH_CALLBACK = SearchFilterWizard.CALLBACK_PREFIX + ":SEARCH";
   private static final String ACTION_HELP = "action:help";
+  private static final String ACTION_MENU = SearchResultSender.ACTION_MENU;
   private static final String ERROR_TEXT = "Произошла ошибка, попробуйте позже";
 
   private final TelegramClient telegramClient;
@@ -170,6 +171,13 @@ public class FlatioBot {
         telegramClient.execute(helpCommandHandler.handleCallback(callbackQuery));
       } catch (TelegramApiException e) {
         log.error("Failed to send help message: chatId={}", callbackQuery.getMessage().getChatId(), e);
+      }
+    } else if (ACTION_MENU.equals(data)) {
+      try {
+        String chatId = String.valueOf(callbackQuery.getMessage().getChatId());
+        telegramClient.execute(startCommandHandler.buildMenuMessage(chatId));
+      } catch (TelegramApiException e) {
+        log.error("Failed to send main menu: chatId={}", callbackQuery.getMessage().getChatId(), e);
       }
     } else if (FilterCallbackHandler.ACTION_SEARCH.equals(data) || data.startsWith(FILTER_CALLBACK_PREFIX)) {
       try {
