@@ -58,7 +58,7 @@ class RealtSaleConnectorTest {
         "https://realt.by",
         "REALT_SALE",
         "BY",
-        "/sale/flat-for-sale/",
+        "/sale/flats/",
         "/sale-flat/object/"
     );
     connector = new RealtSaleConnector(restClient, properties, new ObjectMapper(), currencyRateService);

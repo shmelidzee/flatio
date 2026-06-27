@@ -72,7 +72,7 @@ connector:
     base-url: ${REALT_SALE_BASE_URL:https://realt.by}
     source-id: ${REALT_SALE_SOURCE_ID:REALT_SALE}
     region-code: ${REALT_SALE_REGION_CODE:BY}
-    listings-path: ${REALT_SALE_LISTINGS_PATH:/sale/flat-for-sale/}
+    listings-path: ${REALT_SALE_LISTINGS_PATH:/sale/flats/}
     object-path-prefix: ${REALT_SALE_OBJECT_PATH_PREFIX:/sale-flat/object/}
 
 telegram:
