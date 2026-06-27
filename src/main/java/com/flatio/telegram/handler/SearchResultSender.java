@@ -27,6 +27,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.methods.send.SendDocument;
 import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
@@ -80,6 +81,13 @@ public class SearchResultSender {
 
   @Value("${telegram.bot.no-photo-url:https://placehold.co/800x600/e2e8f0/94a3b8.png}")
   private String noPhotoUrl;
+
+  // Telegram API binary upload limits; configurable for testing.
+  @Value("${telegram.bot.max-photo-bytes:10485760}")
+  private long maxSendPhotoBytes;
+
+  @Value("${telegram.bot.max-document-bytes:52428800}")
+  private long maxSendDocumentBytes;
 
   private final SearchFilterWizard wizard;
   private final ListingService listingService;
@@ -173,29 +181,76 @@ public class SearchResultSender {
     sendNavigationMessage(chatId, newPage, page.getTotalPages());
   }
 
+  private record PhotoCard(
+      String chatId, Long listingId, byte[] bytes,
+      String filename, String caption, InlineKeyboardMarkup keyboard, String photoUrl
+  ) {}
+
   private void sendCard(String chatId, ListingSummaryResponse listing) {
     String caption = listingFormatter.buildCaption(listing);
     var keyboard = listingFormatter.buildKeyboard(listing.sourceUrl());
     String photoUrl = resolvePhotoUrl(listing);
 
+    Instant start = Instant.now();
     Optional<byte[]> photoBytes = photoProxyClient.download(photoUrl, listing.id());
     if (photoBytes.isEmpty()) {
       sendTextCard(chatId, caption, keyboard);
       return;
     }
 
+    byte[] bytes = photoBytes.get();
+    var card = new PhotoCard(chatId, listing.id(), bytes, extractPhotoFilename(photoUrl),
+        caption, keyboard, photoUrl);
+    if (bytes.length > maxSendPhotoBytes) {
+      handleOversizedPhoto(card);
+    } else {
+      sendPhotoBytes(card);
+    }
+    log.debug("Card sent: listingId={}, size={}bytes, elapsed={}ms",
+        listing.id(), bytes.length, Duration.between(start, Instant.now()).toMillis());
+  }
+
+  private void handleOversizedPhoto(PhotoCard card) {
+    if (card.bytes().length <= maxSendDocumentBytes) {
+      log.warn("Photo too large for SendPhoto: {}bytes, sending as document: listingId={}",
+          card.bytes().length, card.listingId());
+      sendDocumentBytes(card);
+    } else {
+      log.warn("Photo too large for SendDocument: {}bytes, falling back to text: listingId={}",
+          card.bytes().length, card.listingId());
+      sendTextCard(card.chatId(), card.caption(), card.keyboard());
+    }
+  }
+
+  private void sendPhotoBytes(PhotoCard card) {
     try {
-      String filename = extractPhotoFilename(photoUrl);
       telegramClient.execute(SendPhoto.builder()
-          .chatId(chatId)
-          .photo(new InputFile(new ByteArrayInputStream(photoBytes.get()), filename))
-          .caption(caption)
+          .chatId(card.chatId())
+          .photo(new InputFile(new ByteArrayInputStream(card.bytes()), card.filename()))
+          .caption(card.caption())
           .parseMode("HTML")
-          .replyMarkup(keyboard)
+          .replyMarkup(card.keyboard())
           .build());
     } catch (TelegramApiException e) {
-      log.warn("Failed to send binary photo, falling back to text: listingId={}, url={}", listing.id(), photoUrl, e);
-      sendTextCard(chatId, caption, keyboard);
+      log.warn("Failed to send binary photo, falling back to text: listingId={}, url={}",
+          card.listingId(), card.photoUrl(), e);
+      sendTextCard(card.chatId(), card.caption(), card.keyboard());
+    }
+  }
+
+  private void sendDocumentBytes(PhotoCard card) {
+    try {
+      telegramClient.execute(SendDocument.builder()
+          .chatId(card.chatId())
+          .document(new InputFile(new ByteArrayInputStream(card.bytes()), card.filename()))
+          .caption(card.caption())
+          .parseMode("HTML")
+          .replyMarkup(card.keyboard())
+          .build());
+    } catch (TelegramApiException e) {
+      log.warn("Failed to send binary document, falling back to text: listingId={}, url={}",
+          card.listingId(), card.photoUrl(), e);
+      sendTextCard(card.chatId(), card.caption(), card.keyboard());
     }
   }
 

@@ -26,6 +26,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.telegram.telegrambots.meta.api.methods.send.SendDocument;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
@@ -80,11 +81,17 @@ class SearchResultSenderTest {
   private static final String TEST_NO_PHOTO_URL = "https://placeholder.test/no-photo.png";
   private static final byte[] DUMMY_PHOTO_BYTES = new byte[]{0x01, 0x02};
 
+  // Size limits intentionally small so tests don't need to allocate large byte arrays.
+  private static final long TEST_MAX_PHOTO_BYTES = 100L;
+  private static final long TEST_MAX_DOCUMENT_BYTES = 1000L;
+
   @BeforeEach
   void setUp() {
     defaultState = new SearchFilterState();
-    // @Value is not injected by Mockito — set the placeholder URL explicitly
+    // @Value fields are not injected by Mockito — set them explicitly.
     ReflectionTestUtils.setField(searchResultSender, "noPhotoUrl", TEST_NO_PHOTO_URL);
+    ReflectionTestUtils.setField(searchResultSender, "maxSendPhotoBytes", TEST_MAX_PHOTO_BYTES);
+    ReflectionTestUtils.setField(searchResultSender, "maxSendDocumentBytes", TEST_MAX_DOCUMENT_BYTES);
     // Default: photo download succeeds for all URLs
     lenient().when(photoProxyClient.download(anyString(), anyLong()))
         .thenReturn(Optional.of(DUMMY_PHOTO_BYTES));
@@ -165,6 +172,69 @@ class SearchResultSenderTest {
 
     // Then — text card fallback: 2 SendMessage (text card + navigation)
     verify(telegramClient).execute(any(SendPhoto.class));
+    verify(telegramClient, times(2)).execute(any(SendMessage.class));
+  }
+
+  @Test
+  void should_send_as_document_when_photo_exceeds_photo_size_limit() throws TelegramApiException {
+    // Given — photo bytes exceed maxSendPhotoBytes (100) but are within maxSendDocumentBytes (1000)
+    var oversizedBytes = new byte[(int) TEST_MAX_PHOTO_BYTES + 1];
+    var listing = buildListing(50L, "https://content.onliner.by/big.jpg", "https://onliner.by/50");
+    when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
+    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingFormatter.buildCaption(listing)).thenReturn("caption");
+    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(photoProxyClient.download(anyString(), eq(50L))).thenReturn(Optional.of(oversizedBytes));
+
+    // When
+    searchResultSender.handle(buildCallback(1L, 100L, 10));
+
+    // Then — SendDocument used instead of SendPhoto; SendMessage for navigation only
+    verify(telegramClient, never()).execute(any(SendPhoto.class));
+    verify(telegramClient).execute(any(SendDocument.class));
+    verify(telegramClient).execute(any(SendMessage.class));
+  }
+
+  @Test
+  void should_send_text_card_when_photo_exceeds_document_size_limit() throws TelegramApiException {
+    // Given — photo bytes exceed both limits → text fallback
+    var tooLargeBytes = new byte[(int) TEST_MAX_DOCUMENT_BYTES + 1];
+    var listing = buildListing(51L, "https://content.onliner.by/huge.jpg", "https://onliner.by/51");
+    when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
+    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingFormatter.buildCaption(listing)).thenReturn("caption");
+    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(photoProxyClient.download(anyString(), eq(51L))).thenReturn(Optional.of(tooLargeBytes));
+
+    // When
+    searchResultSender.handle(buildCallback(1L, 100L, 10));
+
+    // Then — neither SendPhoto nor SendDocument; 2 SendMessage (text card + navigation)
+    verify(telegramClient, never()).execute(any(SendPhoto.class));
+    verify(telegramClient, never()).execute(any(SendDocument.class));
+    verify(telegramClient, times(2)).execute(any(SendMessage.class));
+  }
+
+  @Test
+  void should_send_text_card_when_document_upload_fails() throws TelegramApiException {
+    // Given — photo > photo limit, SendDocument throws
+    var oversizedBytes = new byte[(int) TEST_MAX_PHOTO_BYTES + 1];
+    var listing = buildListing(52L, "https://content.onliner.by/big.jpg", "https://onliner.by/52");
+    when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
+    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingFormatter.buildCaption(listing)).thenReturn("caption");
+    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(photoProxyClient.download(anyString(), eq(52L))).thenReturn(Optional.of(oversizedBytes));
+    lenient().when(telegramClient.execute(any(EditMessageText.class))).thenReturn(mock());
+    when(telegramClient.execute(any(SendDocument.class)))
+        .thenThrow(new TelegramApiException("Document upload rejected"));
+
+    // When
+    searchResultSender.handle(buildCallback(1L, 100L, 10));
+
+    // Then — text card fallback after document failure: 2 SendMessage (text card + navigation)
+    verify(telegramClient).execute(any(SendDocument.class));
+    verify(telegramClient, never()).execute(any(SendPhoto.class));
     verify(telegramClient, times(2)).execute(any(SendMessage.class));
   }
 
