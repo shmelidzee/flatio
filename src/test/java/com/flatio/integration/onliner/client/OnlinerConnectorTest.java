@@ -339,29 +339,31 @@ class OnlinerConnectorTest {
 
   @Test
   @SuppressWarnings("unchecked")
-  void should_use_last_time_up_as_published_at_when_present() {
-    // Given
-    var response = buildValidResponse();
+  void should_use_created_at_as_published_at_when_present() {
+    // Given — apartment with both createdAt and lastTimeUp set to different values
+    var response = buildResponseWithDistinctCreatedAtAndLastTimeUp();
     mockRestClientReturning(response);
 
     // When
     List<RawListing> result = connector.fetch();
 
-    // Then — lastTimeUp is mapped to publishedAt
-    assertThat(result.get(0).publishedAt()).isNotNull();
+    // Then — publishedAt comes from createdAt, not lastTimeUp (#269)
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).publishedAt())
+        .isEqualTo(OffsetDateTime.parse("2026-01-01T00:00:00+00:00").toInstant());
   }
 
   @Test
   @SuppressWarnings("unchecked")
-  void should_return_null_published_at_when_last_time_up_is_absent() {
-    // Given — apartment without lastTimeUp
-    var response = buildResponseWithNullLastTimeUp();
+  void should_return_null_published_at_when_created_at_is_absent() {
+    // Given — apartment with createdAt = null; lastTimeUp is present but must not be used
+    var response = buildResponseWithNullCreatedAt();
     mockRestClientReturning(response);
 
     // When
     List<RawListing> result = connector.fetch();
 
-    // Then — publishedAt is null, not a crash
+    // Then — publishedAt is null because createdAt is null, not a crash (#269)
     assertThat(result).hasSize(1);
     assertThat(result.get(0).publishedAt()).isNull();
   }
@@ -810,7 +812,7 @@ class OnlinerConnectorTest {
     );
   }
 
-  private OnlinerSearchResponse buildResponseWithNullLastTimeUp() {
+  private OnlinerSearchResponse buildResponseWithNullCreatedAt() {
     var price = new OnlinerPrice("400.00", "USD",
         Map.of("BYN", new OnlinerConvertedPrice("1305.00", "BYN")));
     var location = new OnlinerLocation(
@@ -818,6 +820,7 @@ class OnlinerConnectorTest {
         new BigDecimal("53.9040"),
         new BigDecimal("27.5620")
     );
+    // createdAt = null, lastTimeUp = non-null — verifies lastTimeUp is not used as fallback
     var apt = new OnlinerApartment(
         5001L,
         "https://r.onliner.by/ak/apartments/5001",
@@ -826,8 +829,34 @@ class OnlinerConnectorTest {
         price,
         location,
         null,
-        OffsetDateTime.parse("2026-06-05T12:00:00+03:00"),
-        null
+        null,
+        OffsetDateTime.parse("2026-06-05T12:00:00+03:00")
+    );
+    return new OnlinerSearchResponse(
+        List.of(apt), 1,
+        new OnlinerPage(50, 1, 1, 1)
+    );
+  }
+
+  private OnlinerSearchResponse buildResponseWithDistinctCreatedAtAndLastTimeUp() {
+    var price = new OnlinerPrice("400.00", "USD",
+        Map.of("BYN", new OnlinerConvertedPrice("1305.00", "BYN")));
+    var location = new OnlinerLocation(
+        "Минск, ул. Ленина, 1",
+        new BigDecimal("53.9040"),
+        new BigDecimal("27.5620")
+    );
+    // createdAt and lastTimeUp are intentionally different to verify only createdAt is used (#269)
+    var apt = new OnlinerApartment(
+        5002L,
+        "https://r.onliner.by/ak/apartments/5002",
+        "rent",
+        null,
+        price,
+        location,
+        null,
+        OffsetDateTime.parse("2026-01-01T00:00:00+00:00"),
+        OffsetDateTime.parse("2026-06-27T12:00:00+00:00")
     );
     return new OnlinerSearchResponse(
         List.of(apt), 1,
