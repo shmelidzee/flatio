@@ -4,12 +4,11 @@
       "ad_id": 111111111,
       "subject": "Квартира без цены",
       "body": "Описание.",
-      "ad_link": "https://www.kufar.by/item/111111111",
-      "account": {"id": 3001, "type": "private"},
-      "account_parameters": [
-        {"pl": "roomsCount", "vl": "2"},
-        {"pl": "floor", "vl": "4"},
-        {"pl": "totalFloors", "vl": "9"}
+      "ad_link": "https://re.kufar.by/vi/111111111",
+      "company_ad": false,
+      "account_parameters": [],
+      "ad_parameters": [
+        {"pl": "Тип сделки", "p": "type", "vl": "Долгосрочная аренда", "v": "let"}
       ],
       "images": [],
       "list_time": "2024-01-15T10:30:00+03:00"
@@ -18,15 +17,13 @@
       "ad_id": 222222222,
       "subject": "Нормальная квартира",
       "body": "Хорошая квартира.",
-      "price_byn": 90000,
+      "price_byn": "9000000",
       "currency": "BYR",
-      "ad_link": "https://www.kufar.by/item/222222222",
-      "account": {"id": 4002, "type": "private"},
-      "account_parameters": [
-        {"pl": "roomsCount", "vl": "1"},
-        {"pl": "floor", "vl": "2"},
-        {"pl": "totalFloors", "vl": "5"},
-        {"pl": "area", "vl": "30.0"}
+      "ad_link": "https://re.kufar.by/vi/222222222",
+      "company_ad": false,
+      "account_parameters": [],
+      "ad_parameters": [
+        {"pl": "Комнат", "p": "rooms", "vl": "1", "v": "1"}
       ],
       "images": [],
       "list_time": "2024-01-15T09:00:00+03:00"

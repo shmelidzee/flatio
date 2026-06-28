@@ -2,9 +2,9 @@ package com.flatio.integration.kufar.client;
 
 import com.flatio.integration.core.RawListing;
 import com.flatio.integration.kufar.config.KufarProperties;
-import com.flatio.integration.kufar.dto.KufarAccount;
 import com.flatio.integration.kufar.dto.KufarAd;
 import com.flatio.integration.kufar.dto.KufarAdParameter;
+import com.flatio.integration.kufar.dto.KufarAccount;
 import com.flatio.integration.kufar.dto.KufarImage;
 import com.flatio.integration.kufar.dto.KufarPageLink;
 import com.flatio.integration.kufar.dto.KufarPagination;
@@ -14,7 +14,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestClient;
 
 import java.time.Instant;
@@ -55,12 +54,12 @@ class KufarApiClientTest {
         "/search-api/v2/search/rendered-paginated",
         50,
         "ru",
-        new KufarProperties.CategoryConfig("KUFAR_APARTMENT_RENT", "BY", "30010"),
-        new KufarProperties.CategoryConfig("KUFAR_APARTMENT_SALE", "BY", "30020"),
-        new KufarProperties.CategoryConfig("KUFAR_ROOM_RENT", "BY", "30030"),
-        new KufarProperties.CategoryConfig("KUFAR_ROOM_SALE", "BY", "30040"),
-        new KufarProperties.CategoryConfig("KUFAR_HOUSE_RENT", "BY", "30050"),
-        new KufarProperties.CategoryConfig("KUFAR_HOUSE_SALE", "BY", "30060")
+        new KufarProperties.CategoryConfig("KUFAR_APARTMENT_RENT", "BY", "1010", "let"),
+        new KufarProperties.CategoryConfig("KUFAR_APARTMENT_SALE", "BY", "1010", "sell"),
+        new KufarProperties.CategoryConfig("KUFAR_ROOM_RENT", "BY", "1040", "let"),
+        new KufarProperties.CategoryConfig("KUFAR_ROOM_SALE", "BY", "1040", "sell"),
+        new KufarProperties.CategoryConfig("KUFAR_HOUSE_RENT", "BY", "1020", "let"),
+        new KufarProperties.CategoryConfig("KUFAR_HOUSE_SALE", "BY", "1020", "sell")
     );
     apiClient = new KufarApiClient(restClient, properties);
     config = properties.apartmentRent();
@@ -73,8 +72,8 @@ class KufarApiClientTest {
   @Test
   @SuppressWarnings("unchecked")
   void should_return_listings_when_valid_response_provided() {
-    // Given
-    var response = buildResponseWithAds(List.of(buildValidAd(123L, "Квартира в центре", 120000L, "private")));
+    // Given — price 12000000 kopecks = 120000 BYN
+    var response = buildResponseWithAds(List.of(buildValidAd(123L, "Квартира в центре", 12000000L, "private")));
     mockRestClientReturning(response);
 
     // When
@@ -91,19 +90,19 @@ class KufarApiClientTest {
   @Test
   @SuppressWarnings("unchecked")
   void should_map_all_required_fields_correctly() {
-    // Given
-    var params = List.of(
-        new KufarAdParameter("roomsCount", "2"),
-        new KufarAdParameter("floor", "5"),
-        new KufarAdParameter("totalFloors", "9"),
-        new KufarAdParameter("area", "58.5"),
-        new KufarAdParameter("geopoint", "53.9045;27.5615")
+    // Given — attributes in ad_parameters with machine key p; price 9000000 kopecks = 90000 BYN
+    var adParams = List.of(
+        new KufarAdParameter("Комнат", "rooms", "2", "2"),
+        new KufarAdParameter("Этаж", "floor", "5", "5"),
+        new KufarAdParameter("Этажность дома", "re_number_floors", "9", "9"),
+        new KufarAdParameter("Общая площадь", "size", "", "58.5")
     );
     var image = new KufarImage("1", "https://content.kufar.by/img/1.jpg");
     var ad = new KufarAd(
         456L, "Двушка на Немиге", "Описание",
-        90000L, "BYR", "https://www.kufar.by/item/456",
-        new KufarAccount(100L, "private"), params,
+        9000000L, "BYR", "https://re.kufar.by/vi/456",
+        new KufarAccount(100L, "private"), List.of(),
+        adParams, null,
         List.of(image), "2024-01-15T10:30:00+03:00"
     );
     mockRestClientReturning(buildResponseWithAds(List.of(ad)));
@@ -122,9 +121,9 @@ class KufarApiClientTest {
     assertThat(listing.floorNumber()).isEqualTo(5);
     assertThat(listing.floorsTotal()).isEqualTo(9);
     assertThat(listing.areaTotalM2()).isEqualByComparingTo("58.5");
-    assertThat(listing.latitude()).isEqualByComparingTo("53.9045");
-    assertThat(listing.longitude()).isEqualByComparingTo("27.5615");
-    assertThat(listing.sourceUrl()).isEqualTo("https://www.kufar.by/item/456");
+    assertThat(listing.latitude()).isNull();
+    assertThat(listing.longitude()).isNull();
+    assertThat(listing.sourceUrl()).isEqualTo("https://re.kufar.by/vi/456");
     assertThat(listing.photoUrls()).containsExactly("https://content.kufar.by/img/1.jpg");
     assertThat(listing.isOwner()).isTrue();
     assertThat(listing.publishedAt()).isNotNull();
@@ -136,11 +135,25 @@ class KufarApiClientTest {
 
   @Test
   @SuppressWarnings("unchecked")
+  void should_divide_price_byn_by_100_to_convert_kopecks_to_byn() {
+    // Given — 15000000 kopecks = 150000 BYN
+    var ad = buildValidAd(789L, "Квартира", 15000000L, "private");
+    mockRestClientReturning(buildResponseWithAds(List.of(ad)));
+
+    // When
+    List<RawListing> result = apiClient.fetchAll(config, "RENT", "APARTMENT", "Fallback");
+
+    // Then
+    assertThat(result.get(0).price()).isEqualByComparingTo("150000");
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
   void should_skip_listing_when_price_is_missing_and_return_others() {
     // Given — ad without price and a valid ad
     var noPriceAd = new KufarAd(111L, "Без цены", null, null, null,
-        "https://www.kufar.by/item/111", null, List.of(), List.of(), "2024-01-15T10:00:00+03:00");
-    var validAd = buildValidAd(222L, "Нормальная квартира", 80000L, "private");
+        "https://re.kufar.by/vi/111", null, List.of(), List.of(), null, List.of(), "2024-01-15T10:00:00+03:00");
+    var validAd = buildValidAd(222L, "Нормальная квартира", 8000000L, "private");
     mockRestClientReturning(buildResponseWithAds(List.of(noPriceAd, validAd)));
 
     // When
@@ -159,9 +172,9 @@ class KufarApiClientTest {
   @SuppressWarnings("unchecked")
   void should_use_fallback_title_when_subject_is_blank() {
     // Given — ad with blank subject
-    var ad = new KufarAd(333L, "   ", null, 70000L, "BYR",
-        "https://www.kufar.by/item/333", new KufarAccount(1L, "private"),
-        List.of(), List.of(), "2024-01-15T10:00:00+03:00");
+    var ad = new KufarAd(333L, "   ", null, 7000000L, "BYR",
+        "https://re.kufar.by/vi/333", new KufarAccount(1L, "private"),
+        List.of(), List.of(), null, List.of(), "2024-01-15T10:00:00+03:00");
     mockRestClientReturning(buildResponseWithAds(List.of(ad)));
 
     // When
@@ -176,8 +189,8 @@ class KufarApiClientTest {
   @SuppressWarnings("unchecked")
   void should_use_fallback_title_when_subject_is_null() {
     // Given
-    var ad = new KufarAd(334L, null, null, 60000L, "BYR",
-        "https://www.kufar.by/item/334", null, List.of(), List.of(), "2024-01-15T10:00:00+03:00");
+    var ad = new KufarAd(334L, null, null, 6000000L, "BYR",
+        "https://re.kufar.by/vi/334", null, List.of(), List.of(), null, List.of(), "2024-01-15T10:00:00+03:00");
     mockRestClientReturning(buildResponseWithAds(List.of(ad)));
 
     // When
@@ -189,14 +202,14 @@ class KufarApiClientTest {
   }
 
   // -------------------------------------------------------------------------
-  // isOwner mapping
+  // isOwner mapping — via account field
   // -------------------------------------------------------------------------
 
   @Test
   @SuppressWarnings("unchecked")
   void should_set_is_owner_true_when_account_type_is_private() {
     // Given
-    var ad = buildValidAd(401L, "Квартира", 100000L, "private");
+    var ad = buildValidAd(401L, "Квартира", 10000000L, "private");
     mockRestClientReturning(buildResponseWithAds(List.of(ad)));
 
     // When
@@ -210,7 +223,7 @@ class KufarApiClientTest {
   @SuppressWarnings("unchecked")
   void should_set_is_owner_false_when_account_type_is_company() {
     // Given
-    var ad = buildValidAd(402L, "Квартира", 100000L, "company");
+    var ad = buildValidAd(402L, "Квартира", 10000000L, "company");
     mockRestClientReturning(buildResponseWithAds(List.of(ad)));
 
     // When
@@ -222,10 +235,10 @@ class KufarApiClientTest {
 
   @Test
   @SuppressWarnings("unchecked")
-  void should_return_null_is_owner_when_account_is_absent() {
-    // Given
-    var ad = new KufarAd(403L, "Квартира", null, 100000L, "BYR",
-        "https://www.kufar.by/item/403", null, List.of(), List.of(), "2024-01-15T10:00:00+03:00");
+  void should_return_null_is_owner_when_account_and_company_ad_are_absent() {
+    // Given — account null, companyAd null
+    var ad = new KufarAd(403L, "Квартира", null, 10000000L, "BYR",
+        "https://re.kufar.by/vi/403", null, List.of(), List.of(), null, List.of(), "2024-01-15T10:00:00+03:00");
     mockRestClientReturning(buildResponseWithAds(List.of(ad)));
 
     // When
@@ -236,51 +249,48 @@ class KufarApiClientTest {
   }
 
   // -------------------------------------------------------------------------
-  // Geopoint parsing
+  // isOwner mapping — via company_ad field (real API path)
   // -------------------------------------------------------------------------
 
   @Test
   @SuppressWarnings("unchecked")
-  void should_parse_geopoint_when_format_is_valid() {
-    // Given
-    var params = List.of(new KufarAdParameter("geopoint", "53.9045;27.5615"));
-    var ad = new KufarAd(501L, "Квартира", null, 80000L, "BYR",
-        "https://www.kufar.by/item/501", new KufarAccount(1L, "private"),
-        params, List.of(), "2024-01-15T10:00:00+03:00");
+  void should_set_is_owner_true_when_company_ad_is_false() {
+    // Given — account absent, company_ad = false → private owner
+    var ad = new KufarAd(404L, "Квартира", null, 10000000L, "BYR",
+        "https://re.kufar.by/vi/404", null, List.of(), List.of(), false, List.of(), "2024-01-15T10:00:00+03:00");
     mockRestClientReturning(buildResponseWithAds(List.of(ad)));
 
     // When
     List<RawListing> result = apiClient.fetchAll(config, "RENT", "APARTMENT", "Fallback");
 
     // Then
-    assertThat(result.get(0).latitude()).isEqualByComparingTo("53.9045");
-    assertThat(result.get(0).longitude()).isEqualByComparingTo("27.5615");
+    assertThat(result.get(0).isOwner()).isTrue();
   }
 
   @Test
   @SuppressWarnings("unchecked")
-  void should_return_null_coordinates_when_geopoint_is_malformed() {
-    // Given
-    var params = List.of(new KufarAdParameter("geopoint", "not_valid_coords"));
-    var ad = new KufarAd(502L, "Квартира", null, 80000L, "BYR",
-        "https://www.kufar.by/item/502", new KufarAccount(1L, "private"),
-        params, List.of(), "2024-01-15T10:00:00+03:00");
+  void should_set_is_owner_false_when_company_ad_is_true() {
+    // Given — account absent, company_ad = true → agency
+    var ad = new KufarAd(405L, "Квартира", null, 10000000L, "BYR",
+        "https://re.kufar.by/vi/405", null, List.of(), List.of(), true, List.of(), "2024-01-15T10:00:00+03:00");
     mockRestClientReturning(buildResponseWithAds(List.of(ad)));
 
     // When
     List<RawListing> result = apiClient.fetchAll(config, "RENT", "APARTMENT", "Fallback");
 
-    // Then — listing still returned with null coordinates
-    assertThat(result).hasSize(1);
-    assertThat(result.get(0).latitude()).isNull();
-    assertThat(result.get(0).longitude()).isNull();
+    // Then
+    assertThat(result.get(0).isOwner()).isFalse();
   }
+
+  // -------------------------------------------------------------------------
+  // Coordinates — not parsed from ad_parameters (Nominatim geocoding fills them in)
+  // -------------------------------------------------------------------------
 
   @Test
   @SuppressWarnings("unchecked")
-  void should_return_null_coordinates_when_geopoint_is_absent() {
-    // Given — no geopoint param
-    var ad = buildValidAd(503L, "Квартира", 90000L, "private");
+  void should_return_null_coordinates_always() {
+    // Given — coordinates come from Kufar API v field (array), not mapped here; Nominatim handles geocoding
+    var ad = buildValidAd(503L, "Квартира", 9000000L, "private");
     mockRestClientReturning(buildResponseWithAds(List.of(ad)));
 
     // When
@@ -299,8 +309,8 @@ class KufarApiClientTest {
   @SuppressWarnings("unchecked")
   void should_return_empty_photo_list_when_images_are_empty() {
     // Given
-    var ad = new KufarAd(601L, "Квартира", null, 75000L, "BYR",
-        "https://www.kufar.by/item/601", null, List.of(), List.of(), "2024-01-15T10:00:00+03:00");
+    var ad = new KufarAd(601L, "Квартира", null, 7500000L, "BYR",
+        "https://re.kufar.by/vi/601", null, List.of(), List.of(), null, List.of(), "2024-01-15T10:00:00+03:00");
     mockRestClientReturning(buildResponseWithAds(List.of(ad)));
 
     // When
@@ -318,8 +328,8 @@ class KufarApiClientTest {
         new KufarImage("1", "https://cdn.kufar.by/img/1.jpg"),
         new KufarImage("2", "https://cdn.kufar.by/img/2.jpg")
     );
-    var ad = new KufarAd(602L, "Квартира", null, 85000L, "BYR",
-        "https://www.kufar.by/item/602", null, List.of(), images, "2024-01-15T10:00:00+03:00");
+    var ad = new KufarAd(602L, "Квартира", null, 8500000L, "BYR",
+        "https://re.kufar.by/vi/602", null, List.of(), List.of(), null, images, "2024-01-15T10:00:00+03:00");
     mockRestClientReturning(buildResponseWithAds(List.of(ad)));
 
     // When
@@ -341,11 +351,11 @@ class KufarApiClientTest {
   void should_follow_cursor_and_fetch_second_page() {
     // Given — first response has a "next" cursor, second has none
     var firstResponse = buildResponseWithCursor(
-        List.of(buildValidAd(701L, "Страница 1", 70000L, "private")),
+        List.of(buildValidAd(701L, "Страница 1", 7000000L, "private")),
         "cursor-token-abc"
     );
     var secondResponse = buildResponseWithAds(
-        List.of(buildValidAd(702L, "Страница 2", 80000L, "private"))
+        List.of(buildValidAd(702L, "Страница 2", 8000000L, "private"))
     );
     when(restClient.get()).thenReturn(requestHeadersUriSpec);
     when(requestHeadersUriSpec.uri(any(Function.class))).thenReturn(requestHeadersSpec);
@@ -367,7 +377,7 @@ class KufarApiClientTest {
   @SuppressWarnings("unchecked")
   void should_stop_pagination_when_no_next_cursor() {
     // Given — response with no "next" cursor
-    var response = buildResponseWithAds(List.of(buildValidAd(801L, "Единственная", 60000L, "private")));
+    var response = buildResponseWithAds(List.of(buildValidAd(801L, "Единственная", 6000000L, "private")));
     mockRestClientReturning(response);
 
     // When
@@ -387,10 +397,10 @@ class KufarApiClientTest {
   void should_stop_delta_when_listing_time_is_before_since() {
     // Given — two ads: one newer than since, one older
     Instant since = Instant.parse("2024-01-15T10:00:00Z");
-    var newAd = new KufarAd(901L, "Новая", null, 80000L, "BYR",
-        "https://www.kufar.by/item/901", null, List.of(), List.of(), "2024-01-15T12:00:00+00:00");
-    var oldAd = new KufarAd(902L, "Старая", null, 80000L, "BYR",
-        "https://www.kufar.by/item/902", null, List.of(), List.of(), "2024-01-14T08:00:00+00:00");
+    var newAd = new KufarAd(901L, "Новая", null, 8000000L, "BYR",
+        "https://re.kufar.by/vi/901", null, List.of(), List.of(), null, List.of(), "2024-01-15T12:00:00+00:00");
+    var oldAd = new KufarAd(902L, "Старая", null, 8000000L, "BYR",
+        "https://re.kufar.by/vi/902", null, List.of(), List.of(), null, List.of(), "2024-01-14T08:00:00+00:00");
     mockRestClientReturning(buildResponseWithAds(List.of(newAd, oldAd)));
 
     // When
@@ -406,10 +416,10 @@ class KufarApiClientTest {
   void should_return_all_listings_when_all_are_newer_than_since() {
     // Given
     Instant since = Instant.parse("2024-01-01T00:00:00Z");
-    var ad1 = new KufarAd(903L, "Объявление 1", null, 80000L, "BYR",
-        "https://www.kufar.by/item/903", null, List.of(), List.of(), "2024-01-15T10:00:00+00:00");
-    var ad2 = new KufarAd(904L, "Объявление 2", null, 90000L, "BYR",
-        "https://www.kufar.by/item/904", null, List.of(), List.of(), "2024-01-10T08:00:00+00:00");
+    var ad1 = new KufarAd(903L, "Объявление 1", null, 8000000L, "BYR",
+        "https://re.kufar.by/vi/903", null, List.of(), List.of(), null, List.of(), "2024-01-15T10:00:00+00:00");
+    var ad2 = new KufarAd(904L, "Объявление 2", null, 9000000L, "BYR",
+        "https://re.kufar.by/vi/904", null, List.of(), List.of(), null, List.of(), "2024-01-10T08:00:00+00:00");
     mockRestClientReturning(buildResponseWithAds(List.of(ad1, ad2)));
 
     // When
@@ -424,8 +434,8 @@ class KufarApiClientTest {
   void should_return_empty_list_when_all_listings_are_older_than_since() {
     // Given
     Instant since = Instant.parse("2024-01-20T00:00:00Z");
-    var oldAd = new KufarAd(905L, "Старая", null, 80000L, "BYR",
-        "https://www.kufar.by/item/905", null, List.of(), List.of(), "2024-01-10T10:00:00+00:00");
+    var oldAd = new KufarAd(905L, "Старая", null, 8000000L, "BYR",
+        "https://re.kufar.by/vi/905", null, List.of(), List.of(), null, List.of(), "2024-01-10T10:00:00+00:00");
     mockRestClientReturning(buildResponseWithAds(List.of(oldAd)));
 
     // When
@@ -471,8 +481,8 @@ class KufarApiClientTest {
   @SuppressWarnings("unchecked")
   void should_parse_list_time_as_published_at() {
     // Given
-    var ad = new KufarAd(1001L, "Квартира", null, 75000L, "BYR",
-        "https://www.kufar.by/item/1001", null, List.of(), List.of(), "2024-01-15T10:30:00+03:00");
+    var ad = new KufarAd(1001L, "Квартира", null, 7500000L, "BYR",
+        "https://re.kufar.by/vi/1001", null, List.of(), List.of(), null, List.of(), "2024-01-15T10:30:00+03:00");
     mockRestClientReturning(buildResponseWithAds(List.of(ad)));
 
     // When
@@ -486,8 +496,8 @@ class KufarApiClientTest {
   @SuppressWarnings("unchecked")
   void should_return_null_published_at_when_list_time_is_null() {
     // Given
-    var ad = new KufarAd(1002L, "Квартира", null, 75000L, "BYR",
-        "https://www.kufar.by/item/1002", null, List.of(), List.of(), null);
+    var ad = new KufarAd(1002L, "Квартира", null, 7500000L, "BYR",
+        "https://re.kufar.by/vi/1002", null, List.of(), List.of(), null, List.of(), null);
     mockRestClientReturning(buildResponseWithAds(List.of(ad)));
 
     // When
@@ -502,8 +512,8 @@ class KufarApiClientTest {
   void should_not_propagate_exception_when_single_listing_fails() {
     // Given — two ads, first will fail (no price), second is valid
     var brokenAd = new KufarAd(1101L, "Битое", null, null, null,
-        "https://www.kufar.by/item/1101", null, List.of(), List.of(), "2024-01-15T10:00:00+03:00");
-    var validAd = buildValidAd(1102L, "Нормальная", 90000L, "private");
+        "https://re.kufar.by/vi/1101", null, List.of(), List.of(), null, List.of(), "2024-01-15T10:00:00+03:00");
+    var validAd = buildValidAd(1102L, "Нормальная", 9000000L, "private");
     mockRestClientReturning(buildResponseWithAds(List.of(brokenAd, validAd)));
 
     // When / Then — no exception thrown, valid listing returned
@@ -529,7 +539,7 @@ class KufarApiClientTest {
     // When
     List<RawListing> result = apiClient.fetchAll(config, "RENT", "APARTMENT", "Fallback");
 
-    // Then — all snake_case JSON fields correctly mapped
+    // Then — price_byn "12000000" kopecks / 100 = 120000 BYN; ad_parameters mapped correctly
     assertThat(result).hasSize(2);
     assertThat(result.get(0).externalId()).isEqualTo("123456789");
     assertThat(result.get(0).price()).isEqualByComparingTo("120000");
@@ -538,7 +548,6 @@ class KufarApiClientTest {
     assertThat(result.get(0).floorNumber()).isEqualTo(5);
     assertThat(result.get(0).floorsTotal()).isEqualTo(9);
     assertThat(result.get(0).areaTotalM2()).isEqualByComparingTo("58.5");
-    assertThat(result.get(0).latitude()).isEqualByComparingTo("53.9045");
     assertThat(result.get(0).isOwner()).isTrue();
     assertThat(result.get(0).photoUrls()).hasSize(1);
     assertThat(result.get(1).externalId()).isEqualTo("987654321");
@@ -616,12 +625,18 @@ class KufarApiClientTest {
   // Helpers — object builders
   // -------------------------------------------------------------------------
 
+  /**
+   * Builds a valid KufarAd with no ad_parameters (rooms/floor/area will be null).
+   * Use priceByn in kopecks (e.g. 10000000 = 100000 BYN).
+   */
   private KufarAd buildValidAd(Long adId, String subject, Long priceByn, String accountType) {
     return new KufarAd(
         adId, subject, null, priceByn, "BYR",
-        "https://www.kufar.by/item/" + adId,
+        "https://re.kufar.by/vi/" + adId,
         new KufarAccount(1L, accountType),
         List.of(),
+        List.of(),
+        null,
         List.of(),
         "2024-01-15T10:00:00+03:00"
     );

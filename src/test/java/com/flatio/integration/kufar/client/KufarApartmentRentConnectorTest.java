@@ -36,12 +36,12 @@ class KufarApartmentRentConnectorTest {
         "/search-api/v2/search/rendered-paginated",
         50,
         "ru",
-        new KufarProperties.CategoryConfig("KUFAR_APARTMENT_RENT", "BY", "30010"),
-        new KufarProperties.CategoryConfig("KUFAR_APARTMENT_SALE", "BY", "30020"),
-        new KufarProperties.CategoryConfig("KUFAR_ROOM_RENT", "BY", "30030"),
-        new KufarProperties.CategoryConfig("KUFAR_ROOM_SALE", "BY", "30040"),
-        new KufarProperties.CategoryConfig("KUFAR_HOUSE_RENT", "BY", "30050"),
-        new KufarProperties.CategoryConfig("KUFAR_HOUSE_SALE", "BY", "30060")
+        new KufarProperties.CategoryConfig("KUFAR_APARTMENT_RENT", "BY", "1010", "let"),
+        new KufarProperties.CategoryConfig("KUFAR_APARTMENT_SALE", "BY", "1010", "sell"),
+        new KufarProperties.CategoryConfig("KUFAR_ROOM_RENT", "BY", "1040", "let"),
+        new KufarProperties.CategoryConfig("KUFAR_ROOM_SALE", "BY", "1040", "sell"),
+        new KufarProperties.CategoryConfig("KUFAR_HOUSE_RENT", "BY", "1020", "let"),
+        new KufarProperties.CategoryConfig("KUFAR_HOUSE_SALE", "BY", "1020", "sell")
     );
     connector = new KufarApartmentRentConnector(kufarApiClient, properties);
   }

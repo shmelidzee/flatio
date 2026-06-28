@@ -106,27 +106,33 @@ connector:
     apartment-rent:
       source-id: ${KUFAR_APARTMENT_RENT_SOURCE_ID:KUFAR_APARTMENT_RENT}
       region-code: ${KUFAR_REGION_CODE:BY}
-      category-code: ${KUFAR_APARTMENT_RENT_CATEGORY:}
+      category-code: ${KUFAR_APARTMENT_RENT_CATEGORY:1010}
+      deal-type: ${KUFAR_APARTMENT_RENT_DEAL_TYPE:let}
     apartment-sale:
       source-id: ${KUFAR_APARTMENT_SALE_SOURCE_ID:KUFAR_APARTMENT_SALE}
       region-code: ${KUFAR_REGION_CODE:BY}
-      category-code: ${KUFAR_APARTMENT_SALE_CATEGORY:}
+      category-code: ${KUFAR_APARTMENT_SALE_CATEGORY:1010}
+      deal-type: ${KUFAR_APARTMENT_SALE_DEAL_TYPE:sell}
     room-rent:
       source-id: ${KUFAR_ROOM_RENT_SOURCE_ID:KUFAR_ROOM_RENT}
       region-code: ${KUFAR_REGION_CODE:BY}
-      category-code: ${KUFAR_ROOM_RENT_CATEGORY:}
+      category-code: ${KUFAR_ROOM_RENT_CATEGORY:1040}
+      deal-type: ${KUFAR_ROOM_RENT_DEAL_TYPE:let}
     room-sale:
       source-id: ${KUFAR_ROOM_SALE_SOURCE_ID:KUFAR_ROOM_SALE}
       region-code: ${KUFAR_REGION_CODE:BY}
-      category-code: ${KUFAR_ROOM_SALE_CATEGORY:}
+      category-code: ${KUFAR_ROOM_SALE_CATEGORY:1040}
+      deal-type: ${KUFAR_ROOM_SALE_DEAL_TYPE:sell}
     house-rent:
       source-id: ${KUFAR_HOUSE_RENT_SOURCE_ID:KUFAR_HOUSE_RENT}
       region-code: ${KUFAR_REGION_CODE:BY}
-      category-code: ${KUFAR_HOUSE_RENT_CATEGORY:}
+      category-code: ${KUFAR_HOUSE_RENT_CATEGORY:1020}
+      deal-type: ${KUFAR_HOUSE_RENT_DEAL_TYPE:let}
     house-sale:
       source-id: ${KUFAR_HOUSE_SALE_SOURCE_ID:KUFAR_HOUSE_SALE}
       region-code: ${KUFAR_REGION_CODE:BY}
-      category-code: ${KUFAR_HOUSE_SALE_CATEGORY:}
+      category-code: ${KUFAR_HOUSE_SALE_CATEGORY:1020}
+      deal-type: ${KUFAR_HOUSE_SALE_DEAL_TYPE:sell}
 
 telegram:
   bot:
