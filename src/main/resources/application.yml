@@ -85,7 +85,7 @@ connector:
     source-id: ${REALT_ROOM_SALE_SOURCE_ID:REALT_ROOM_SALE}
     region-code: ${REALT_REGION_CODE:BY}
     listings-path: ${REALT_ROOM_SALE_LISTINGS_PATH:/sale/rooms/}
-    object-path-prefix: ${REALT_ROOM_SALE_OBJECT_PATH_PREFIX:/sale-room/object/}
+    object-path-prefix: ${REALT_ROOM_SALE_OBJECT_PATH_PREFIX:/sale-rooms/object/}
   realt-house-sale:
     base-url: ${REALT_BASE_URL:https://realt.by}
     source-id: ${REALT_HOUSE_SALE_SOURCE_ID:REALT_HOUSE_SALE}
