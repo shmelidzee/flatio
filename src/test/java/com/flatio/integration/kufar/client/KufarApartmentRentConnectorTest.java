@@ -35,6 +35,7 @@ class KufarApartmentRentConnectorTest {
         "https://api.kufar.by",
         "/search-api/v2/search/rendered-paginated",
         50,
+        "ru",
         new KufarProperties.CategoryConfig("KUFAR_APARTMENT_RENT", "BY", "30010"),
         new KufarProperties.CategoryConfig("KUFAR_APARTMENT_SALE", "BY", "30020"),
         new KufarProperties.CategoryConfig("KUFAR_ROOM_RENT", "BY", "30030"),
@@ -77,21 +78,6 @@ class KufarApartmentRentConnectorTest {
   }
 
   @Test
-  void should_delegate_fetch_all_to_api_client() {
-    // Given
-    List<RawListing> expected = List.of();
-    when(kufarApiClient.fetchAll(
-        eq(properties.apartmentRent()), eq("RENT"), eq("APARTMENT"), any()))
-        .thenReturn(expected);
-
-    // When
-    List<RawListing> result = connector.fetchAll();
-
-    // Then
-    assertThat(result).isSameAs(expected);
-  }
-
-  @Test
   void should_delegate_fetch_delta_to_api_client() {
     // Given
     Instant since = Instant.parse("2024-01-15T10:00:00Z");
@@ -124,18 +110,6 @@ class KufarApartmentRentConnectorTest {
   }
 
   @Test
-  void should_return_empty_list_from_fetch_all_fallback() {
-    // Given
-    var exception = new HttpServerErrorException(HttpStatus.GATEWAY_TIMEOUT);
-
-    // When
-    List<RawListing> result = connector.fetchAllFallback(exception);
-
-    // Then
-    assertThat(result).isEmpty();
-  }
-
-  @Test
   void should_return_empty_list_from_fetch_delta_fallback() {
     // Given
     Instant since = Instant.parse("2024-01-15T10:00:00Z");
@@ -156,7 +130,6 @@ class KufarApartmentRentConnectorTest {
 
     // When / Then — all fallback methods are always safe
     assertThatNoException().isThrownBy(() -> connector.fetchFallback(exception));
-    assertThatNoException().isThrownBy(() -> connector.fetchAllFallback(exception));
     assertThatNoException().isThrownBy(() -> connector.fetchDeltaFallback(since, exception));
   }
 }

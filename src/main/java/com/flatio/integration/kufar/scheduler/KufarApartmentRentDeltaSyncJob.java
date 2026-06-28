@@ -18,8 +18,6 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataAccessException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -40,9 +38,7 @@ public class KufarApartmentRentDeltaSyncJob {
   private final ListingIngestionService listingIngestionService;
   private final SyncRunService syncRunService;
 
-  @Lazy
-  @Autowired
-  private KufarApartmentRentFullSyncJob fullSyncJob;
+  private final KufarApartmentRentFullSyncJob fullSyncJob;
 
   /**
    * Determines sync mode from the last successful run and fetches accordingly.
@@ -56,7 +52,7 @@ public class KufarApartmentRentDeltaSyncJob {
 
       if (lastRunAt.isPresent()) {
         performDeltaSync(source, lastRunAt.get(), runStart);
-      } else if (fullSyncIsRunning()) {
+      } else if (fullSyncJob.isRunning()) {
         log.info("KufarApartmentRent delta sync: FullSyncJob is already running, skipping fallback: source={}", connector.getSourceId());
       } else {
         log.info("KufarApartmentRent: no prior successful run found — falling back to full sync");
@@ -70,10 +66,6 @@ public class KufarApartmentRentDeltaSyncJob {
       log.error("KufarApartmentRent delta sync failed: source={}, error={}", connector.getSourceId(), e.getMessage(), e);
       syncRunService.record(SyncRunRequest.failure(connector.getSourceId(), SyncType.DELTA, runStart, Instant.now()));
     }
-  }
-
-  private boolean fullSyncIsRunning() {
-    return fullSyncJob != null && fullSyncJob.isRunning();
   }
 
   private void performDeltaSync(Source source, Instant since, Instant runStart) {

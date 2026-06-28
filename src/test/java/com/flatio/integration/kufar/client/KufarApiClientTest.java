@@ -54,6 +54,7 @@ class KufarApiClientTest {
         "https://api.kufar.by",
         "/search-api/v2/search/rendered-paginated",
         50,
+        "ru",
         new KufarProperties.CategoryConfig("KUFAR_APARTMENT_RENT", "BY", "30010"),
         new KufarProperties.CategoryConfig("KUFAR_APARTMENT_SALE", "BY", "30020"),
         new KufarProperties.CategoryConfig("KUFAR_ROOM_RENT", "BY", "30030"),

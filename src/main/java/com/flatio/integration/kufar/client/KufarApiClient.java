@@ -4,6 +4,7 @@ import com.flatio.integration.core.RawListing;
 import com.flatio.integration.kufar.config.KufarProperties;
 import com.flatio.integration.kufar.dto.KufarAd;
 import com.flatio.integration.kufar.dto.KufarAdParameter;
+import com.flatio.integration.kufar.dto.KufarImage;
 import com.flatio.integration.kufar.dto.KufarPageLink;
 import com.flatio.integration.kufar.dto.KufarSearchResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -16,6 +17,7 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Shared HTTP client for the Kufar JSON API.
@@ -26,8 +28,8 @@ import java.util.List;
  * <p>Resilience4j rate limiting, circuit breaker, and retry are applied at the calling connector
  * level, not here — this class is a plain service with no AOP annotations.
  *
- * <p><b>⚠️ Price note:</b> {@code price_byn} is assumed to be in whole BYN units. Verify against
- * real API responses; if values appear 100× too large, the field is in kopecks (divide by 100).
+ * <p>NOTE: {@code price_byn} is assumed to be in whole BYN units. Verify against
+ * real API responses; if values appear 100x too large, the field is in kopecks (divide by 100).
  */
 @Service
 @Slf4j
@@ -41,7 +43,6 @@ public class KufarApiClient {
   private static final String PARAM_GEOPOINT = "geopoint";
   private static final String ACCOUNT_TYPE_PRIVATE = "private";
   private static final String LABEL_NEXT = "next";
-  private static final String LANG = "ru";
   private static final String SORT = "lst.d";
 
   private final RestClient restClient;
@@ -135,7 +136,7 @@ public class KufarApiClient {
           var builder = uriBuilder
               .path(properties.searchPath())
               .queryParam("cat", config.categoryCode())
-              .queryParam("lang", LANG)
+              .queryParam("lang", properties.lang())
               .queryParam("sor", SORT)
               .queryParam("size", properties.pageSize());
           if (cursor != null) {
@@ -232,7 +233,7 @@ public class KufarApiClient {
             return null;
           }
         })
-        .filter(v -> v != null)
+        .filter(Objects::nonNull)
         .findFirst()
         .orElse(null);
   }
@@ -247,7 +248,7 @@ public class KufarApiClient {
             return null;
           }
         })
-        .filter(v -> v != null)
+        .filter(Objects::nonNull)
         .findFirst()
         .orElse(null);
   }
@@ -283,7 +284,7 @@ public class KufarApiClient {
       return List.of();
     }
     return ad.images().stream()
-        .map(img -> img.path())
+        .map(KufarImage::path)
         .filter(path -> path != null && !path.isBlank())
         .toList();
   }

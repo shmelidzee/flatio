@@ -15,6 +15,7 @@ public record KufarProperties(
     String baseUrl,
     String searchPath,
     int pageSize,
+    String lang,
     CategoryConfig apartmentRent,
     CategoryConfig apartmentSale,
     CategoryConfig roomRent,

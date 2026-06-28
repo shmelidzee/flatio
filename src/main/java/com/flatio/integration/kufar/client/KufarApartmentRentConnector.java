@@ -60,22 +60,6 @@ public class KufarApartmentRentConnector implements ListingConnector {
   }
 
   /**
-   * Fetches all apartment rental listings by paginating through every available page.
-   *
-   * @return complete list of raw listings, never null
-   */
-  @RateLimiter(name = "connector-kufar")
-  @CircuitBreaker(name = "connector-kufar")
-  @Retry(name = "connector-kufar", fallbackMethod = "fetchAllFallback")
-  public List<RawListing> fetchAll() {
-    log.info("Full fetch started: source={}", properties.apartmentRent().sourceId());
-    List<RawListing> result = kufarApiClient.fetchAll(
-        properties.apartmentRent(), DEAL_TYPE_RENT, PROPERTY_TYPE_APARTMENT, FALLBACK_TITLE);
-    log.info("Full fetch completed: source={}, fetched={}", properties.apartmentRent().sourceId(), result.size());
-    return result;
-  }
-
-  /**
    * Fetches apartment rental listings published at or after the given timestamp.
    *
    * @param since lower-bound timestamp (exclusive)
@@ -95,11 +79,6 @@ public class KufarApartmentRentConnector implements ListingConnector {
   // Package-private: Resilience4j AOP proxy requires fallback methods accessible from the same package.
   List<RawListing> fetchFallback(Exception e) {
     log.error("All retry attempts exhausted for KufarApartmentRent fetch: source={}", properties.apartmentRent().sourceId(), e);
-    return List.of();
-  }
-
-  List<RawListing> fetchAllFallback(Exception e) {
-    log.error("All retry attempts exhausted for KufarApartmentRent full fetch: source={}", properties.apartmentRent().sourceId(), e);
     return List.of();
   }
 

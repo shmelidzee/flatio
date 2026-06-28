@@ -18,8 +18,6 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataAccessException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -40,9 +38,7 @@ public class KufarRoomSaleDeltaSyncJob {
   private final ListingIngestionService listingIngestionService;
   private final SyncRunService syncRunService;
 
-  @Lazy
-  @Autowired
-  private KufarRoomSaleFullSyncJob fullSyncJob;
+  private final KufarRoomSaleFullSyncJob fullSyncJob;
 
   @Scheduled(cron = "${flatio.sync.kufar-room-sale.delta.cron}")
   public void runDeltaSync() {
@@ -52,7 +48,7 @@ public class KufarRoomSaleDeltaSyncJob {
       Optional<Instant> lastRunAt = syncRunService.findLastSuccessfulRunAt(connector.getSourceId());
       if (lastRunAt.isPresent()) {
         performDeltaSync(source, lastRunAt.get(), runStart);
-      } else if (fullSyncJob != null && fullSyncJob.isRunning()) {
+      } else if (fullSyncJob.isRunning()) {
         log.info("KufarRoomSale delta sync: FullSyncJob is already running, skipping: source={}", connector.getSourceId());
       } else {
         log.info("KufarRoomSale: no prior successful run — falling back to full sync");

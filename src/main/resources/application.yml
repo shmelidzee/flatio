@@ -102,6 +102,7 @@ connector:
     base-url: ${KUFAR_BASE_URL:https://api.kufar.by}
     search-path: /search-api/v2/search/rendered-paginated
     page-size: ${KUFAR_PAGE_SIZE:50}
+    lang: ${KUFAR_LANG:ru}
     apartment-rent:
       source-id: ${KUFAR_APARTMENT_RENT_SOURCE_ID:KUFAR_APARTMENT_RENT}
       region-code: ${KUFAR_REGION_CODE:BY}

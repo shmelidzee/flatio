@@ -57,22 +57,6 @@ public class KufarApartmentSaleConnector implements ListingConnector {
   }
 
   /**
-   * Fetches all apartment sale listings by paginating through every available page.
-   *
-   * @return complete list of raw listings, never null
-   */
-  @RateLimiter(name = "connector-kufar")
-  @CircuitBreaker(name = "connector-kufar")
-  @Retry(name = "connector-kufar", fallbackMethod = "fetchAllFallback")
-  public List<RawListing> fetchAll() {
-    log.info("Full fetch started: source={}", properties.apartmentSale().sourceId());
-    List<RawListing> result = kufarApiClient.fetchAll(
-        properties.apartmentSale(), DEAL_TYPE_SELL, PROPERTY_TYPE_APARTMENT, FALLBACK_TITLE);
-    log.info("Full fetch completed: source={}, fetched={}", properties.apartmentSale().sourceId(), result.size());
-    return result;
-  }
-
-  /**
    * Fetches apartment sale listings published at or after the given timestamp.
    *
    * @param since lower-bound timestamp (exclusive)
@@ -91,11 +75,6 @@ public class KufarApartmentSaleConnector implements ListingConnector {
 
   List<RawListing> fetchFallback(Exception e) {
     log.error("All retry attempts exhausted for KufarApartmentSale fetch: source={}", properties.apartmentSale().sourceId(), e);
-    return List.of();
-  }
-
-  List<RawListing> fetchAllFallback(Exception e) {
-    log.error("All retry attempts exhausted for KufarApartmentSale full fetch: source={}", properties.apartmentSale().sourceId(), e);
     return List.of();
   }
 
