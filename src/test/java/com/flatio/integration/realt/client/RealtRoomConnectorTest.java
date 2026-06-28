@@ -58,7 +58,7 @@ class RealtRoomConnectorTest {
         "REALT_ROOM",
         "BY",
         "/rent/room-for-long/",
-        "/rent-room-for-long/object/"
+        "/rent-rooms-for-long/object/"
     );
     var htmlParser = new RealtHtmlParser(new ObjectMapper(), currencyRateService);
     connector = new RealtRoomConnector(restClient, properties, htmlParser);
@@ -97,7 +97,7 @@ class RealtRoomConnectorTest {
 
     // Then — source URL uses room-specific path, not flat path
     assertThat(result.get(0).sourceUrl())
-        .contains("/rent-room-for-long/object/");
+        .contains("/rent-rooms-for-long/object/");
   }
 
   @Test
