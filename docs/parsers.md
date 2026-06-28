@@ -8,18 +8,28 @@ Each connector is an independent Spring `@Service` implementing `com.flatio.inte
 ## Architecture
 
 ```
-OnlinerDeltaSyncJob (every 10 min)    OnlinerFullSyncJob (daily 02:00)    RealtDeltaSyncJob (every 15 min)    RealtFullSyncJob (daily 04:00)
-  ↓                                       ↓                                    ↓                                    ↓
-ListingConnector.fetchDelta(since)    ListingConnector.fetchAll()         RealtConnector.fetchDelta(since)    RealtConnector.fetch()
-  ↓                                       ↓                                    ↓                                    ↓
-  ←───────────────────────── @RateLimiter + @Retry + @CircuitBreaker ──────────────────────────────────────────→
-  ↓                                       ↓                                    ↓                                    ↓
-List<RawListing>                     ←──────────────────── never raw HTML ────────────────────────────────────→
-  ↓
-ListingIngestionService (dedup + persist)
-  ↓
-SyncRunService (record SUCCESS / FAILURE)
+Delta sync jobs (scheduled)                Full sync jobs (daily cron + startup)
+─────────────────────────────────────      ─────────────────────────────────────
+OnlinerDeltaSyncJob       (every 10 min)   OnlinerFullSyncJob        (02:00)
+OnlinerSaleDeltaSyncJob   (every 15 min)   OnlinerSaleFullSyncJob    (03:00)
+RealtDeltaSyncJob         (every 15 min)   RealtFullSyncJob          (04:00)
+RealtSaleDeltaSyncJob     (every 15 min)   RealtSaleFullSyncJob      (05:00)
+RealtRoomDeltaSyncJob     (every  5 min)   RealtRoomFullSyncJob      (06:00)
+RealtRoomSaleDeltaSyncJob (every  5 min)   RealtRoomSaleFullSyncJob  (07:00)
+RealtHouseSaleDeltaSyncJob(every  5 min)   RealtHouseSaleFullSyncJob (08:00)
+        ↓                                          ↓
+ListingConnector.fetchDelta(since)    ListingConnector.fetch()
+        ↓                                          ↓
+  @RateLimiter + @CircuitBreaker + @Retry (Resilience4j)
+        ↓
+  List<RawListing>  ←── never raw HTML
+        ↓
+  ListingIngestionService (dedup + persist)
+        ↓
+  SyncRunService (record SUCCESS / FAILURE)
 ```
+
+**Realt connectors share a common parser:** `RealtHtmlParser` extracts listing data from `__NEXT_DATA__` JSON embedded in SSR pages. Each connector passes a `RealtPageContext` record that carries category-specific fields (`dealType`, `propertyType`, `objectPathPrefix`, `fallbackTitle`).
 
 All connectors share the same contract — see `docs/architecture.md`, section **Connector Contract**.
 
@@ -351,6 +361,70 @@ Fixtures: `src/test/resources/fixtures/realt/`
 | `should_return_false_is_owner_when_company_uuid_is_present` | `companyUuid` UUID string → `isOwner = false` |
 | `should_filter_out_non_https_photo_urls` | SSRF guard: non-`https://` URLs excluded from `photoUrls` |
 | `should_return_empty_list_when_next_data_exceeds_size_limit` | OOM guard: `__NEXT_DATA__` > 5 MB → `List.of()` |
+
+---
+
+## RealtSaleConnector
+
+**Source:** Realt.by (SSR HTML with embedded `__NEXT_DATA__` JSON)  
+**Region:** BY (Belarus)  
+**Package:** `com.flatio.integration.realt.client`  
+**Category:** Apartment sale (`dealType=SELL`, `propertyType=APARTMENT`)  
+**Listings path:** `/sale/flats/` — **Object prefix:** `/sale-flat/object/`
+
+Shares `"realtSaleRestClient"` bean and `connector-realt-sale` Resilience4j (rate limiter 1 req/2s, retry × 3, circuit breaker).  
+Uses `RealtHtmlParser` with `RealtPageContext(dealType=SELL, propertyType=APARTMENT, fallbackTitle="Квартира на Realt.by")`.
+
+**Schedulers:** `RealtSaleDeltaSyncJob` (every 15 min) + `RealtSaleFullSyncJob` (daily 05:00, startup trigger).
+
+---
+
+## RealtRoomConnector
+
+**Source:** Realt.by  
+**Region:** BY (Belarus)  
+**Package:** `com.flatio.integration.realt.client`  
+**Category:** Room rent (`dealType=RENT`, `propertyType=ROOM`)  
+**Listings path:** `/rent/room-for-long/` — **Object prefix:** `/rent-room-for-long/object/`
+
+Shares `"realtRestClient"` bean and `connector-realt` Resilience4j (same instance as `RealtConnector`; same origin server).  
+Uses `RealtHtmlParser` with `RealtPageContext(dealType=RENT, propertyType=ROOM, fallbackTitle="Комната на Realt.by")`.
+
+**Schedulers:** `RealtRoomDeltaSyncJob` (every 5 min) + `RealtRoomFullSyncJob` (daily 06:00, startup trigger).
+
+---
+
+## RealtRoomSaleConnector
+
+**Source:** Realt.by  
+**Region:** BY (Belarus)  
+**Package:** `com.flatio.integration.realt.client`  
+**Category:** Room sale (`dealType=SELL`, `propertyType=ROOM`)  
+**Listings path:** `/sale/rooms/` — **Object prefix:** `/sale-room/object/`
+
+Shares `"realtSaleRestClient"` bean and `connector-realt-sale` Resilience4j.  
+Uses `RealtHtmlParser` with `RealtPageContext(dealType=SELL, propertyType=ROOM, fallbackTitle="Комната на Realt.by")`.
+
+**Schedulers:** `RealtRoomSaleDeltaSyncJob` (every 5 min) + `RealtRoomSaleFullSyncJob` (daily 07:00, startup trigger).
+
+---
+
+## RealtHouseSaleConnector
+
+**Source:** Realt.by  
+**Region:** BY (Belarus)  
+**Package:** `com.flatio.integration.realt.client`  
+**Category:** House/cottage sale (`dealType=SELL`, `propertyType=HOUSE`)  
+**Listings path:** `/sale/cottages/` — **Object prefix:** `/sale-cottages/object/`
+
+> ⚠️ The path was changed from `/sale/houses/` to `/sale/cottages/` (PR #280) after realt.by restructured its URL scheme. Both paths are configurable via env vars `REALT_HOUSE_SALE_LISTINGS_PATH` / `REALT_HOUSE_SALE_OBJECT_PATH_PREFIX`.
+
+Shares `"realtSaleRestClient"` bean and `connector-realt-sale` Resilience4j.  
+Uses `RealtHtmlParser` with `RealtPageContext(dealType=SELL, propertyType=HOUSE, fallbackTitle="Дом на Realt.by")`.
+
+**Schedulers:** `RealtHouseSaleDeltaSyncJob` (every 5 min) + `RealtHouseSaleFullSyncJob` (daily 08:00, startup trigger).
+
+**Error handling — 404:** When the source URL returns 404 (site restructure), both `fetchAllInternal` and `fetchDelta` catch `HttpClientErrorException`, log at ERROR, and return an empty list. No exception propagated.
 
 ---
 

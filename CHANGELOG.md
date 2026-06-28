@@ -8,6 +8,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Fixed
+- **PR #280 — Исправлен URL RealtHouseSaleConnector: /sale/houses/ → /sale/cottages/ (issue #278)**
+  - `application.yml` — обновлены `listings-path` (`/sale/houses/` → `/sale/cottages/`) и `object-path-prefix` (`/sale-house/object/` → `/sale-cottages/object/`) для коннектора `realt-house-sale`; URL остаётся переопределяемым через env vars без перекомпиляции
+  - `RealtHouseSaleConnectorTest` — обновлены хардкоженные URL в setUp(), исправлен тест `should_use_house_sale_specific_source_url_in_listings`, добавлен тест `should_return_empty_list_when_404_received` для документирования graceful degradation при смене URL источника
+
+### Changed
+- **PR #279 — Delta sync cron для новых Realt коннекторов: 20 мин → 5 мин (issue #277)**
+  - `flatio.sync.realt-room.delta.cron`: `0 */20 * * * *` → `0 */5 * * * *`
+  - `flatio.sync.realt-room-sale.delta.cron`: `0 */20 * * * *` → `0 */5 * * * *`
+  - `flatio.sync.realt-house-sale.delta.cron`: `0 */20 * * * *` → `0 */5 * * * *`
+  - Все три значения переопределяемы через env vars; реальная нагрузка на realt.by ограничена Resilience4j rate limiter независимо от частоты cron
+
+### Added
+- **PR #276 — Новые Realt коннекторы: комнаты (аренда/продажа) и дома (продажа) (issue #273)**
+  - `RealtHtmlParser` — общий парсер `__NEXT_DATA__` JSON для всех realt.by коннекторов (устраняет ~300 строк дублирования между `RealtConnector` и `RealtSaleConnector`); параметры категории передаются через `RealtPageContext` record
+  - `RealtRoomConnector` → `/rent/room-for-long/` (RENT + ROOM): использует `realtRestClient` и `connector-realt` Resilience4j
+  - `RealtRoomSaleConnector` → `/sale/rooms/` (SELL + ROOM): использует `realtSaleRestClient` и `connector-realt-sale` Resilience4j
+  - `RealtHouseSaleConnector` → `/sale/cottages/` (SELL + HOUSE): использует `realtSaleRestClient` и `connector-realt-sale` Resilience4j
+  - Для каждого нового коннектора: `@ConfigurationProperties` record, full-sync и delta-sync Job (`@Scheduled` + `@EventListener(ApplicationReadyEvent)`)
+  - Flyway V37–V39 — записи источников `REALT_ROOM`, `REALT_ROOM_SALE`, `REALT_HOUSE_SALE` в таблице `sources`
+  - `SourceRepositoryIT` — обновлён: ожидает 7 активных источников для BY (было 4)
+  - Тесты: `RealtHtmlParserTest` (18 тестов), `RealtRoomConnectorTest`, `RealtRoomSaleConnectorTest`, `RealtHouseSaleConnectorTest`
+
+### Fixed
 - **PR #238 — Проверка размера фото до отправки в Telegram; SendDocument для файлов 10–50 MB (issue #233)**
   - `SearchResultSender.sendCard()` — размер буфера проверяется **до** вызова Telegram API:
     файлы ≤ 10 MB → `SendPhoto` (основной путь); 10–50 MB → `SendDocument` (документ вместо фото);
