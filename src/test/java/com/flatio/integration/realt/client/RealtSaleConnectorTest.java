@@ -61,7 +61,8 @@ class RealtSaleConnectorTest {
         "/sale/flats/",
         "/sale-flat/object/"
     );
-    connector = new RealtSaleConnector(restClient, properties, new ObjectMapper(), currencyRateService);
+    var htmlParser = new RealtHtmlParser(new ObjectMapper(), currencyRateService);
+    connector = new RealtSaleConnector(restClient, properties, htmlParser);
   }
 
   // -------------------------------------------------------------------------
