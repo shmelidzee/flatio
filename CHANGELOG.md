@@ -8,6 +8,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Fixed
+- **PR #285 — Исправлен URL RealtRoomSaleConnector: /sale-room/object/ → /sale-rooms/object/ (issue #283)**
+  - `application.yml` — `realt-room-sale.object-path-prefix` исправлен с `/sale-room/object/` на `/sale-rooms/object/`
+  - `RealtRoomSaleConnectorTest` — обновлены `setUp()` и assertion в `should_use_room_sale_specific_source_url_in_listings`
+  - Flyway V40 — UPDATE всех существующих записей `listings` где `source_id = REALT_ROOM_SALE` и `source_url LIKE '%/sale-room/object/%'`
+
+- **PR #284 — Telegram-карточка показывает читаемое название источника (issue #281)**
+  - `ListingFormatter.resolveSourceDisplayName()` — prefix-matching по верхнему регистру вместо точного lowercase lookup: `REALT*` → `Realt`, `ONLINER*` → `Onliner`, `KUFAR*` → `Kufar`
+  - Исправляет: `REALT_HOUSE_SALE`, `REALT_ROOM`, `REALT_ROOM_SALE`, `REALT_SALE`, `ONLINER_SALE` отображались как сырые ID вместо читаемых названий
+
 - **PR #280 — Исправлен URL RealtHouseSaleConnector: /sale/houses/ → /sale/cottages/ (issue #278)**
   - `application.yml` — обновлены `listings-path` (`/sale/houses/` → `/sale/cottages/`) и `object-path-prefix` (`/sale-house/object/` → `/sale-cottages/object/`) для коннектора `realt-house-sale`; URL остаётся переопределяемым через env vars без перекомпиляции
   - `RealtHouseSaleConnectorTest` — обновлены хардкоженные URL в setUp(), исправлен тест `should_use_house_sale_specific_source_url_in_listings`, добавлен тест `should_return_empty_list_when_404_received` для документирования graceful degradation при смене URL источника

@@ -400,7 +400,9 @@ Uses `RealtHtmlParser` with `RealtPageContext(dealType=RENT, propertyType=ROOM, 
 **Region:** BY (Belarus)  
 **Package:** `com.flatio.integration.realt.client`  
 **Category:** Room sale (`dealType=SELL`, `propertyType=ROOM`)  
-**Listings path:** `/sale/rooms/` — **Object prefix:** `/sale-room/object/`
+**Listings path:** `/sale/rooms/` — **Object prefix:** `/sale-rooms/object/`
+
+> ⚠️ Object prefix was corrected from `/sale-room/object/` to `/sale-rooms/object/` (PR #285). Flyway V40 backfills existing records. Configurable via env var `REALT_ROOM_SALE_OBJECT_PATH_PREFIX`.
 
 Shares `"realtSaleRestClient"` bean and `connector-realt-sale` Resilience4j.  
 Uses `RealtHtmlParser` with `RealtPageContext(dealType=SELL, propertyType=ROOM, fallbackTitle="Комната на Realt.by")`.
