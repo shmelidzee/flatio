@@ -57,8 +57,8 @@ class RealtHouseSaleConnectorTest {
         "https://realt.by",
         "REALT_HOUSE_SALE",
         "BY",
-        "/sale/houses/",
-        "/sale-house/object/"
+        "/sale/cottages/",
+        "/sale-cottages/object/"
     );
     var htmlParser = new RealtHtmlParser(new ObjectMapper(), currencyRateService);
     connector = new RealtHouseSaleConnector(restClient, properties, htmlParser);
@@ -95,7 +95,21 @@ class RealtHouseSaleConnectorTest {
     List<RawListing> result = connector.fetch();
 
     // Then
-    assertThat(result.get(0).sourceUrl()).contains("/sale-house/object/");
+    assertThat(result.get(0).sourceUrl()).contains("/sale-cottages/object/");
+  }
+
+  @Test
+  void should_return_empty_list_when_404_received() {
+    // Given — realt.by changed its URL structure; connector must degrade gracefully
+    var exception = HttpClientErrorException.create(
+        HttpStatus.NOT_FOUND, "Not Found", new HttpHeaders(), null, null);
+    mockRestClientThrowing(exception);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then — no exception propagated, empty list returned
+    assertThat(result).isEmpty();
   }
 
   @Test
