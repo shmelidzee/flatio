@@ -79,7 +79,7 @@ connector:
     source-id: ${REALT_ROOM_SOURCE_ID:REALT_ROOM}
     region-code: ${REALT_REGION_CODE:BY}
     listings-path: ${REALT_ROOM_LISTINGS_PATH:/rent/room-for-long/}
-    object-path-prefix: ${REALT_ROOM_OBJECT_PATH_PREFIX:/rent-room-for-long/object/}
+    object-path-prefix: ${REALT_ROOM_OBJECT_PATH_PREFIX:/rent-rooms-for-long/object/}
   realt-room-sale:
     base-url: ${REALT_BASE_URL:https://realt.by}
     source-id: ${REALT_ROOM_SALE_SOURCE_ID:REALT_ROOM_SALE}
