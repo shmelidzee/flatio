@@ -21,8 +21,7 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
  * <p>Caption structure:
  * <ul>
  *   <li>Zone 1 — room-count prefix with price on the first line, address on the second line</li>
- *   <li>Zone 2 — area (omitted on truncation)</li>
- *   <li>Zone 3 — publication time and source badge</li>
+ *   <li>Zone 2 — publication time and source badge</li>
  * </ul>
  *
  * <p>First-line format: {@code {N}-комнатная за $X (Y BYN)} when USD price is available,
@@ -51,25 +50,18 @@ public class ListingFormatter {
   /**
    * Builds the HTML caption for a listing card.
    *
-   * <p>If the full caption exceeds 1 024 characters the area zone is omitted
-   * to ensure the first line, address, and meta zone always fit.
+   * <p>If the caption exceeds 1 024 characters it is hard-clamped to fit.
    *
    * @param listing the listing summary to format, never null
    * @return HTML-formatted caption, at most 1 024 characters, never null
    */
   public String buildCaption(ListingSummaryResponse listing) {
-    String full = assembleCaption(listing, true);
-    if (full.length() <= CAPTION_MAX_LENGTH) {
-      return full;
+    String caption = assembleCaption(listing);
+    if (caption.length() <= CAPTION_MAX_LENGTH) {
+      return caption;
     }
-    log.debug("Caption exceeds limit ({}), dropping zone 2: listingId={}", full.length(), listing.id());
-    String short_ = assembleCaption(listing, false);
-    if (short_.length() <= CAPTION_MAX_LENGTH) {
-      return short_;
-    }
-    log.warn("Caption still exceeds limit ({}) after dropping zone 2, hard-clamping: listingId={}",
-        short_.length(), listing.id());
-    return short_.substring(0, CAPTION_MAX_LENGTH - 1) + "…";
+    log.warn("Caption exceeds limit ({}), hard-clamping: listingId={}", caption.length(), listing.id());
+    return caption.substring(0, CAPTION_MAX_LENGTH - 1) + "…";
   }
 
   /**
@@ -88,15 +80,9 @@ public class ListingFormatter {
         .build();
   }
 
-  private String assembleCaption(ListingSummaryResponse listing, boolean includeZone2) {
+  private String assembleCaption(ListingSummaryResponse listing) {
     var sb = new StringBuilder();
     appendZone1(sb, listing);
-    if (includeZone2) {
-      String zone2 = buildZone2(listing);
-      if (!zone2.isEmpty()) {
-        sb.append("\n\n").append(zone2);
-      }
-    }
     sb.append("\n\n");
     appendZone3(sb, listing);
     return sb.toString().strip();
@@ -139,13 +125,6 @@ public class ListingFormatter {
       return rooms + "-комнатная";
     }
     return "";
-  }
-
-  private String buildZone2(ListingSummaryResponse listing) {
-    if (listing.areaTotalM2() == null) {
-      return "";
-    }
-    return "📐 " + formatArea(listing.areaTotalM2());
   }
 
   private void appendZone3(StringBuilder sb, ListingSummaryResponse listing) {
@@ -207,10 +186,6 @@ public class ListingFormatter {
       return city;
     }
     return "";
-  }
-
-  private String formatArea(BigDecimal area) {
-    return area.stripTrailingZeros().toPlainString() + " м²";
   }
 
   private String formatNumber(BigDecimal number) {
