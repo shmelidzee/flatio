@@ -328,11 +328,11 @@ class ListingFormatterTest {
     // When
     var caption = listingFormatter.buildCaption(listing);
 
-    // Then — zone1 contains price, zone1 second line contains address without 📍, zone2 has area, zone3 has time
+    // Then — zone1 contains price and address, zone2 has time; area is never shown
     assertThat(caption).containsPattern("50.000 BYN");
     assertThat(caption).contains("Советский район, Минск");
     assertThat(caption).doesNotContain("📍");
-    assertThat(caption).contains("м²");
+    assertThat(caption).doesNotContain("м²");
     assertThat(caption).contains("🕐");
   }
 
@@ -743,10 +743,9 @@ class ListingFormatterTest {
   // -------------------------------------------------------------------------
 
   @Test
-  void should_truncate_zone2_when_caption_exceeds_limit() {
-    // Given — address of 975 chars: zone1 ~981, short_ ~1017 (≤1024), full ~1031 (>1024)
-    // so zone2 (area icon 📐) gets dropped while address is preserved
-    String longAddress = "а".repeat(975);
+  void should_hard_clamp_caption_when_it_exceeds_limit() {
+    // Given — address of 1010 chars forces caption over the 1024-char limit
+    String longAddress = "а".repeat(1010);
     var listing = new ListingSummaryResponse(
         25L,
         null,
@@ -756,7 +755,7 @@ class ListingFormatterTest {
         null,
         null,
         null,
-        BigDecimal.valueOf(52.5),
+        null,
         null,
         longAddress,
         null,
@@ -769,9 +768,9 @@ class ListingFormatterTest {
     // When
     var caption = listingFormatter.buildCaption(listing);
 
-    // Then — zone2 (area) must be dropped, caption fits within limit
+    // Then — caption is hard-clamped to 1024 chars and ends with ellipsis
     assertThat(caption.length()).isLessThanOrEqualTo(1024);
-    assertThat(caption).doesNotContain("📐");
+    assertThat(caption).endsWith("…");
   }
 
   // -------------------------------------------------------------------------
