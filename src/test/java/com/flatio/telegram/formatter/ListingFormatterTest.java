@@ -227,7 +227,7 @@ class ListingFormatterTest {
 
     // Then
     assertThat(caption).contains("2-комнатная за");
-    assertThat(caption).contains("Realt.by");
+    assertThat(caption).contains("Realt");
   }
 
   @Test
@@ -712,7 +712,7 @@ class ListingFormatterTest {
     var caption = listingFormatter.buildCaption(listing);
 
     // Then
-    assertThat(caption).contains("Realt.by");
+    assertThat(caption).contains("Realt");
   }
 
   @Test
@@ -750,7 +750,7 @@ class ListingFormatterTest {
     var caption = listingFormatter.buildCaption(listing);
 
     // Then
-    assertThat(caption).contains("Realt.by");
+    assertThat(caption).contains("Realt");
   }
 
   @Test
@@ -765,7 +765,7 @@ class ListingFormatterTest {
     var caption = listingFormatter.buildCaption(listing);
 
     // Then
-    assertThat(caption).contains("Realt.by");
+    assertThat(caption).contains("Realt");
   }
 
   @Test
@@ -780,7 +780,7 @@ class ListingFormatterTest {
     var caption = listingFormatter.buildCaption(listing);
 
     // Then
-    assertThat(caption).contains("Realt.by");
+    assertThat(caption).contains("Realt");
   }
 
   @Test
@@ -795,7 +795,7 @@ class ListingFormatterTest {
     var caption = listingFormatter.buildCaption(listing);
 
     // Then
-    assertThat(caption).contains("Realt.by");
+    assertThat(caption).contains("Realt");
   }
 
   @Test
@@ -825,7 +825,7 @@ class ListingFormatterTest {
     var caption = listingFormatter.buildCaption(listing);
 
     // Then
-    assertThat(caption).contains("Realt.by");
+    assertThat(caption).contains("Realt");
   }
 
   @Test

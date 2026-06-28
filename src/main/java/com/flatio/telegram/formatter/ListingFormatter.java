@@ -143,7 +143,7 @@ public class ListingFormatter {
     }
     String upper = sourceId.toUpperCase(Locale.ROOT);
     if (upper.startsWith("REALT")) {
-      return "Realt.by";
+      return "Realt";
     }
     if (upper.startsWith("ONLINER")) {
       return "Onliner";
