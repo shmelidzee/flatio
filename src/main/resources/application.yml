@@ -90,8 +90,8 @@ connector:
     base-url: ${REALT_BASE_URL:https://realt.by}
     source-id: ${REALT_HOUSE_SALE_SOURCE_ID:REALT_HOUSE_SALE}
     region-code: ${REALT_REGION_CODE:BY}
-    listings-path: ${REALT_HOUSE_SALE_LISTINGS_PATH:/sale/houses/}
-    object-path-prefix: ${REALT_HOUSE_SALE_OBJECT_PATH_PREFIX:/sale-house/object/}
+    listings-path: ${REALT_HOUSE_SALE_LISTINGS_PATH:/sale/cottages/}
+    object-path-prefix: ${REALT_HOUSE_SALE_OBJECT_PATH_PREFIX:/sale-cottages/object/}
 
 telegram:
   bot:
