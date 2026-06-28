@@ -5,7 +5,6 @@ import java.math.BigDecimal;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
-import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
@@ -41,11 +40,6 @@ public class ListingFormatter {
   private static final int CAPTION_MAX_LENGTH = 1024;
   private static final DateTimeFormatter PUBLISHED_FORMATTER =
       DateTimeFormatter.ofPattern("HH:mm, dd.MM.yyyy").withZone(ZoneId.of("Europe/Minsk"));
-  private static final Map<String, String> SOURCE_BADGES = Map.of(
-      "kufar", "Kufar",
-      "onliner", "Onliner",
-      "realt", "Realt.by"
-  );
 
   /**
    * Builds the HTML caption for a listing card.
@@ -130,10 +124,34 @@ public class ListingFormatter {
   private void appendZone3(StringBuilder sb, ListingSummaryResponse listing) {
     String time = listing.publishedAt() != null
         ? PUBLISHED_FORMATTER.format(listing.publishedAt()) : "";
-    String badge = listing.sourceId() != null
-        ? SOURCE_BADGES.getOrDefault(listing.sourceId(), capitalize(listing.sourceId()))
-        : "";
+    String badge = resolveSourceDisplayName(listing.sourceId());
     sb.append("🕐 ").append(time).append("  ·  ").append(badge);
+  }
+
+  /**
+   * Resolves a human-readable display name for the given source identifier.
+   *
+   * <p>Uses prefix matching (case-insensitive) so that all connectors for the same platform
+   * (e.g. {@code REALT_FLAT_RENT}, {@code REALT_HOUSE_SALE}) map to the same display name.
+   *
+   * @param sourceId the internal connector source ID, may be null
+   * @return human-readable platform name, or capitalised sourceId for unknown sources, never null
+   */
+  private String resolveSourceDisplayName(String sourceId) {
+    if (sourceId == null || sourceId.isBlank()) {
+      return "";
+    }
+    String upper = sourceId.toUpperCase(Locale.ROOT);
+    if (upper.startsWith("REALT")) {
+      return "Realt";
+    }
+    if (upper.startsWith("ONLINER")) {
+      return "Onliner";
+    }
+    if (upper.startsWith("KUFAR")) {
+      return "Kufar";
+    }
+    return capitalize(sourceId);
   }
 
   /**

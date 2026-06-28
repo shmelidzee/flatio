@@ -227,7 +227,7 @@ class ListingFormatterTest {
 
     // Then
     assertThat(caption).contains("2-комнатная за");
-    assertThat(caption).contains("Realt.by");
+    assertThat(caption).contains("Realt");
   }
 
   @Test
@@ -712,7 +712,7 @@ class ListingFormatterTest {
     var caption = listingFormatter.buildCaption(listing);
 
     // Then
-    assertThat(caption).contains("Realt.by");
+    assertThat(caption).contains("Realt");
   }
 
   @Test
@@ -736,6 +736,126 @@ class ListingFormatterTest {
 
     // Then
     assertThat(caption).contains("Newsource");
+  }
+
+  @Test
+  void should_map_realt_house_sale_source_id_to_realt_badge() {
+    // Given — uppercase source ID from RealtHouseSaleConnector
+    var listing = buildListing(
+        50L, BigDecimal.valueOf(200_000), "USD", null, null, null,
+        "REALT_HOUSE_SALE", null, null, "https://realt.by/1"
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then
+    assertThat(caption).contains("Realt");
+  }
+
+  @Test
+  void should_map_realt_room_rent_source_id_to_realt_badge() {
+    // Given — uppercase source ID from RealtRoomConnector
+    var listing = buildListing(
+        51L, BigDecimal.valueOf(500), "USD", null, null, null,
+        "REALT_ROOM", null, null, "https://realt.by/2"
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then
+    assertThat(caption).contains("Realt");
+  }
+
+  @Test
+  void should_map_realt_room_sale_source_id_to_realt_badge() {
+    // Given — uppercase source ID from RealtRoomSaleConnector
+    var listing = buildListing(
+        52L, BigDecimal.valueOf(50_000), "USD", null, null, null,
+        "REALT_ROOM_SALE", null, null, "https://realt.by/3"
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then
+    assertThat(caption).contains("Realt");
+  }
+
+  @Test
+  void should_map_realt_sale_source_id_to_realt_badge() {
+    // Given — uppercase source ID from RealtSaleConnector
+    var listing = buildListing(
+        53L, BigDecimal.valueOf(80_000), "USD", null, null, null,
+        "REALT_SALE", null, null, "https://realt.by/4"
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then
+    assertThat(caption).contains("Realt");
+  }
+
+  @Test
+  void should_map_onliner_sale_source_id_to_onliner_badge() {
+    // Given — uppercase source ID from OnlinerSaleConnector
+    var listing = buildListing(
+        54L, BigDecimal.valueOf(120_000), "USD", null, null, null,
+        "ONLINER_SALE", null, null, "https://onliner.by/1"
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then
+    assertThat(caption).contains("Onliner");
+  }
+
+  @Test
+  void should_map_uppercase_realt_base_source_id_to_realt_badge() {
+    // Given — uppercase base REALT source ID
+    var listing = buildListing(
+        55L, BigDecimal.valueOf(700), "USD", null, null, null,
+        "REALT", null, null, "https://realt.by/5"
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then
+    assertThat(caption).contains("Realt");
+  }
+
+  @Test
+  void should_map_uppercase_onliner_base_source_id_to_onliner_badge() {
+    // Given — uppercase base ONLINER source ID
+    var listing = buildListing(
+        56L, BigDecimal.valueOf(800), "BYN", null, null, null,
+        "ONLINER", null, null, "https://onliner.by/2"
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then
+    assertThat(caption).contains("Onliner");
+  }
+
+  @Test
+  void should_map_uppercase_kufar_source_id_to_kufar_badge() {
+    // Given — uppercase KUFAR source ID
+    var listing = buildListing(
+        57L, BigDecimal.valueOf(600), "BYN", null, null, null,
+        "KUFAR", null, null, "https://kufar.by/3"
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then
+    assertThat(caption).contains("Kufar");
   }
 
   // -------------------------------------------------------------------------
