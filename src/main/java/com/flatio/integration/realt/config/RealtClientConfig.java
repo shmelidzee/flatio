@@ -13,7 +13,7 @@ import java.time.Duration;
  * Registers configuration and beans for the Realt.by connector.
  */
 @Configuration
-@EnableConfigurationProperties({RealtProperties.class, RealtRoomProperties.class})
+@EnableConfigurationProperties({RealtProperties.class, RealtRoomProperties.class, RealtHouseRentProperties.class})
 public class RealtClientConfig {
 
   private static final String REALT_USER_AGENT =

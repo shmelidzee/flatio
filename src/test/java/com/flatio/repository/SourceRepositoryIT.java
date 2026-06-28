@@ -53,17 +53,18 @@ class SourceRepositoryIT {
   @Test
   void should_return_active_sources_for_country_code() {
     // Given — V3 seeds ONLINER, V28 seeds ONLINER_SALE, V31 seeds REALT, V36 seeds REALT_SALE,
-    //         V37 seeds REALT_ROOM, V38 seeds REALT_ROOM_SALE, V39 seeds REALT_HOUSE_SALE
+    //         V37 seeds REALT_ROOM, V38 seeds REALT_ROOM_SALE, V39 seeds REALT_HOUSE_SALE,
+    //         V42 seeds REALT_HOUSE_RENT
 
     // When
     var result = sourceRepository.findActiveByCountryCode("BY");
 
     // Then
-    assertThat(result).hasSize(7);
+    assertThat(result).hasSize(8);
     assertThat(result).extracting(Source::getCode)
         .containsExactlyInAnyOrder(
             "ONLINER", "ONLINER_SALE", "REALT", "REALT_SALE",
-            "REALT_ROOM", "REALT_ROOM_SALE", "REALT_HOUSE_SALE");
+            "REALT_ROOM", "REALT_ROOM_SALE", "REALT_HOUSE_SALE", "REALT_HOUSE_RENT");
   }
 
   @Test
@@ -92,12 +93,12 @@ class SourceRepositoryIT {
     // When
     var result = sourceRepository.findActiveByCountryCode("BY");
 
-    // Then — 7 active sources, not Kufar (inactive)
-    assertThat(result).hasSize(7);
+    // Then — 8 active sources, not Kufar (inactive)
+    assertThat(result).hasSize(8);
     assertThat(result).extracting(Source::getCode)
         .containsExactlyInAnyOrder(
             "ONLINER", "ONLINER_SALE", "REALT", "REALT_SALE",
-            "REALT_ROOM", "REALT_ROOM_SALE", "REALT_HOUSE_SALE");
+            "REALT_ROOM", "REALT_ROOM_SALE", "REALT_HOUSE_SALE", "REALT_HOUSE_RENT");
   }
 
   @Test
