@@ -12,7 +12,7 @@ import org.springframework.web.client.RestClient;
  * Registers configuration and beans for the Realt.by sale connector.
  */
 @Configuration
-@EnableConfigurationProperties(RealtSaleProperties.class)
+@EnableConfigurationProperties({RealtSaleProperties.class, RealtRoomSaleProperties.class, RealtHouseSaleProperties.class})
 public class RealtSaleClientConfig {
 
   private static final String REALT_USER_AGENT =

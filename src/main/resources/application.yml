@@ -74,6 +74,24 @@ connector:
     region-code: ${REALT_SALE_REGION_CODE:BY}
     listings-path: ${REALT_SALE_LISTINGS_PATH:/sale/flats/}
     object-path-prefix: ${REALT_SALE_OBJECT_PATH_PREFIX:/sale-flat/object/}
+  realt-room:
+    base-url: ${REALT_BASE_URL:https://realt.by}
+    source-id: ${REALT_ROOM_SOURCE_ID:REALT_ROOM}
+    region-code: ${REALT_REGION_CODE:BY}
+    listings-path: ${REALT_ROOM_LISTINGS_PATH:/rent/room-for-long/}
+    object-path-prefix: ${REALT_ROOM_OBJECT_PATH_PREFIX:/rent-room-for-long/object/}
+  realt-room-sale:
+    base-url: ${REALT_BASE_URL:https://realt.by}
+    source-id: ${REALT_ROOM_SALE_SOURCE_ID:REALT_ROOM_SALE}
+    region-code: ${REALT_REGION_CODE:BY}
+    listings-path: ${REALT_ROOM_SALE_LISTINGS_PATH:/sale/rooms/}
+    object-path-prefix: ${REALT_ROOM_SALE_OBJECT_PATH_PREFIX:/sale-room/object/}
+  realt-house-sale:
+    base-url: ${REALT_BASE_URL:https://realt.by}
+    source-id: ${REALT_HOUSE_SALE_SOURCE_ID:REALT_HOUSE_SALE}
+    region-code: ${REALT_REGION_CODE:BY}
+    listings-path: ${REALT_HOUSE_SALE_LISTINGS_PATH:/sale/houses/}
+    object-path-prefix: ${REALT_HOUSE_SALE_OBJECT_PATH_PREFIX:/sale-house/object/}
 
 telegram:
   bot:
@@ -116,6 +134,21 @@ flatio:
         cron: ${FLATIO_SYNC_REALT_SALE_DELTA_CRON:0 */15 * * * *}
       full:
         cron: ${FLATIO_SYNC_REALT_SALE_FULL_CRON:0 0 5 * * *}
+    realt-room:
+      delta:
+        cron: ${FLATIO_SYNC_REALT_ROOM_DELTA_CRON:0 */20 * * * *}
+      full:
+        cron: ${FLATIO_SYNC_REALT_ROOM_FULL_CRON:0 0 6 * * *}
+    realt-room-sale:
+      delta:
+        cron: ${FLATIO_SYNC_REALT_ROOM_SALE_DELTA_CRON:0 */20 * * * *}
+      full:
+        cron: ${FLATIO_SYNC_REALT_ROOM_SALE_FULL_CRON:0 0 7 * * *}
+    realt-house-sale:
+      delta:
+        cron: ${FLATIO_SYNC_REALT_HOUSE_SALE_DELTA_CRON:0 */20 * * * *}
+      full:
+        cron: ${FLATIO_SYNC_REALT_HOUSE_SALE_FULL_CRON:0 0 8 * * *}
   geocoding:
     cron: ${FLATIO_GEOCODING_CRON:0 */30 * * * *}
     batch-size: ${FLATIO_GEOCODING_BATCH_SIZE:50}

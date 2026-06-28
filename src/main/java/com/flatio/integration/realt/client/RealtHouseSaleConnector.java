@@ -3,7 +3,7 @@ package com.flatio.integration.realt.client;
 import com.flatio.integration.core.ConnectorTransientException;
 import com.flatio.integration.core.ListingConnector;
 import com.flatio.integration.core.RawListing;
-import com.flatio.integration.realt.config.RealtSaleProperties;
+import com.flatio.integration.realt.config.RealtHouseSaleProperties;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
 import io.github.resilience4j.retry.annotation.Retry;
@@ -20,42 +20,41 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
 /**
- * Connector for fetching apartment sale listings from the realt.by website.
+ * Connector for fetching house sale listings from the realt.by website.
  *
- * <p>Fetches SSR HTML from realt.by (Next.js) and delegates listing extraction to
- * {@link RealtHtmlParser}. All extracted listings have {@code dealType = SELL}.
+ * <p>Fetches SSR HTML from realt.by and delegates listing extraction to {@link RealtHtmlParser}.
+ * All extracted listings have {@code dealType = SELL} and {@code propertyType = HOUSE}.
  *
- * <p>Rate limiting (1 req/2 s), circuit breaker (opens after 5 failures, stays open 60 s),
- * and retry with exponential backoff (3 attempts: 2 s → 4 s → 8 s) are applied via Resilience4j.
- * On exhausted retries {@link #fetchFallback} returns an empty list.
+ * <p>Shares the {@code connector-realt-sale} Resilience4j rate limiter and circuit breaker with
+ * {@link RealtSaleConnector} and {@link RealtRoomSaleConnector} — all target realt.by.
  */
 @Service
 @Slf4j
-public class RealtSaleConnector implements ListingConnector {
+public class RealtHouseSaleConnector implements ListingConnector {
 
   private static final long DEFAULT_RETRY_AFTER_SECONDS = 5L;
   private static final long MAX_RETRY_AFTER_SECONDS = 60L;
   private static final int MAX_PAGES = 100;
 
   private static final String DEAL_TYPE_SELL = "SELL";
-  private static final String PROPERTY_TYPE_APARTMENT = "APARTMENT";
-  private static final String FALLBACK_TITLE = "Квартира на Realt.by";
+  private static final String PROPERTY_TYPE_HOUSE = "HOUSE";
+  private static final String FALLBACK_TITLE = "Дом на Realt.by";
   private static final String NEXT_PAGE_SELECTOR = "a[data-testid='nextBtn']";
 
   private final RestClient restClient;
-  private final RealtSaleProperties properties;
+  private final RealtHouseSaleProperties properties;
   private final RealtHtmlParser htmlParser;
   private final RealtPageContext pageContext;
 
-  public RealtSaleConnector(@Qualifier("realtSaleRestClient") RestClient restClient,
-      RealtSaleProperties properties,
+  public RealtHouseSaleConnector(@Qualifier("realtSaleRestClient") RestClient restClient,
+      RealtHouseSaleProperties properties,
       RealtHtmlParser htmlParser) {
     this.restClient = restClient;
     this.properties = properties;
     this.htmlParser = htmlParser;
     this.pageContext = new RealtPageContext(
         properties.baseUrl(), properties.objectPathPrefix(), properties.sourceId(),
-        DEAL_TYPE_SELL, PROPERTY_TYPE_APARTMENT, FALLBACK_TITLE
+        DEAL_TYPE_SELL, PROPERTY_TYPE_HOUSE, FALLBACK_TITLE
     );
   }
 
@@ -70,7 +69,7 @@ public class RealtSaleConnector implements ListingConnector {
   }
 
   /**
-   * Fetches all current sale listings from realt.by by paginating through all available pages.
+   * Fetches all current house sale listings from realt.by by paginating through all pages.
    *
    * <p>Rate-limited, circuit-broken, and retried via Resilience4j; on exhausted retries
    * {@link #fetchFallback} returns an empty list.
@@ -86,13 +85,10 @@ public class RealtSaleConnector implements ListingConnector {
   }
 
   /**
-   * Fetches sale listings published at or after the given timestamp (delta sync).
-   *
-   * <p>Realt.by pages are ordered by {@code createdAt} descending. Pagination stops as soon
-   * as a listing's {@code publishedAt} is strictly before {@code since}.
+   * Fetches house sale listings published at or after the given timestamp (delta sync).
    *
    * @param since lower-bound timestamp; listings before this value stop further pagination
-   * @return list of recently published sale listings, never null, may be empty
+   * @return list of recently published listings, never null, may be empty
    */
   @RateLimiter(name = "connector-realt-sale")
   @CircuitBreaker(name = "connector-realt-sale")
@@ -131,7 +127,7 @@ public class RealtSaleConnector implements ListingConnector {
     } catch (HttpClientErrorException.TooManyRequests e) {
       handleRateLimit(e);
     } catch (HttpClientErrorException e) {
-      log.error("Non-retryable HTTP error during RealtSale delta fetch: status={}, page={}, source={}",
+      log.error("Non-retryable HTTP error during RealtHouseSale delta fetch: status={}, page={}, source={}",
           e.getStatusCode(), currentPage, properties.sourceId(), e);
     }
     log.info("Delta fetch completed: source={}, fetched={}", properties.sourceId(), result.size());
@@ -140,14 +136,13 @@ public class RealtSaleConnector implements ListingConnector {
 
   // Package-private: Resilience4j AOP proxy requires fallback to be accessible from the same package.
   List<RawListing> fetchFallback(Exception e) {
-    log.error("All retry attempts exhausted for RealtSale fetch: source={}", properties.sourceId(), e);
+    log.error("All retry attempts exhausted for RealtHouseSale fetch: source={}", properties.sourceId(), e);
     return List.of();
   }
 
   // Package-private: Resilience4j AOP proxy requires fallback to be accessible from the same package.
   List<RawListing> fetchDeltaFallback(Instant since, Exception e) {
-    log.error("All retry attempts exhausted for RealtSale delta fetch: source={}, since={}",
-        properties.sourceId(), since, e);
+    log.error("All retry attempts exhausted for RealtHouseSale delta fetch: source={}, since={}", properties.sourceId(), since, e);
     return List.of();
   }
 
@@ -174,7 +169,7 @@ public class RealtSaleConnector implements ListingConnector {
     } catch (HttpClientErrorException.TooManyRequests e) {
       handleRateLimit(e);
     } catch (HttpClientErrorException e) {
-      log.error("Non-retryable HTTP error fetching realt.by sale: status={}, page={}, source={}",
+      log.error("Non-retryable HTTP error fetching realt.by house sale: status={}, page={}, source={}",
           e.getStatusCode(), currentPage, properties.sourceId(), e);
     }
     log.info("Full fetch completed: source={}, fetched={}", properties.sourceId(), result.size());
@@ -193,7 +188,7 @@ public class RealtSaleConnector implements ListingConnector {
 
   private void handleRateLimit(HttpClientErrorException.TooManyRequests e) {
     long retryAfterSeconds = parseRetryAfterSeconds(e.getResponseHeaders());
-    log.warn("Rate limited by realt.by sale (429): source={}, retryAfter={}s — Resilience4j will back off",
+    log.warn("Rate limited by realt.by (429): source={}, retryAfter={}s — Resilience4j will back off",
         properties.sourceId(), retryAfterSeconds);
     throw new ConnectorTransientException("Rate limited: source=" + properties.sourceId(), e);
   }

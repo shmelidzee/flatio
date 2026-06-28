@@ -17,6 +17,7 @@ import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
@@ -62,7 +63,8 @@ class RealtConnectorTest {
         "/rent/flat-for-long/",
         "/rent-flat-for-long/object/"
     );
-    connector = new RealtConnector(restClient, properties, new ObjectMapper(), currencyRateService);
+    var htmlParser = new RealtHtmlParser(new ObjectMapper(), currencyRateService);
+    connector = new RealtConnector(restClient, properties, htmlParser);
   }
 
   // -------------------------------------------------------------------------
