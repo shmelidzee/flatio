@@ -43,7 +43,6 @@ public class KufarApiClient {
   private static final String PARAM_GEOPOINT = "geopoint";
   private static final String ACCOUNT_TYPE_PRIVATE = "private";
   private static final String LABEL_NEXT = "next";
-  private static final String SORT = "lst.d";
 
   private final RestClient restClient;
   private final KufarProperties properties;
@@ -89,7 +88,7 @@ public class KufarApiClient {
   /**
    * Fetches listings published at or after the given timestamp (delta sync).
    *
-   * <p>Relies on Kufar returning results sorted by {@code list_time} descending ({@code sor=lst.d}).
+   * <p>Assumes Kufar returns results in newest-first order by default.
    * Stops as soon as a listing's {@code list_time} is before {@code since}.
    *
    * @param config        category-specific configuration
@@ -137,7 +136,6 @@ public class KufarApiClient {
               .path(properties.searchPath())
               .queryParam("cat", config.categoryCode())
               .queryParam("lang", properties.lang())
-              .queryParam("sor", SORT)
               .queryParam("size", properties.pageSize());
           if (cursor != null) {
             builder = builder.queryParam("cursor", cursor);
