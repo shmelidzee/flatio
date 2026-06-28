@@ -98,6 +98,34 @@ connector:
     region-code: ${REALT_REGION_CODE:BY}
     listings-path: ${REALT_HOUSE_SALE_LISTINGS_PATH:/sale/cottages/}
     object-path-prefix: ${REALT_HOUSE_SALE_OBJECT_PATH_PREFIX:/sale-cottages/object/}
+  kufar:
+    base-url: ${KUFAR_BASE_URL:https://api.kufar.by}
+    search-path: /search-api/v2/search/rendered-paginated
+    page-size: ${KUFAR_PAGE_SIZE:50}
+    apartment-rent:
+      source-id: ${KUFAR_APARTMENT_RENT_SOURCE_ID:KUFAR_APARTMENT_RENT}
+      region-code: ${KUFAR_REGION_CODE:BY}
+      category-code: ${KUFAR_APARTMENT_RENT_CATEGORY:}
+    apartment-sale:
+      source-id: ${KUFAR_APARTMENT_SALE_SOURCE_ID:KUFAR_APARTMENT_SALE}
+      region-code: ${KUFAR_REGION_CODE:BY}
+      category-code: ${KUFAR_APARTMENT_SALE_CATEGORY:}
+    room-rent:
+      source-id: ${KUFAR_ROOM_RENT_SOURCE_ID:KUFAR_ROOM_RENT}
+      region-code: ${KUFAR_REGION_CODE:BY}
+      category-code: ${KUFAR_ROOM_RENT_CATEGORY:}
+    room-sale:
+      source-id: ${KUFAR_ROOM_SALE_SOURCE_ID:KUFAR_ROOM_SALE}
+      region-code: ${KUFAR_REGION_CODE:BY}
+      category-code: ${KUFAR_ROOM_SALE_CATEGORY:}
+    house-rent:
+      source-id: ${KUFAR_HOUSE_RENT_SOURCE_ID:KUFAR_HOUSE_RENT}
+      region-code: ${KUFAR_REGION_CODE:BY}
+      category-code: ${KUFAR_HOUSE_RENT_CATEGORY:}
+    house-sale:
+      source-id: ${KUFAR_HOUSE_SALE_SOURCE_ID:KUFAR_HOUSE_SALE}
+      region-code: ${KUFAR_REGION_CODE:BY}
+      category-code: ${KUFAR_HOUSE_SALE_CATEGORY:}
 
 telegram:
   bot:
@@ -160,6 +188,36 @@ flatio:
         cron: ${FLATIO_SYNC_REALT_HOUSE_SALE_DELTA_CRON:0 */5 * * * *}
       full:
         cron: ${FLATIO_SYNC_REALT_HOUSE_SALE_FULL_CRON:0 0 8 * * *}
+    kufar-apartment-rent:
+      delta:
+        cron: ${FLATIO_SYNC_KUFAR_APARTMENT_RENT_DELTA_CRON:0 */15 * * * *}
+      full:
+        cron: ${FLATIO_SYNC_KUFAR_APARTMENT_RENT_FULL_CRON:0 30 2 * * *}
+    kufar-apartment-sale:
+      delta:
+        cron: ${FLATIO_SYNC_KUFAR_APARTMENT_SALE_DELTA_CRON:0 */15 * * * *}
+      full:
+        cron: ${FLATIO_SYNC_KUFAR_APARTMENT_SALE_FULL_CRON:0 30 3 * * *}
+    kufar-room-rent:
+      delta:
+        cron: ${FLATIO_SYNC_KUFAR_ROOM_RENT_DELTA_CRON:0 */15 * * * *}
+      full:
+        cron: ${FLATIO_SYNC_KUFAR_ROOM_RENT_FULL_CRON:0 30 4 * * *}
+    kufar-room-sale:
+      delta:
+        cron: ${FLATIO_SYNC_KUFAR_ROOM_SALE_DELTA_CRON:0 */15 * * * *}
+      full:
+        cron: ${FLATIO_SYNC_KUFAR_ROOM_SALE_FULL_CRON:0 30 5 * * *}
+    kufar-house-rent:
+      delta:
+        cron: ${FLATIO_SYNC_KUFAR_HOUSE_RENT_DELTA_CRON:0 */15 * * * *}
+      full:
+        cron: ${FLATIO_SYNC_KUFAR_HOUSE_RENT_FULL_CRON:0 30 6 * * *}
+    kufar-house-sale:
+      delta:
+        cron: ${FLATIO_SYNC_KUFAR_HOUSE_SALE_DELTA_CRON:0 */15 * * * *}
+      full:
+        cron: ${FLATIO_SYNC_KUFAR_HOUSE_SALE_FULL_CRON:0 30 7 * * *}
   geocoding:
     cron: ${FLATIO_GEOCODING_CRON:0 */30 * * * *}
     batch-size: ${FLATIO_GEOCODING_BATCH_SIZE:50}
@@ -204,6 +262,10 @@ resilience4j:
         limit-refresh-period: 2s
         timeout-duration: 5s
       nominatim:
+        limit-for-period: 1
+        limit-refresh-period: 1s
+        timeout-duration: 5s
+      connector-kufar:
         limit-for-period: 1
         limit-refresh-period: 1s
         timeout-duration: 5s
@@ -267,6 +329,17 @@ resilience4j:
           - com.flatio.integration.core.ConnectorTransientException
         ignore-exceptions:
           - io.github.resilience4j.circuitbreaker.CallNotPermittedException
+      connector-kufar:
+        max-attempts: 3
+        wait-duration: 2s
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - org.springframework.web.client.HttpServerErrorException
+          - org.springframework.web.client.ResourceAccessException
+          - com.flatio.integration.core.ConnectorTransientException
+        ignore-exceptions:
+          - io.github.resilience4j.circuitbreaker.CallNotPermittedException
   circuitbreaker:
     instances:
       connector-onliner:
@@ -294,6 +367,14 @@ resilience4j:
         automatic-transition-from-open-to-half-open-enabled: true
         permitted-number-of-calls-in-half-open-state: 1
       connector-realt-sale:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 5
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 100
+        wait-duration-in-open-state: 60s
+        automatic-transition-from-open-to-half-open-enabled: true
+        permitted-number-of-calls-in-half-open-state: 1
+      connector-kufar:
         sliding-window-type: COUNT_BASED
         sliding-window-size: 5
         minimum-number-of-calls: 5

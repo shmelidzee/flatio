@@ -1,0 +1,39 @@
+{
+  "ads": [
+    {
+      "ad_id": 111111111,
+      "subject": "Квартира без цены",
+      "body": "Описание.",
+      "ad_link": "https://www.kufar.by/item/111111111",
+      "account": {"id": 3001, "type": "private"},
+      "account_parameters": [
+        {"pl": "roomsCount", "vl": "2"},
+        {"pl": "floor", "vl": "4"},
+        {"pl": "totalFloors", "vl": "9"}
+      ],
+      "images": [],
+      "list_time": "2024-01-15T10:30:00+03:00"
+    },
+    {
+      "ad_id": 222222222,
+      "subject": "Нормальная квартира",
+      "body": "Хорошая квартира.",
+      "price_byn": 90000,
+      "currency": "BYR",
+      "ad_link": "https://www.kufar.by/item/222222222",
+      "account": {"id": 4002, "type": "private"},
+      "account_parameters": [
+        {"pl": "roomsCount", "vl": "1"},
+        {"pl": "floor", "vl": "2"},
+        {"pl": "totalFloors", "vl": "5"},
+        {"pl": "area", "vl": "30.0"}
+      ],
+      "images": [],
+      "list_time": "2024-01-15T09:00:00+03:00"
+    }
+  ],
+  "pagination": {
+    "pages": []
+  },
+  "total": 2
+}

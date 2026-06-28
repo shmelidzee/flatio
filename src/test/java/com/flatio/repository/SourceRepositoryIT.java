@@ -54,17 +54,22 @@ class SourceRepositoryIT {
   void should_return_active_sources_for_country_code() {
     // Given — V3 seeds ONLINER, V28 seeds ONLINER_SALE, V31 seeds REALT, V36 seeds REALT_SALE,
     //         V37 seeds REALT_ROOM, V38 seeds REALT_ROOM_SALE, V39 seeds REALT_HOUSE_SALE,
-    //         V42 seeds REALT_HOUSE_RENT
+    //         V42 seeds REALT_HOUSE_RENT,
+    //         V43 seeds KUFAR_APARTMENT_RENT, KUFAR_APARTMENT_SALE, KUFAR_ROOM_RENT,
+    //              KUFAR_ROOM_SALE, KUFAR_HOUSE_RENT, KUFAR_HOUSE_SALE
 
     // When
     var result = sourceRepository.findActiveByCountryCode("BY");
 
     // Then
-    assertThat(result).hasSize(8);
+    assertThat(result).hasSize(14);
     assertThat(result).extracting(Source::getCode)
         .containsExactlyInAnyOrder(
             "ONLINER", "ONLINER_SALE", "REALT", "REALT_SALE",
-            "REALT_ROOM", "REALT_ROOM_SALE", "REALT_HOUSE_SALE", "REALT_HOUSE_RENT");
+            "REALT_ROOM", "REALT_ROOM_SALE", "REALT_HOUSE_SALE", "REALT_HOUSE_RENT",
+            "KUFAR_APARTMENT_RENT", "KUFAR_APARTMENT_SALE",
+            "KUFAR_ROOM_RENT", "KUFAR_ROOM_SALE",
+            "KUFAR_HOUSE_RENT", "KUFAR_HOUSE_SALE");
   }
 
   @Test
@@ -93,17 +98,20 @@ class SourceRepositoryIT {
     // When
     var result = sourceRepository.findActiveByCountryCode("BY");
 
-    // Then — 8 active sources, not Kufar (inactive)
-    assertThat(result).hasSize(8);
+    // Then — 14 active sources, not KUFAR (inactive generic entry)
+    assertThat(result).hasSize(14);
     assertThat(result).extracting(Source::getCode)
         .containsExactlyInAnyOrder(
             "ONLINER", "ONLINER_SALE", "REALT", "REALT_SALE",
-            "REALT_ROOM", "REALT_ROOM_SALE", "REALT_HOUSE_SALE", "REALT_HOUSE_RENT");
+            "REALT_ROOM", "REALT_ROOM_SALE", "REALT_HOUSE_SALE", "REALT_HOUSE_RENT",
+            "KUFAR_APARTMENT_RENT", "KUFAR_APARTMENT_SALE",
+            "KUFAR_ROOM_RENT", "KUFAR_ROOM_SALE",
+            "KUFAR_HOUSE_RENT", "KUFAR_HOUSE_SALE");
   }
 
   @Test
   void should_return_empty_when_source_code_not_found() {
-    // Given — KUFAR has not been seeded in any migration
+    // Given — no source seeded with the bare "KUFAR" code (only category-scoped codes exist)
     var nonExistentCode = "KUFAR";
 
     // When
