@@ -58,7 +58,7 @@ class RealtRoomSaleConnectorTest {
         "REALT_ROOM_SALE",
         "BY",
         "/sale/rooms/",
-        "/sale-room/object/"
+        "/sale-rooms/object/"
     );
     var htmlParser = new RealtHtmlParser(new ObjectMapper(), currencyRateService);
     connector = new RealtRoomSaleConnector(restClient, properties, htmlParser);
@@ -95,7 +95,7 @@ class RealtRoomSaleConnectorTest {
     List<RawListing> result = connector.fetch();
 
     // Then
-    assertThat(result.get(0).sourceUrl()).contains("/sale-room/object/");
+    assertThat(result.get(0).sourceUrl()).contains("/sale-rooms/object/");
   }
 
   @Test
