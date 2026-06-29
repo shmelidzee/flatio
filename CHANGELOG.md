@@ -8,6 +8,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Fixed
+- **PR #300 — «Договорная» вместо «0 BYN»; извлечение адреса из Kufar (issues #298, #299)**
+  - Flyway V45 — `ALTER TABLE listings ADD COLUMN is_negotiable BOOLEAN NOT NULL DEFAULT FALSE`
+  - `RawListing` — добавлено поле `isNegotiable` (23-е)
+  - `KufarApiClient` — адрес извлекается из `ad_parameters[key="address"].vl`; `priceByn == null || 0` → `isNegotiable = true`, `price = 0`
+  - `OnlinerConnector` / `OnlinerSaleConnector` — `price = null` → `isNegotiable = true` вместо пропуска объявления
+  - `RealtHtmlParser` — `price = 0` → `isNegotiable = true` вместо пропуска объявления
+  - `ListingResponse` — новые поля `priceLabel` (`"Договорная"` когда `isNegotiable`, иначе `null`) и `isNegotiable`
+  - `ListingSummaryResponse` — новое поле `isNegotiable`
+  - `ListingFormatter` — `isNegotiable = true` → «Договорная» (жирным) вместо числовой цены в Telegram-карточке
+  - `ListingServiceImpl` — ценовой фильтр (`priceMin` / `priceMax`) исключает `isNegotiable` объявления
+  - `ListingRepository` — FTS-запрос обновлён: `l.is_negotiable` в `SELECT`, фильтр в `WHERE` при активном ценовом фильтре
+  - `ListingMapper` — константа `LABEL_NEGOTIABLE = "Договорная"`, `default`-метод `resolveNegotiableLabel()` в интерфейсе
+
 - **PR #285 — Исправлен URL RealtRoomSaleConnector: /sale-room/object/ → /sale-rooms/object/ (issue #283)**
   - `application.yml` — `realt-room-sale.object-path-prefix` исправлен с `/sale-room/object/` на `/sale-rooms/object/`
   - `RealtRoomSaleConnectorTest` — обновлены `setUp()` и assertion в `should_use_room_sale_specific_source_url_in_listings`

@@ -102,7 +102,8 @@ Base URL: `/api/v1`
       "photoUrl": null,
       "sourceUrl": "https://r.onliner.by/ak/apartments/12345",
       "publishedAt": "2026-05-15T10:00:00Z",
-      "status": "ACTIVE"
+      "status": "ACTIVE",
+      "isNegotiable": false
     }
   ],
   "totalElements": 1,
@@ -111,6 +112,8 @@ Base URL: `/api/v1`
   "number": 0
 }
 ```
+
+> **Примечание:** при активном ценовом фильтре (`priceMin` или `priceMax`) объявления с `isNegotiable=true` исключаются из результатов, так как для них числовая цена не задана.
 
 **Ошибки:**
 
@@ -144,6 +147,7 @@ Base URL: `/api/v1`
   "dealType": "RENT",
   "propertyType": "APARTMENT",
   "price": 1470.00,
+  "priceLabel": null,
   "currency": "BYN",
   "priceUnit": "PER_MONTH",
   "rooms": 2,
@@ -156,6 +160,7 @@ Base URL: `/api/v1`
   "longitude": 27.6244,
   "photoUrl": null,
   "isOwner": true,
+  "isNegotiable": false,
   "status": "ACTIVE",
   "sourceUrl": "https://r.onliner.by/ak/apartments/12345",
   "publishedAt": "2026-05-15T10:00:00Z",
@@ -169,6 +174,8 @@ Base URL: `/api/v1`
   ]
 }
 ```
+
+> **Примечание о договорной цене:** когда `isNegotiable=true`, продавец не указал числовую цену. В этом случае `price=null` и `priceLabel="Договорная"`. Такие объявления не попадают в выдачу при активном ценовом фильтре.
 
 **Ошибки:**
 
