@@ -12,10 +12,14 @@ import com.flatio.integration.kufar.dto.KufarSearchResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.util.UriBuilder;
+import org.springframework.web.util.UriComponentsBuilder;
 
+import java.net.URI;
 import java.time.Instant;
 import java.util.List;
 import java.util.function.Function;
@@ -23,6 +27,7 @@ import java.util.function.Function;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -443,6 +448,41 @@ class KufarApiClientTest {
 
     // Then
     assertThat(result).isEmpty();
+  }
+
+  // -------------------------------------------------------------------------
+  // Request parameters — AC #5 and AC #6
+  // -------------------------------------------------------------------------
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_send_correct_cat_and_typ_params_in_request() {
+    // Given
+    mockRestClientReturning(new KufarSearchResponse(List.of(), null, 0));
+    ArgumentCaptor<Function<UriBuilder, URI>> uriCaptor = ArgumentCaptor.forClass(Function.class);
+
+    // When
+    apiClient.fetchAll(config, "RENT", "APARTMENT", "Fallback");
+
+    // Then — cat and typ params match the config values
+    verify(requestHeadersUriSpec).uri(uriCaptor.capture());
+    URI actualUri = uriCaptor.getValue().apply(UriComponentsBuilder.newInstance());
+    assertThat(actualUri.getQuery())
+        .contains("cat=1010")
+        .contains("typ=let");
+  }
+
+  @Test
+  void should_return_empty_list_when_category_code_is_blank() {
+    // Given — config with blank categoryCode simulates misconfigured env variable
+    var blankConfig = new KufarProperties.CategoryConfig("KUFAR_TEST", "BY", "", "let");
+
+    // When
+    List<RawListing> result = apiClient.fetchAll(blankConfig, "RENT", "APARTMENT", "Fallback");
+
+    // Then — no HTTP call made, empty list returned
+    assertThat(result).isEmpty();
+    verify(restClient, never()).get();
   }
 
   // -------------------------------------------------------------------------

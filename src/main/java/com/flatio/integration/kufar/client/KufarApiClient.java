@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -135,6 +136,10 @@ public class KufarApiClient {
   }
 
   private KufarSearchResponse fetchPage(KufarProperties.CategoryConfig config, String cursor) {
+    if (config.categoryCode() == null || config.categoryCode().isBlank()) {
+      log.warn("Empty categoryCode for source={}, skipping fetch", config.sourceId());
+      return null;
+    }
     return restClient.get()
         .uri(uriBuilder -> {
           var builder = uriBuilder
@@ -185,7 +190,7 @@ public class KufarApiClient {
     Instant publishedAt = parseListTime(ad.listTime());
     Boolean isOwner = resolveIsOwner(ad);
     String title = (ad.subject() != null && !ad.subject().isBlank()) ? ad.subject() : fallbackTitle;
-    BigDecimal price = BigDecimal.valueOf(ad.priceByn()).divide(KOPECKS_DIVISOR);
+    BigDecimal price = BigDecimal.valueOf(ad.priceByn()).divide(KOPECKS_DIVISOR, 2, RoundingMode.HALF_UP);
 
     return new RawListing(
         String.valueOf(ad.adId()),
