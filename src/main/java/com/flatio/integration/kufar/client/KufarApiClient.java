@@ -293,7 +293,8 @@ public class KufarApiClient {
     if (cdnBase == null || cdnBase.isBlank() || path.startsWith("http")) {
       return path;
     }
-    return cdnBase + "/" + path;
+    String base = cdnBase.endsWith("/") ? cdnBase.substring(0, cdnBase.length() - 1) : cdnBase;
+    return base + "/" + path;
   }
 
   private Instant parseListTime(String listTime) {

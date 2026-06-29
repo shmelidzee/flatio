@@ -8,4 +8,4 @@ SET
     updated_at = NOW()
 WHERE source_id IN (SELECT id FROM source WHERE code LIKE 'KUFAR_%')
   AND photo_url IS NOT NULL
-  AND photo_url NOT LIKE 'https://%';
+  AND photo_url NOT LIKE 'http%';

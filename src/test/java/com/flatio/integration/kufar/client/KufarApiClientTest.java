@@ -370,6 +370,39 @@ class KufarApiClientTest {
 
   @Test
   @SuppressWarnings("unchecked")
+  void should_strip_trailing_slash_from_cdn_base_url() {
+    // Given — photoCdnBaseUrl configured with trailing slash
+    var propertiesWithSlash = new KufarProperties(
+        "https://api.kufar.by",
+        "/search-api/v2/search/rendered-paginated",
+        50,
+        "ru",
+        "https://content.kufar.by/listings_thumbnails/",
+        config,
+        new KufarProperties.CategoryConfig("KUFAR_APARTMENT_SALE", "BY", "1010", "sell"),
+        new KufarProperties.CategoryConfig("KUFAR_ROOM_RENT", "BY", "1040", "let"),
+        new KufarProperties.CategoryConfig("KUFAR_ROOM_SALE", "BY", "1040", "sell"),
+        new KufarProperties.CategoryConfig("KUFAR_HOUSE_RENT", "BY", "1020", "let"),
+        new KufarProperties.CategoryConfig("KUFAR_HOUSE_SALE", "BY", "1020", "sell")
+    );
+    var clientWithSlash = new KufarApiClient(restClient, propertiesWithSlash);
+    var image = new KufarImage("1", "adim1/uuid.jpg");
+    var ad = new KufarAd(605L, "Квартира", null, 8000000L, "BYR",
+        "https://re.kufar.by/vi/605", null, List.of(), List.of(), null,
+        List.of(image), "2024-01-15T10:00:00+03:00");
+    mockRestClientReturning(buildResponseWithAds(List.of(ad)));
+
+    // When
+    List<RawListing> result = clientWithSlash.fetchAll(config, "RENT", "APARTMENT", "Fallback");
+
+    // Then — no double slash in resulting URL
+    assertThat(result.get(0).photoUrls()).containsExactly(
+        "https://content.kufar.by/listings_thumbnails/adim1/uuid.jpg"
+    );
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
   void should_not_prepend_cdn_url_when_path_is_already_absolute() {
     // Given — path already starts with https:// (defensive guard against already-migrated data)
     var image = new KufarImage("1", "https://other-cdn.kufar.by/img/1.jpg");
