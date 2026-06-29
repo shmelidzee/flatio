@@ -535,7 +535,7 @@ class ListingServiceTest {
     var summaryByn = new ListingSummaryResponse(
         1L, "Test", BigDecimal.valueOf(3_387.36), "BYN",
         null, null, 1, null, null, "Минск", null, null,
-        "onliner", Instant.now(), null, "https://onliner.by/1"
+        "onliner", Instant.now(), null, "https://onliner.by/1", null
     );
     var page = new PageImpl<>(List.of(listing), pageable, 1);
 
@@ -564,7 +564,7 @@ class ListingServiceTest {
     var summaryByn = new ListingSummaryResponse(
         1L, "Test", BigDecimal.valueOf(1_000), "BYN",
         null, null, 1, null, null, "Минск", null, null,
-        "onliner", Instant.now(), null, "https://onliner.by/1"
+        "onliner", Instant.now(), null, "https://onliner.by/1", null
     );
     var page = new PageImpl<>(List.of(listing), pageable, 1);
 
@@ -589,7 +589,7 @@ class ListingServiceTest {
     var realtSummary = new ListingSummaryResponse(
         1L, "Test", BigDecimal.valueOf(1_200), "USD",
         BigDecimal.valueOf(1_200), BigDecimal.valueOf(3_387.36), 2, null, null, "Минск", null, null,
-        "realt", Instant.now(), null, "https://realt.by/1"
+        "realt", Instant.now(), null, "https://realt.by/1", null
     );
     var page = new PageImpl<>(List.of(listing), pageable, 1);
 
@@ -614,7 +614,7 @@ class ListingServiceTest {
     var usdSummary = new ListingSummaryResponse(
         1L, "Test", BigDecimal.valueOf(500), "USD",
         null, null, 1, null, null, "Минск", null, null,
-        "onliner", Instant.now(), null, "https://onliner.by/1"
+        "onliner", Instant.now(), null, "https://onliner.by/1", null
     );
     var page = new PageImpl<>(List.of(listing), pageable, 1);
 
@@ -639,7 +639,7 @@ class ListingServiceTest {
     var summaryByn = new ListingSummaryResponse(
         1L, "Test", BigDecimal.valueOf(3_322.80), "BYN",
         null, null, 1, null, null, "Минск", null, null,
-        "onliner", Instant.now(), null, "https://onliner.by/1"
+        "onliner", Instant.now(), null, "https://onliner.by/1", null
     );
     var page = new PageImpl<>(List.of(listing), pageable, 1);
 
@@ -684,9 +684,9 @@ class ListingServiceTest {
   private static ListingResponse buildListingResponse(Long id) {
     return new ListingResponse(
         id, "ext-1", "realt", "Test listing", null, DealType.SELL, null, "APARTMENT",
-        BigDecimal.valueOf(75_000), "USD", 2, 5, 9,
+        BigDecimal.valueOf(75_000), null, "USD", 2, 5, 9,
         BigDecimal.valueOf(52.5), "ул. Ленина, 1", "Минск", null, null, null,
-        true, ListingStatus.ACTIVE, "https://realt.by/1", Instant.now(), Instant.now(), List.of()
+        true, null, ListingStatus.ACTIVE, "https://realt.by/1", Instant.now(), Instant.now(), List.of()
     );
   }
 
@@ -694,7 +694,7 @@ class ListingServiceTest {
     return new ListingSummaryResponse(
         id, "Test listing", BigDecimal.valueOf(75_000), "USD", null, null, 2,
         null, BigDecimal.valueOf(52.5), "Минск", null, null, "realt", Instant.now(), null,
-        "https://realt.by/" + id
+        "https://realt.by/" + id, null
     );
   }
 }

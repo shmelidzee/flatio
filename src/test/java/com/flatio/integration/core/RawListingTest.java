@@ -42,6 +42,7 @@ class RawListingTest {
         publishedAt,
         photos,
         null,
+        null,
         null
     );
 
@@ -89,7 +90,8 @@ class RawListingTest {
         null,    // publishedAt
         List.of(),
         null,    // isOwner
-        null     // priceUnit
+        null,    // priceUnit
+        null     // isNegotiable
     );
 
     // Then
@@ -200,7 +202,7 @@ class RawListingTest {
         externalId, "Квартира", null, "RENT", null,
         BigDecimal.valueOf(400), "BYN", null, null,
         null, null, null, null, null, null, null, null,
-        "https://example.com/" + externalId, null, List.of(), null, null
+        "https://example.com/" + externalId, null, List.of(), null, null, null
     );
   }
 }

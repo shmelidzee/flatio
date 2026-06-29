@@ -94,12 +94,13 @@ public class RealtHtmlParser {
 
   private RawListing toRawListing(JsonNode obj, RealtPageContext context) {
     String externalId = extractExternalId(obj);
+    boolean isNegotiable = isNegotiablePrice(obj);
     BigDecimal price = extractPrice(obj, externalId);
     String title = extractTitle(obj, context.fallbackTitle());
     String currency = resolveCurrency(obj);
     // priceUsd is null: price is already in USD for Realt listings.
     BigDecimal priceUsd = null;
-    BigDecimal priceByn = computePriceByn(price, currency, externalId, context.sourceId());
+    BigDecimal priceByn = isNegotiable ? null : computePriceByn(price, currency, externalId, context.sourceId());
     String address = Optional.ofNullable(obj.path("address").textValue())
         .filter(t -> !t.isBlank())
         .orElse(null);
@@ -119,7 +120,8 @@ public class RealtHtmlParser {
         context.baseUrl() + context.objectPathPrefix() + externalId + "/",
         publishedAt,
         extractPhotos(obj),
-        isOwner, null
+        isOwner, null,
+        isNegotiable
     );
   }
 
@@ -155,10 +157,14 @@ public class RealtHtmlParser {
     return String.valueOf(code);
   }
 
+  private boolean isNegotiablePrice(JsonNode obj) {
+    return obj.path("price").asLong(0L) == 0;
+  }
+
   private BigDecimal extractPrice(JsonNode obj, String externalId) {
     long priceRaw = obj.path("price").asLong(0L);
-    if (priceRaw <= 0) {
-      throw new IllegalArgumentException("Missing or zero price for listing code=" + externalId);
+    if (priceRaw < 0) {
+      throw new IllegalArgumentException("Negative price for listing code=" + externalId);
     }
     return BigDecimal.valueOf(priceRaw);
   }

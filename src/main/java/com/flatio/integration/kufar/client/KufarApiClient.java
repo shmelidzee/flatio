@@ -49,6 +49,7 @@ public class KufarApiClient {
   private static final String PARAM_FLOOR = "floor";
   private static final String PARAM_FLOORS_TOTAL = "re_number_floors";
   private static final String PARAM_AREA = "size";
+  private static final String PARAM_ADDRESS = "address";
 
   private final RestClient restClient;
   private final KufarProperties properties;
@@ -178,19 +179,20 @@ public class KufarApiClient {
 
   private RawListing toRawListing(KufarAd ad, KufarProperties.CategoryConfig config,
       String dealType, String propertyType, String fallbackTitle) {
-    if (ad.priceByn() == null) {
-      throw new IllegalArgumentException("Missing price for Kufar ad id=" + ad.adId());
-    }
     List<KufarAdParameter> adParams = ad.adParameters() != null ? ad.adParameters() : List.of();
     Integer rooms = parseIntParam(adParams, PARAM_ROOMS);
     Integer floor = parseIntParam(adParams, PARAM_FLOOR);
     Integer floorsTotal = parseIntParam(adParams, PARAM_FLOORS_TOTAL);
     BigDecimal area = parseBigDecimalParam(adParams, PARAM_AREA);
+    String address = parseStringParam(adParams, PARAM_ADDRESS);
     List<String> photoUrls = extractPhotoUrls(ad);
     Instant publishedAt = parseListTime(ad.listTime());
     Boolean isOwner = resolveIsOwner(ad);
     String title = (ad.subject() != null && !ad.subject().isBlank()) ? ad.subject() : fallbackTitle;
-    BigDecimal price = BigDecimal.valueOf(ad.priceByn()).divide(KOPECKS_DIVISOR, 2, RoundingMode.HALF_UP);
+    boolean isNegotiable = ad.priceByn() == null || ad.priceByn() == 0L;
+    BigDecimal price = isNegotiable
+        ? BigDecimal.ZERO
+        : BigDecimal.valueOf(ad.priceByn()).divide(KOPECKS_DIVISOR, 2, RoundingMode.HALF_UP);
 
     return new RawListing(
         String.valueOf(ad.adId()),
@@ -206,7 +208,7 @@ public class KufarApiClient {
         floor,
         floorsTotal,
         area,
-        null,
+        address,
         null,
         null,
         null,
@@ -214,7 +216,8 @@ public class KufarApiClient {
         publishedAt,
         photoUrls,
         isOwner,
-        null
+        null,
+        isNegotiable
     );
   }
 
@@ -254,6 +257,15 @@ public class KufarApiClient {
           }
         })
         .filter(Objects::nonNull)
+        .findFirst()
+        .orElse(null);
+  }
+
+  private String parseStringParam(List<KufarAdParameter> params, String key) {
+    return params.stream()
+        .filter(p -> key.equals(p.p()))
+        .map(p -> p.vl() != null && !p.vl().isBlank() ? p.vl() : p.v())
+        .filter(v -> v != null && !v.isBlank())
         .findFirst()
         .orElse(null);
   }

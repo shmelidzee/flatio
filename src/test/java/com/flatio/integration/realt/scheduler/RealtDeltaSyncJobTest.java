@@ -250,7 +250,7 @@ class RealtDeltaSyncJobTest {
         "ул. Тестовая, 1", null, null, "Минск",
         "https://realt.by/object/" + externalId + "/",
         Instant.now(),
-        List.of(), null, null
+        List.of(), null, null, null
     );
   }
 }

@@ -415,17 +415,21 @@ class OnlinerConnectorTest {
 
   @Test
   @SuppressWarnings("unchecked")
-  void should_skip_listing_with_null_price_when_loaded_from_fixture() throws IOException {
-    // Given — fixture has apt 2001 (valid) and apt 2002 (price: null)
+  void should_return_negotiable_listing_when_price_is_null_in_fixture() throws IOException {
+    // Given — fixture has apt 2001 (valid) and apt 2002 (price: null → negotiable)
     var response = loadFixture("fixtures/onliner/response-without-price.json");
     mockRestClientReturning(response);
 
     // When
     List<RawListing> result = connector.fetch();
 
-    // Then — null-price listing is skipped; valid one returned
-    assertThat(result).hasSize(1);
+    // Then — null-price listing returned as negotiable; valid one returned normally
+    assertThat(result).hasSize(2);
     assertThat(result.get(0).externalId()).isEqualTo("2001");
+    assertThat(result.get(0).isNegotiable()).isFalse();
+    assertThat(result.get(1).externalId()).isEqualTo("2002");
+    assertThat(result.get(1).isNegotiable()).isTrue();
+    assertThat(result.get(1).price()).isEqualByComparingTo(BigDecimal.ZERO);
   }
 
   // -------------------------------------------------------------------------

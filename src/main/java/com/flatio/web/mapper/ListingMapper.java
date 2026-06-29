@@ -28,6 +28,11 @@ public interface ListingMapper {
   @Mapping(source = "listing.source.code", target = "sourceId")
   @Mapping(source = "listing.currency.code", target = "currency")
   @Mapping(source = "priceHistory", target = "priceHistory")
+  @Mapping(source = "listing.isNegotiable", target = "isNegotiable")
+  @Mapping(target = "price",
+      expression = "java(Boolean.TRUE.equals(listing.getIsNegotiable()) ? null : listing.getPrice())")
+  @Mapping(target = "priceLabel",
+      expression = "java(Boolean.TRUE.equals(listing.getIsNegotiable()) ? \"Договорная\" : null)")
   ListingResponse toResponse(Listing listing, List<PriceHistoryEntry> priceHistory);
 
   /**
@@ -42,6 +47,7 @@ public interface ListingMapper {
   @Mapping(source = "priceUsd", target = "priceUsd")
   @Mapping(source = "priceByn", target = "priceByn")
   @Mapping(source = "propertyType", target = "propertyType")
+  @Mapping(source = "isNegotiable", target = "isNegotiable")
   ListingSummaryResponse toSummaryResponse(Listing listing);
 
   /**

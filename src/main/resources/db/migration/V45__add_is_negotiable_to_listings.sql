@@ -1,0 +1,2 @@
+ALTER TABLE listings
+  ADD COLUMN is_negotiable BOOLEAN NOT NULL DEFAULT FALSE;

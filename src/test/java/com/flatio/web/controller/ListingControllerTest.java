@@ -227,16 +227,16 @@ class ListingControllerTest {
     return new ListingSummaryResponse(
         id, "Test listing", BigDecimal.valueOf(75_000), "USD", null, null, 2,
         null, BigDecimal.valueOf(52.5), "Минск", null, null, "realt", Instant.now(), null,
-        "https://realt.by/" + id
+        "https://realt.by/" + id, null
     );
   }
 
   private static ListingResponse buildListingResponse(Long id) {
     return new ListingResponse(
         id, "ext-1", "realt", "Test listing", null, DealType.SELL, null, "APARTMENT",
-        BigDecimal.valueOf(75_000), "USD", 2, 5, 9,
+        BigDecimal.valueOf(75_000), null, "USD", 2, 5, 9,
         BigDecimal.valueOf(52.5), "ул. Ленина, 1", "Минск", null, null, null,
-        true, ListingStatus.ACTIVE, "https://realt.by/1", Instant.now(), Instant.now(), List.of()
+        true, null, ListingStatus.ACTIVE, "https://realt.by/1", Instant.now(), Instant.now(), List.of()
     );
   }
 }

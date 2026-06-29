@@ -97,7 +97,9 @@ public class ListingFormatter {
    */
   private void appendZone1(StringBuilder sb, ListingSummaryResponse listing) {
     String roomPrefix = buildRoomTypePrefix(listing.rooms(), listing.propertyType());
-    String priceFormatted = formatPrice(listing.price(), listing.currency(), listing.priceUsd(), listing.priceByn());
+    String priceFormatted = Boolean.TRUE.equals(listing.isNegotiable())
+        ? "<b>Договорная</b>"
+        : formatPrice(listing.price(), listing.currency(), listing.priceUsd(), listing.priceByn());
 
     if (roomPrefix.isEmpty()) {
       sb.append(priceFormatted);
