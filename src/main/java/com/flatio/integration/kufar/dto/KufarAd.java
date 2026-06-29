@@ -7,8 +7,10 @@ import java.util.List;
 /**
  * Single listing ad returned by the Kufar search API.
  *
- * <p>Price is in BYN. {@code accountParameters} carries structured attributes
- * (rooms, floor, area, geopoint) as key-value pairs.
+ * <p>Price is in BYN kopecks (hundredths of BYN) — divide by 100 to get whole BYN.
+ * Property attributes (rooms, floor, total floors, area) are in {@code adParameters}
+ * ({@code ad_parameters} JSON field), keyed by the machine {@code p} field.
+ * {@code accountParameters} ({@code account_parameters}) carries seller profile info only.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record KufarAd(
@@ -20,6 +22,8 @@ public record KufarAd(
     @JsonProperty("ad_link") String adLink,
     KufarAccount account,
     @JsonProperty("account_parameters") List<KufarAdParameter> accountParameters,
+    @JsonProperty("ad_parameters") List<KufarAdParameter> adParameters,
+    @JsonProperty("company_ad") Boolean companyAd,
     List<KufarImage> images,
     @JsonProperty("list_time") String listTime
 ) {}

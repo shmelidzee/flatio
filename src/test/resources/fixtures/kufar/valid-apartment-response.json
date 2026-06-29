@@ -4,19 +4,23 @@
       "ad_id": 123456789,
       "subject": "Уютная 2-комнатная квартира в центре",
       "body": "Сдаётся квартира на длительный срок. Хороший ремонт, мебель, техника.",
-      "price_byn": 120000,
+      "price_byn": "12000000",
       "currency": "BYR",
-      "ad_link": "https://www.kufar.by/item/123456789",
-      "account": {"id": 1001, "type": "private"},
+      "ad_link": "https://re.kufar.by/vi/123456789",
+      "company_ad": false,
       "account_parameters": [
-        {"pl": "roomsCount", "vl": "2"},
-        {"pl": "floor", "vl": "5"},
-        {"pl": "totalFloors", "vl": "9"},
-        {"pl": "area", "vl": "58.5"},
-        {"pl": "geopoint", "vl": "53.9045;27.5615"}
+        {"pl": "Имя", "p": "name", "vl": "Иван", "v": "Иван"}
+      ],
+      "ad_parameters": [
+        {"pl": "Тип сделки", "p": "type", "vl": "Долгосрочная аренда", "v": "let"},
+        {"pl": "Категория", "p": "category", "vl": "Квартиры", "v": "1010"},
+        {"pl": "Комнат", "p": "rooms", "vl": "2", "v": "2"},
+        {"pl": "Этаж", "p": "floor", "vl": ["5"], "v": ["5"]},
+        {"pl": "Этажность дома", "p": "re_number_floors", "vl": ["9"], "v": ["9"]},
+        {"pl": "Общая площадь", "p": "size", "vl": "", "v": "58.5"}
       ],
       "images": [
-        {"id": 1, "path": "https://content.kufar.by/listing_thumbs/1/123456789/1.jpg"}
+        {"id": "0000", "path": "adim1/123456789/1.jpg"}
       ],
       "list_time": "2024-01-15T10:30:00+03:00"
     },
@@ -24,16 +28,20 @@
       "ad_id": 987654321,
       "subject": "1-комнатная квартира рядом с метро",
       "body": "Квартира-студия, свежий ремонт.",
-      "price_byn": 80000,
+      "price_byn": "8000000",
       "currency": "BYR",
-      "ad_link": "https://www.kufar.by/item/987654321",
-      "account": {"id": 2002, "type": "company"},
+      "ad_link": "https://re.kufar.by/vi/987654321",
+      "company_ad": true,
       "account_parameters": [
-        {"pl": "roomsCount", "vl": "1"},
-        {"pl": "floor", "vl": "3"},
-        {"pl": "totalFloors", "vl": "12"},
-        {"pl": "area", "vl": "35.0"},
-        {"pl": "geopoint", "vl": "53.8888;27.5512"}
+        {"pl": "Имя", "p": "name", "vl": "Агентство", "v": "Агентство"}
+      ],
+      "ad_parameters": [
+        {"pl": "Тип сделки", "p": "type", "vl": "Долгосрочная аренда", "v": "let"},
+        {"pl": "Категория", "p": "category", "vl": "Квартиры", "v": "1010"},
+        {"pl": "Комнат", "p": "rooms", "vl": "1", "v": "1"},
+        {"pl": "Этаж", "p": "floor", "vl": ["3"], "v": ["3"]},
+        {"pl": "Этажность дома", "p": "re_number_floors", "vl": ["12"], "v": ["12"]},
+        {"pl": "Общая площадь", "p": "size", "vl": "", "v": "35.0"}
       ],
       "images": [],
       "list_time": "2024-01-14T08:00:00+03:00"

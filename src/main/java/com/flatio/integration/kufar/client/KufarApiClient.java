@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -28,21 +29,26 @@ import java.util.Objects;
  * <p>Resilience4j rate limiting, circuit breaker, and retry are applied at the calling connector
  * level, not here — this class is a plain service with no AOP annotations.
  *
- * <p>NOTE: {@code price_byn} is assumed to be in whole BYN units. Verify against
- * real API responses; if values appear 100x too large, the field is in kopecks (divide by 100).
+ * <p>Prices in the Kufar API are returned in BYN kopecks (hundredths of BYN) and are
+ * divided by 100 before being stored in {@link RawListing}.
+ *
+ * <p>Property attributes (rooms, floor, total floors, area) are extracted from
+ * {@code ad_parameters} keyed by the machine {@code p} field. Geocoordinates are intentionally
+ * not parsed here — the Nominatim geocoding pipeline fills them in from the address.
  */
 @Service
 @Slf4j
 public class KufarApiClient {
 
   private static final int MAX_PAGES = 100;
-  private static final String PARAM_ROOMS = "roomsCount";
-  private static final String PARAM_FLOOR = "floor";
-  private static final String PARAM_FLOORS_TOTAL = "totalFloors";
-  private static final String PARAM_AREA = "area";
-  private static final String PARAM_GEOPOINT = "geopoint";
+  private static final BigDecimal KOPECKS_DIVISOR = BigDecimal.valueOf(100);
   private static final String ACCOUNT_TYPE_PRIVATE = "private";
   private static final String LABEL_NEXT = "next";
+
+  private static final String PARAM_ROOMS = "rooms";
+  private static final String PARAM_FLOOR = "floor";
+  private static final String PARAM_FLOORS_TOTAL = "re_number_floors";
+  private static final String PARAM_AREA = "size";
 
   private final RestClient restClient;
   private final KufarProperties properties;
@@ -56,7 +62,7 @@ public class KufarApiClient {
   /**
    * Fetches all listings for the given category by paginating through every available page.
    *
-   * @param config        category-specific configuration (source ID, category code)
+   * @param config        category-specific configuration (source ID, category code, deal type)
    * @param dealType      {@code RENT} or {@code SELL}
    * @param propertyType  {@code APARTMENT}, {@code ROOM}, or {@code HOUSE}
    * @param fallbackTitle title used when the ad subject is blank
@@ -130,11 +136,16 @@ public class KufarApiClient {
   }
 
   private KufarSearchResponse fetchPage(KufarProperties.CategoryConfig config, String cursor) {
+    if (config.categoryCode() == null || config.categoryCode().isBlank()) {
+      log.warn("Empty categoryCode for source={}, skipping fetch", config.sourceId());
+      return null;
+    }
     return restClient.get()
         .uri(uriBuilder -> {
           var builder = uriBuilder
               .path(properties.searchPath())
               .queryParam("cat", config.categoryCode())
+              .queryParam("typ", config.dealType())
               .queryParam("lang", properties.lang())
               .queryParam("size", properties.pageSize());
           if (cursor != null) {
@@ -170,19 +181,16 @@ public class KufarApiClient {
     if (ad.priceByn() == null) {
       throw new IllegalArgumentException("Missing price for Kufar ad id=" + ad.adId());
     }
-    List<KufarAdParameter> params = ad.accountParameters() != null ? ad.accountParameters() : List.of();
-    Integer rooms = parseIntParam(params, PARAM_ROOMS);
-    Integer floor = parseIntParam(params, PARAM_FLOOR);
-    Integer floorsTotal = parseIntParam(params, PARAM_FLOORS_TOTAL);
-    BigDecimal area = parseBigDecimalParam(params, PARAM_AREA);
-    BigDecimal[] geopoint = parseGeopoint(params);
-    BigDecimal lat = geopoint != null ? geopoint[0] : null;
-    BigDecimal lon = geopoint != null ? geopoint[1] : null;
+    List<KufarAdParameter> adParams = ad.adParameters() != null ? ad.adParameters() : List.of();
+    Integer rooms = parseIntParam(adParams, PARAM_ROOMS);
+    Integer floor = parseIntParam(adParams, PARAM_FLOOR);
+    Integer floorsTotal = parseIntParam(adParams, PARAM_FLOORS_TOTAL);
+    BigDecimal area = parseBigDecimalParam(adParams, PARAM_AREA);
     List<String> photoUrls = extractPhotoUrls(ad);
     Instant publishedAt = parseListTime(ad.listTime());
-    Boolean isOwner = ad.account() != null ? ACCOUNT_TYPE_PRIVATE.equals(ad.account().type()) : null;
+    Boolean isOwner = resolveIsOwner(ad);
     String title = (ad.subject() != null && !ad.subject().isBlank()) ? ad.subject() : fallbackTitle;
-    BigDecimal price = BigDecimal.valueOf(ad.priceByn());
+    BigDecimal price = BigDecimal.valueOf(ad.priceByn()).divide(KOPECKS_DIVISOR, 2, RoundingMode.HALF_UP);
 
     return new RawListing(
         String.valueOf(ad.adId()),
@@ -199,8 +207,8 @@ public class KufarApiClient {
         floorsTotal,
         area,
         null,
-        lat,
-        lon,
+        null,
+        null,
         null,
         ad.adLink(),
         publishedAt,
@@ -208,6 +216,16 @@ public class KufarApiClient {
         isOwner,
         null
     );
+  }
+
+  private Boolean resolveIsOwner(KufarAd ad) {
+    if (ad.account() != null) {
+      return ACCOUNT_TYPE_PRIVATE.equals(ad.account().type());
+    }
+    if (ad.companyAd() != null) {
+      return !ad.companyAd();
+    }
+    return null;
   }
 
   private String extractNextCursor(KufarSearchResponse response) {
@@ -221,12 +239,16 @@ public class KufarApiClient {
         .orElse(null);
   }
 
-  private Integer parseIntParam(List<KufarAdParameter> params, String label) {
+  private Integer parseIntParam(List<KufarAdParameter> params, String key) {
     return params.stream()
-        .filter(p -> label.equals(p.pl()) && p.vl() != null)
+        .filter(p -> key.equals(p.p()))
         .map(p -> {
+          String raw = p.v() != null ? p.v() : p.vl();
+          if (raw == null || raw.isBlank()) {
+            return null;
+          }
           try {
-            return Integer.parseInt(p.vl().trim());
+            return Integer.parseInt(raw.trim());
           } catch (NumberFormatException e) {
             return null;
           }
@@ -236,43 +258,21 @@ public class KufarApiClient {
         .orElse(null);
   }
 
-  private BigDecimal parseBigDecimalParam(List<KufarAdParameter> params, String label) {
+  private BigDecimal parseBigDecimalParam(List<KufarAdParameter> params, String key) {
     return params.stream()
-        .filter(p -> label.equals(p.pl()) && p.vl() != null)
+        .filter(p -> key.equals(p.p()))
         .map(p -> {
+          String raw = p.v() != null ? p.v() : p.vl();
+          if (raw == null || raw.isBlank()) {
+            return null;
+          }
           try {
-            return new BigDecimal(p.vl().trim());
+            return new BigDecimal(raw.trim());
           } catch (NumberFormatException e) {
             return null;
           }
         })
         .filter(Objects::nonNull)
-        .findFirst()
-        .orElse(null);
-  }
-
-  /**
-   * Parses a {@code geopoint} parameter value formatted as {@code "lat;lon"}.
-   *
-   * @param params list of ad parameters
-   * @return two-element array {@code [latitude, longitude]}, or null if absent or malformed
-   */
-  private BigDecimal[] parseGeopoint(List<KufarAdParameter> params) {
-    return params.stream()
-        .filter(p -> PARAM_GEOPOINT.equals(p.pl()) && p.vl() != null)
-        .map(p -> {
-          try {
-            String[] parts = p.vl().split(";");
-            if (parts.length != 2) {
-              return null;
-            }
-            return new BigDecimal[]{new BigDecimal(parts[0].trim()), new BigDecimal(parts[1].trim())};
-          } catch (NumberFormatException e) {
-            log.warn("Malformed geopoint value: vl={}", p.vl());
-            return null;
-          }
-        })
-        .filter(v -> v != null)
         .findFirst()
         .orElse(null);
   }

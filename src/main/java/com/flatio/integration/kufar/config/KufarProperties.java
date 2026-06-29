@@ -7,8 +7,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *
  * <p>One class covers all six categories (apartment/room/house × rent/sale).
  * All values are injected from application configuration — never hard-coded.
- * Category codes ({@code categoryCode}) must be verified against the Kufar API
- * before production use (set via environment variables).
  */
 @ConfigurationProperties(prefix = "connector.kufar")
 public record KufarProperties(
@@ -29,11 +27,13 @@ public record KufarProperties(
    *
    * @param sourceId     Flatio source code matching the {@code source} table (e.g. {@code KUFAR_APARTMENT_RENT})
    * @param regionCode   Flatio internal region code (e.g. {@code BY})
-   * @param categoryCode Kufar {@code cat} query parameter value — verify from Kufar API
+   * @param categoryCode Kufar {@code cat} query parameter value (1010 = apartments, 1020 = houses, 1040 = rooms)
+   * @param dealType     Kufar {@code typ} query parameter value ({@code "let"} = rent, {@code "sell"} = sale)
    */
   public record CategoryConfig(
       String sourceId,
       String regionCode,
-      String categoryCode
+      String categoryCode,
+      String dealType
   ) {}
 }
