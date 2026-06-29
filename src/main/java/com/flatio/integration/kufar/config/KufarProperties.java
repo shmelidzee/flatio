@@ -7,6 +7,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *
  * <p>One class covers all six categories (apartment/room/house × rent/sale).
  * All values are injected from application configuration — never hard-coded.
+ *
+ * <p>{@code photoCdnBaseUrl} is used to resolve the relative image paths returned by the
+ * Kufar API (e.g. {@code adim1/{uuid}.jpg}) into full URLs before storing them.
+ * Configured via {@code KUFAR_PHOTO_CDN_BASE_URL} environment variable.
  */
 @ConfigurationProperties(prefix = "connector.kufar")
 public record KufarProperties(
@@ -14,6 +18,7 @@ public record KufarProperties(
     String searchPath,
     int pageSize,
     String lang,
+    String photoCdnBaseUrl,
     CategoryConfig apartmentRent,
     CategoryConfig apartmentSale,
     CategoryConfig roomRent,
