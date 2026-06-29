@@ -281,10 +281,19 @@ public class KufarApiClient {
     if (ad.images() == null || ad.images().isEmpty()) {
       return List.of();
     }
+    String cdnBase = properties.photoCdnBaseUrl();
     return ad.images().stream()
         .map(KufarImage::path)
         .filter(path -> path != null && !path.isBlank())
+        .map(path -> toFullPhotoUrl(cdnBase, path))
         .toList();
+  }
+
+  private String toFullPhotoUrl(String cdnBase, String path) {
+    if (cdnBase == null || cdnBase.isBlank() || path.startsWith("http")) {
+      return path;
+    }
+    return cdnBase + "/" + path;
   }
 
   private Instant parseListTime(String listTime) {

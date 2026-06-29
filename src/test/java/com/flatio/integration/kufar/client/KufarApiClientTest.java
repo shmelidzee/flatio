@@ -59,6 +59,7 @@ class KufarApiClientTest {
         "/search-api/v2/search/rendered-paginated",
         50,
         "ru",
+        "https://content.kufar.by/listings_thumbnails",
         new KufarProperties.CategoryConfig("KUFAR_APARTMENT_RENT", "BY", "1010", "let"),
         new KufarProperties.CategoryConfig("KUFAR_APARTMENT_SALE", "BY", "1010", "sell"),
         new KufarProperties.CategoryConfig("KUFAR_ROOM_RENT", "BY", "1040", "let"),
@@ -102,7 +103,7 @@ class KufarApiClientTest {
         new KufarAdParameter("Этажность дома", "re_number_floors", "9", "9"),
         new KufarAdParameter("Общая площадь", "size", "", "58.5")
     );
-    var image = new KufarImage("1", "https://content.kufar.by/img/1.jpg");
+    var image = new KufarImage("1", "adim1/456/1.jpg");
     var ad = new KufarAd(
         456L, "Двушка на Немиге", "Описание",
         9000000L, "BYR", "https://re.kufar.by/vi/456",
@@ -129,7 +130,8 @@ class KufarApiClientTest {
     assertThat(listing.latitude()).isNull();
     assertThat(listing.longitude()).isNull();
     assertThat(listing.sourceUrl()).isEqualTo("https://re.kufar.by/vi/456");
-    assertThat(listing.photoUrls()).containsExactly("https://content.kufar.by/img/1.jpg");
+    assertThat(listing.photoUrls()).containsExactly(
+        "https://content.kufar.by/listings_thumbnails/adim1/456/1.jpg");
     assertThat(listing.isOwner()).isTrue();
     assertThat(listing.publishedAt()).isNotNull();
   }
@@ -328,10 +330,10 @@ class KufarApiClientTest {
   @Test
   @SuppressWarnings("unchecked")
   void should_extract_multiple_photo_urls() {
-    // Given
+    // Given — relative paths as returned by the real Kufar API
     var images = List.of(
-        new KufarImage("1", "https://cdn.kufar.by/img/1.jpg"),
-        new KufarImage("2", "https://cdn.kufar.by/img/2.jpg")
+        new KufarImage("1", "adim1/uuid-1.jpg"),
+        new KufarImage("2", "adim1/uuid-2.jpg")
     );
     var ad = new KufarAd(602L, "Квартира", null, 8500000L, "BYR",
         "https://re.kufar.by/vi/602", null, List.of(), List.of(), null, images, "2024-01-15T10:00:00+03:00");
@@ -340,11 +342,47 @@ class KufarApiClientTest {
     // When
     List<RawListing> result = apiClient.fetchAll(config, "RENT", "APARTMENT", "Fallback");
 
-    // Then
+    // Then — CDN base URL prepended to each relative path
     assertThat(result.get(0).photoUrls()).containsExactly(
-        "https://cdn.kufar.by/img/1.jpg",
-        "https://cdn.kufar.by/img/2.jpg"
+        "https://content.kufar.by/listings_thumbnails/adim1/uuid-1.jpg",
+        "https://content.kufar.by/listings_thumbnails/adim1/uuid-2.jpg"
     );
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_prepend_cdn_base_url_to_relative_photo_path() {
+    // Given
+    var image = new KufarImage("1", "adim1/abc-uuid.jpg");
+    var ad = new KufarAd(603L, "Квартира", null, 8000000L, "BYR",
+        "https://re.kufar.by/vi/603", null, List.of(), List.of(), null,
+        List.of(image), "2024-01-15T10:00:00+03:00");
+    mockRestClientReturning(buildResponseWithAds(List.of(ad)));
+
+    // When
+    List<RawListing> result = apiClient.fetchAll(config, "RENT", "APARTMENT", "Fallback");
+
+    // Then — full URL = cdnBase + "/" + path
+    assertThat(result.get(0).photoUrls()).containsExactly(
+        "https://content.kufar.by/listings_thumbnails/adim1/abc-uuid.jpg"
+    );
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_not_prepend_cdn_url_when_path_is_already_absolute() {
+    // Given — path already starts with https:// (defensive guard against already-migrated data)
+    var image = new KufarImage("1", "https://other-cdn.kufar.by/img/1.jpg");
+    var ad = new KufarAd(604L, "Квартира", null, 8000000L, "BYR",
+        "https://re.kufar.by/vi/604", null, List.of(), List.of(), null,
+        List.of(image), "2024-01-15T10:00:00+03:00");
+    mockRestClientReturning(buildResponseWithAds(List.of(ad)));
+
+    // When
+    List<RawListing> result = apiClient.fetchAll(config, "RENT", "APARTMENT", "Fallback");
+
+    // Then — URL used as-is, no double-prepend
+    assertThat(result.get(0).photoUrls()).containsExactly("https://other-cdn.kufar.by/img/1.jpg");
   }
 
   // -------------------------------------------------------------------------
@@ -589,7 +627,8 @@ class KufarApiClientTest {
     assertThat(result.get(0).floorsTotal()).isEqualTo(9);
     assertThat(result.get(0).areaTotalM2()).isEqualByComparingTo("58.5");
     assertThat(result.get(0).isOwner()).isTrue();
-    assertThat(result.get(0).photoUrls()).hasSize(1);
+    assertThat(result.get(0).photoUrls()).containsExactly(
+        "https://content.kufar.by/listings_thumbnails/adim1/123456789/1.jpg");
     assertThat(result.get(1).externalId()).isEqualTo("987654321");
     assertThat(result.get(1).isOwner()).isFalse();
   }
