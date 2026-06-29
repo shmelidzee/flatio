@@ -59,7 +59,7 @@ class KufarApiClientTest {
         "/search-api/v2/search/rendered-paginated",
         50,
         "ru",
-        "https://content.kufar.by/listings_thumbnails",
+        "https://rms.kufar.by/v1/gallery",
         new KufarProperties.CategoryConfig("KUFAR_APARTMENT_RENT", "BY", "1010", "let"),
         new KufarProperties.CategoryConfig("KUFAR_APARTMENT_SALE", "BY", "1010", "sell"),
         new KufarProperties.CategoryConfig("KUFAR_ROOM_RENT", "BY", "1040", "let"),
@@ -131,7 +131,7 @@ class KufarApiClientTest {
     assertThat(listing.longitude()).isNull();
     assertThat(listing.sourceUrl()).isEqualTo("https://re.kufar.by/vi/456");
     assertThat(listing.photoUrls()).containsExactly(
-        "https://content.kufar.by/listings_thumbnails/adim1/456/1.jpg");
+        "https://rms.kufar.by/v1/gallery/adim1/456/1.jpg");
     assertThat(listing.isOwner()).isTrue();
     assertThat(listing.publishedAt()).isNotNull();
   }
@@ -344,8 +344,8 @@ class KufarApiClientTest {
 
     // Then — CDN base URL prepended to each relative path
     assertThat(result.get(0).photoUrls()).containsExactly(
-        "https://content.kufar.by/listings_thumbnails/adim1/uuid-1.jpg",
-        "https://content.kufar.by/listings_thumbnails/adim1/uuid-2.jpg"
+        "https://rms.kufar.by/v1/gallery/adim1/uuid-1.jpg",
+        "https://rms.kufar.by/v1/gallery/adim1/uuid-2.jpg"
     );
   }
 
@@ -364,7 +364,7 @@ class KufarApiClientTest {
 
     // Then — full URL = cdnBase + "/" + path
     assertThat(result.get(0).photoUrls()).containsExactly(
-        "https://content.kufar.by/listings_thumbnails/adim1/abc-uuid.jpg"
+        "https://rms.kufar.by/v1/gallery/adim1/abc-uuid.jpg"
     );
   }
 
@@ -377,7 +377,7 @@ class KufarApiClientTest {
         "/search-api/v2/search/rendered-paginated",
         50,
         "ru",
-        "https://content.kufar.by/listings_thumbnails/",
+        "https://rms.kufar.by/v1/gallery/",
         config,
         new KufarProperties.CategoryConfig("KUFAR_APARTMENT_SALE", "BY", "1010", "sell"),
         new KufarProperties.CategoryConfig("KUFAR_ROOM_RENT", "BY", "1040", "let"),
@@ -397,7 +397,7 @@ class KufarApiClientTest {
 
     // Then — no double slash in resulting URL
     assertThat(result.get(0).photoUrls()).containsExactly(
-        "https://content.kufar.by/listings_thumbnails/adim1/uuid.jpg"
+        "https://rms.kufar.by/v1/gallery/adim1/uuid.jpg"
     );
   }
 
@@ -661,7 +661,7 @@ class KufarApiClientTest {
     assertThat(result.get(0).areaTotalM2()).isEqualByComparingTo("58.5");
     assertThat(result.get(0).isOwner()).isTrue();
     assertThat(result.get(0).photoUrls()).containsExactly(
-        "https://content.kufar.by/listings_thumbnails/adim1/123456789/1.jpg");
+        "https://rms.kufar.by/v1/gallery/adim1/123456789/1.jpg");
     assertThat(result.get(1).externalId()).isEqualTo("987654321");
     assertThat(result.get(1).isOwner()).isFalse();
   }

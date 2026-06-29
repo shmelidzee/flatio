@@ -4,7 +4,7 @@
 -- Future fetches will produce full URLs directly via KufarApiClient.extractPhotoUrls().
 UPDATE listings
 SET
-    photo_url  = 'https://content.kufar.by/listings_thumbnails/' || photo_url,
+    photo_url  = 'https://rms.kufar.by/v1/gallery/' || photo_url,
     updated_at = NOW()
 WHERE source_id IN (SELECT id FROM source WHERE code LIKE 'KUFAR_%')
   AND photo_url IS NOT NULL

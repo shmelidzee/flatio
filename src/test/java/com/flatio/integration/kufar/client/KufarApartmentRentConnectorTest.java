@@ -36,7 +36,7 @@ class KufarApartmentRentConnectorTest {
         "/search-api/v2/search/rendered-paginated",
         50,
         "ru",
-        "https://content.kufar.by/listings_thumbnails",
+        "https://rms.kufar.by/v1/gallery",
         new KufarProperties.CategoryConfig("KUFAR_APARTMENT_RENT", "BY", "1010", "let"),
         new KufarProperties.CategoryConfig("KUFAR_APARTMENT_SALE", "BY", "1010", "sell"),
         new KufarProperties.CategoryConfig("KUFAR_ROOM_RENT", "BY", "1040", "let"),
