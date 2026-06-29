@@ -115,7 +115,7 @@ resilience4j:
 | `description` | — | Always `null` (not returned in list view) |
 | `dealType` | `deal_type` | `"rent"` / `"sell"` as-is |
 | `propertyType` | `rent_type` | `"room"` → `"ROOM"`; anything else (including null) → `"APARTMENT"` |
-| `price` | `price.converted.BYN.amount` | BYN price; exception if BYN key absent — listing skipped |
+| `price` | `price.converted.BYN.amount` | BYN price; `null` → `isNegotiable=true`, `price=0` |
 | `currency` | — | Always `"BYN"` |
 | `priceUsd` | `price.converted.USD.amount` | nullable; `null` when USD key absent in `converted` |
 | `rooms` | `rent_type` | Mapped via table: `1_room`→1, `2_rooms`→2, `3_rooms`→3, `4_rooms`→4; `null` otherwise |
@@ -130,6 +130,7 @@ resilience4j:
 | `publishedAt` | `last_time_up` | ISO-8601 string → `Instant`; `null` when field absent |
 | `photoUrls` | `photo` | Single photo URL wrapped in `List.of()`; `List.of()` when null |
 | `isOwner` | `contact.owner` | `true` when owner, `false` when agency; `null` when `contact` absent |
+| `isNegotiable` | — | `true` when BYN price is absent; `false` otherwise |
 
 ### Error handling
 
@@ -254,7 +255,7 @@ resilience4j:
 | `description` | — | Always `null` |
 | `dealType` | — | Always `"RENT"` |
 | `propertyType` | — | Always `"APARTMENT"` |
-| `price` | `price` | USD amount (see note above) |
+| `price` | `price` | USD amount; `price=0` → `isNegotiable=true`, `price=0` |
 | `currency` | `priceCurrency` | ISO 4217: `840` → `"USD"`; `933` → `"BYN"` |
 | `priceUsd` | — | Always `null`; `price` is already in USD — BYN equivalent filled by a future exchange-rate layer |
 | `rooms` | `rooms` | nullable |
@@ -270,6 +271,7 @@ resilience4j:
 | `photoUrls` | `images` | Array of CDN URLs; `List.of()` when field absent |
 | `isOwner` | `companyUuid` | `null` when field missing; `true` when JSON null (private owner); `false` when UUID present (agency) |
 | `priceUnit` | — | Always `null` |
+| `isNegotiable` | — | `true` when `price=0`; `false` otherwise |
 
 ### Schedulers
 
@@ -427,6 +429,110 @@ Uses `RealtHtmlParser` with `RealtPageContext(dealType=SELL, propertyType=HOUSE,
 **Schedulers:** `RealtHouseSaleDeltaSyncJob` (every 5 min) + `RealtHouseSaleFullSyncJob` (daily 08:00, startup trigger).
 
 **Error handling — 404:** When the source URL returns 404 (site restructure), both `fetchAllInternal` and `fetchDelta` catch `HttpClientErrorException`, log at ERROR, and return an empty list. No exception propagated.
+
+---
+
+## KufarConnector (and variants)
+
+**Source:** Kufar.by REST JSON API  
+**Region:** BY (Belarus)  
+**Package:** `com.flatio.integration.kufar.client`  
+**Endpoint:** `GET {baseUrl}{searchPath}?cat={categoryCode}&typ={dealType}&lang={lang}&size={pageSize}[&cursor={token}]`
+
+Six connectors share the same `KufarApiClient` service:
+
+| Connector class | `cat` | `typ` | `dealType` | `propertyType` |
+|-----------------|-------|-------|------------|----------------|
+| `KufarApartmentRentConnector` | apartments rent code | `let` | `RENT` | `APARTMENT` |
+| `KufarApartmentSaleConnector` | apartments sale code | `buy` | `SELL` | `APARTMENT` |
+| `KufarRoomRentConnector` | rooms rent code | `let` | `RENT` | `ROOM` |
+| `KufarRoomSaleConnector` | rooms sale code | `buy` | `SELL` | `ROOM` |
+| `KufarHouseSaleConnector` | houses sale code | `buy` | `SELL` | `HOUSE` |
+| `KufarCommercialConnector` | commercial code | `buy` | `SELL` | `COMMERCIAL` |
+
+### How data is extracted
+
+Kufar returns a JSON response containing an `ads` array and cursor-based pagination (`pagination.pages[]`). Pagination continues as long as a page link with `label="next"` exists and `MAX_PAGES=100` is not exceeded.
+
+Property attributes (rooms, floor, etc.) are encoded as a list of key-value records in `ad_parameters[]` with machine key `p`. Extraction via `parseIntParam()` / `parseStringParam()` / `parseBigDecimalParam()`.
+
+Prices are stored in BYN kopecks (`price_byn` field) — divided by 100 before persisting.
+
+### Configuration (`application.yml`)
+
+```yaml
+connector:
+  kufar:
+    base-url: ${KUFAR_BASE_URL:https://www.kufar.by}
+    search-path: /v1/search/classified-listings
+    photo-cdn-base-url: ${KUFAR_PHOTO_CDN_BASE_URL:https://rms.kufar.by/v1/gallery/adim1}
+    lang: ru
+    page-size: 30
+    apartment-rent:
+      source-id: ${KUFAR_APT_RENT_SOURCE_ID:KUFAR_APT_RENT}
+      category-code: ${KUFAR_APT_RENT_CAT:...}
+      deal-type: let
+```
+
+Category codes are configurable via env variables and are set per connector.
+
+### Resilience4j config
+
+Shared `connector-kufar` instance:
+- **Rate limiter:** 1 request/second
+- **Retry:** 3 attempts with exponential backoff 2s → 4s → 8s
+- **Circuit breaker:** opens after 5 consecutive failures; stays open 60s
+
+### RawListing field mapping
+
+| `RawListing` field | Kufar JSON field / `ad_parameters` key | Notes |
+|--------------------|----------------------------------------|-------|
+| `externalId` | `ad_id` | Long → String |
+| `title` | `subject` | Fallback: connector-specific label (e.g., "Квартира на Kufar.by") |
+| `description` | `body` | nullable |
+| `dealType` | — | From caller (`RENT` / `SELL`) |
+| `propertyType` | — | From caller (`APARTMENT` / `ROOM` / `HOUSE`) |
+| `price` | `price_byn` ÷ 100 | BYN price; `0` when `isNegotiable=true` |
+| `currency` | — | Always `"BYN"` |
+| `priceUsd` | — | Always `null` |
+| `priceByn` | — | Always `null` (same as `price`) |
+| `rooms` | `ad_parameters[p="rooms"]` | Integer; `null` when absent or non-numeric |
+| `floorNumber` | `ad_parameters[p="floor"]` | Integer; nullable |
+| `floorsTotal` | `ad_parameters[p="re_number_floors"]` | Integer; nullable |
+| `areaTotalM2` | `ad_parameters[p="size"]` | BigDecimal; nullable |
+| `address` | `ad_parameters[p="address"].vl` | Prefers `vl` (human-readable), falls back to `v`; nullable |
+| `latitude` | — | Always `null` (not in API response; Nominatim fills later) |
+| `longitude` | — | Always `null` |
+| `city` | — | Always `null` (city is part of address string) |
+| `sourceUrl` | `ad_link` | Full URL to listing page |
+| `publishedAt` | `list_time` | ISO-8601 with offset → `Instant`; `null` when absent or unparseable |
+| `photoUrls` | `images[].path` | Prefixed with `photo-cdn-base-url`; `List.of()` when absent |
+| `isOwner` | `account.type="private"` / `company_ad` | `true` when private account; `false` when agency; `null` when both absent |
+| `priceUnit` | — | Always `null` |
+| `isNegotiable` | — | `true` when `price_byn == null || price_byn == 0`; `false` otherwise |
+
+### Error handling
+
+- **Single broken listing:** `safeAdd()` catches any exception, logs `WARN "Skipping broken Kufar listing: adId=..."`, continues processing remaining ads
+- **Empty response / null `ads`:** `fetchAll()` / `fetchDelta()` returns `List.of()` without retry
+- **Network/HTTP errors:** propagate to Resilience4j at the calling connector level; fallback returns `List.of()`
+- **Negotiable price:** `price_byn == null || price_byn == 0` → `isNegotiable=true`, `price=0`; listing is returned (not skipped)
+
+### Test coverage
+
+File: `src/test/java/com/flatio/integration/kufar/client/KufarApiClientTest.java`  
+Fixtures: `src/test/resources/fixtures/kufar/`
+
+| Test | Scenario |
+|------|----------|
+| `should_fetch_all_listings_when_valid_response_provided` | Happy path — field mapping |
+| `should_stop_pagination_when_next_cursor_is_absent` | Pagination stop condition |
+| `should_not_propagate_exception_when_single_listing_fails` | Per-listing exception isolation |
+| `should_return_negotiable_listing_when_price_is_missing` | `price_byn=null` → `isNegotiable=true` |
+| `should_return_negotiable_listing_from_fixture_when_price_missing` | Fixture-based negotiable test |
+| `should_correctly_deserialize_valid_apartment_fixture` | Full field mapping via fixture including `address` |
+| `should_return_empty_list_from_empty_fixture` | Empty response fixture |
+| `should_skip_fetch_when_category_code_is_empty` | Empty `categoryCode` guard |
 
 ---
 
