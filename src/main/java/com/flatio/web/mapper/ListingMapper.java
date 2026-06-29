@@ -15,6 +15,9 @@ import org.mapstruct.Mapping;
 @Mapper(componentModel = "spring")
 public interface ListingMapper {
 
+  /** Human-readable price label displayed when the seller did not specify a price. */
+  String LABEL_NEGOTIABLE = "Договорная";
+
   /**
    * Converts a Listing entity and its pre-fetched price history to a full response DTO.
    *
@@ -32,7 +35,7 @@ public interface ListingMapper {
   @Mapping(target = "price",
       expression = "java(Boolean.TRUE.equals(listing.getIsNegotiable()) ? null : listing.getPrice())")
   @Mapping(target = "priceLabel",
-      expression = "java(Boolean.TRUE.equals(listing.getIsNegotiable()) ? \"Договорная\" : null)")
+      expression = "java(resolveNegotiableLabel(listing.getIsNegotiable()))")
   ListingResponse toResponse(Listing listing, List<PriceHistoryEntry> priceHistory);
 
   /**
@@ -66,4 +69,14 @@ public interface ListingMapper {
    */
   @Mapping(source = "currency.code", target = "currency")
   PriceHistoryEntry toHistoryEntry(PriceHistory priceHistory);
+
+  /**
+   * Returns {@link #LABEL_NEGOTIABLE} when the listing price is not disclosed, null otherwise.
+   *
+   * @param isNegotiable true when the seller did not specify a price
+   * @return label string or null
+   */
+  default String resolveNegotiableLabel(Boolean isNegotiable) {
+    return Boolean.TRUE.equals(isNegotiable) ? LABEL_NEGOTIABLE : null;
+  }
 }

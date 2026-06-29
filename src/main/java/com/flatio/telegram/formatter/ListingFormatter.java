@@ -38,6 +38,7 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
 public class ListingFormatter {
 
   private static final int CAPTION_MAX_LENGTH = 1024;
+  private static final String LABEL_NEGOTIABLE = "Договорная";
   private static final DateTimeFormatter PUBLISHED_FORMATTER =
       DateTimeFormatter.ofPattern("HH:mm, dd.MM.yyyy").withZone(ZoneId.of("Europe/Minsk"));
 
@@ -98,7 +99,7 @@ public class ListingFormatter {
   private void appendZone1(StringBuilder sb, ListingSummaryResponse listing) {
     String roomPrefix = buildRoomTypePrefix(listing.rooms(), listing.propertyType());
     String priceFormatted = Boolean.TRUE.equals(listing.isNegotiable())
-        ? "<b>Договорная</b>"
+        ? "<b>" + LABEL_NEGOTIABLE + "</b>"
         : formatPrice(listing.price(), listing.currency(), listing.priceUsd(), listing.priceByn());
 
     if (roomPrefix.isEmpty()) {

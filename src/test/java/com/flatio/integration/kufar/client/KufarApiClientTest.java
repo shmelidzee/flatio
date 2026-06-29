@@ -666,6 +666,7 @@ class KufarApiClientTest {
     assertThat(result.get(0).floorsTotal()).isEqualTo(9);
     assertThat(result.get(0).areaTotalM2()).isEqualByComparingTo("58.5");
     assertThat(result.get(0).isOwner()).isTrue();
+    assertThat(result.get(0).address()).isEqualTo("г. Минск, ул. Якуба Коласа, 5");
     assertThat(result.get(0).photoUrls()).containsExactly(
         "https://rms.kufar.by/v1/gallery/adim1/123456789/1.jpg");
     assertThat(result.get(1).externalId()).isEqualTo("987654321");

@@ -305,6 +305,26 @@ class ListingFormatterTest {
     assertThat(caption).contains("Комната за");
   }
 
+  @Test
+  void should_display_negotiable_label_when_isNegotiable_is_true() {
+    // Given — kufar listing with price not disclosed by seller
+    var listing = new ListingSummaryResponse(
+        60L, null, BigDecimal.ZERO, "BYN",
+        null, null, 3, null,
+        null, "Минск", null,
+        null, "kufar", Instant.parse("2026-06-01T10:00:00Z"), null,
+        "https://re.kufar.by/60", true
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then — price shown as "Договорная" in bold, not as "0 BYN"
+    assertThat(caption).contains("Договорная");
+    assertThat(caption).doesNotContain("BYN");
+    assertThat(caption).doesNotContain("0 B");
+  }
+
   // -------------------------------------------------------------------------
   // buildCaption — full caption with all fields
   // -------------------------------------------------------------------------
