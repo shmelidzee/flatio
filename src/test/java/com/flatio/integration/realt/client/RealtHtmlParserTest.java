@@ -249,16 +249,20 @@ class RealtHtmlParserTest {
   // -------------------------------------------------------------------------
 
   @Test
-  void should_skip_listing_without_price_and_return_valid_ones() throws IOException {
-    // Given
+  void should_return_negotiable_listing_when_price_is_zero() throws IOException {
+    // Given — fixture has listing 11111111 (valid) and 22222222 (price=0 → negotiable)
     Document doc = parseFixture("fixtures/realt/listing-page-without-price.html");
 
     // When
     List<RawListing> result = parser.parseListings(doc, APARTMENT_RENT_CONTEXT);
 
-    // Then
-    assertThat(result).hasSize(1);
+    // Then — zero-price listing returned as negotiable; valid one returned normally
+    assertThat(result).hasSize(2);
     assertThat(result.get(0).externalId()).isEqualTo("11111111");
+    assertThat(result.get(0).isNegotiable()).isFalse();
+    assertThat(result.get(1).externalId()).isEqualTo("22222222");
+    assertThat(result.get(1).isNegotiable()).isTrue();
+    assertThat(result.get(1).price()).isEqualByComparingTo(BigDecimal.ZERO);
   }
 
   @Test

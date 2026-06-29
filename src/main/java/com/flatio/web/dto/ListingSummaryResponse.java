@@ -55,5 +55,9 @@ public record ListingSummaryResponse(
 
     @Schema(description = "URL of the listing on the source platform, used for the open-listing button",
         example = "https://re.kufar.by/vi/minsk/snyat-kvartiru/123456")
-    String sourceUrl
+    String sourceUrl,
+
+    @Schema(description = "True when the seller did not specify a price; display as 'Договорная'",
+        example = "false")
+    Boolean isNegotiable
 ) {}

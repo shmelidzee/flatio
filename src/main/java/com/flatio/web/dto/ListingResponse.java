@@ -35,8 +35,13 @@ public record ListingResponse(
     @Schema(description = "Property type", example = "APARTMENT")
     String propertyType,
 
-    @Schema(description = "Listed price", example = "75000.00")
+    @Schema(description = "Listed price; null when isNegotiable is true", example = "75000.00",
+        nullable = true)
     BigDecimal price,
+
+    @Schema(description = "Human-readable price label; 'Договорная' when no price is set, null otherwise",
+        example = "Договорная", nullable = true)
+    String priceLabel,
 
     @Schema(description = "Currency code", example = "USD")
     String currency,
@@ -70,6 +75,10 @@ public record ListingResponse(
 
     @Schema(description = "True if posted directly by the property owner (not an agency)", example = "true")
     Boolean isOwner,
+
+    @Schema(description = "True when the seller did not specify a price; see priceLabel for display value",
+        example = "false")
+    Boolean isNegotiable,
 
     @Schema(description = "Listing visibility status", example = "ACTIVE")
     ListingStatus status,

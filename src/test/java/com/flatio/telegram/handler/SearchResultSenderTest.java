@@ -713,7 +713,8 @@ class SearchResultSenderTest {
         "realt",
         null,
         photoUrl,
-        sourceUrl
+        sourceUrl,
+        null
     );
   }
 

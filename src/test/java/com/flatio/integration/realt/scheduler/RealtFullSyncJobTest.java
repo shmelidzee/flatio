@@ -268,7 +268,7 @@ class RealtFullSyncJobTest {
         2, null, null, null,
         "Минск", null, null, null,
         "https://realt.by/rent-flat-for-long/object/" + externalId + "/",
-        Instant.parse("2026-06-01T10:00:00Z"), List.of(), true, null
+        Instant.parse("2026-06-01T10:00:00Z"), List.of(), true, null, null
     );
   }
 

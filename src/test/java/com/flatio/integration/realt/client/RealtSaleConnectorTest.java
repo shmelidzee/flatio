@@ -233,17 +233,20 @@ class RealtSaleConnectorTest {
   // -------------------------------------------------------------------------
 
   @Test
-  void should_skip_listing_without_price_and_return_valid_ones() throws IOException {
-    // Given — first listing valid, second has price=0 and is skipped
+  void should_return_negotiable_listing_when_price_is_zero() throws IOException {
+    // Given — fixture has 11111111 (valid) and 22222222 (price=0 → negotiable)
     String html = loadFixture("fixtures/realt/listing-page-without-price.html");
     mockRestClientReturning(html);
 
     // When
     List<RawListing> result = connector.fetch();
 
-    // Then — listing with zero price is skipped, valid listing returned
-    assertThat(result).hasSize(1);
+    // Then — zero-price listing returned as negotiable; valid one returned normally
+    assertThat(result).hasSize(2);
     assertThat(result.get(0).externalId()).isEqualTo("11111111");
+    assertThat(result.get(0).isNegotiable()).isFalse();
+    assertThat(result.get(1).externalId()).isEqualTo("22222222");
+    assertThat(result.get(1).isNegotiable()).isTrue();
   }
 
   @Test

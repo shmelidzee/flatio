@@ -371,7 +371,7 @@ class ListingFormatterTest {
         null, BigDecimal.valueOf(1_835), null, null,
         null, null, null, null,
         "realt", null, null,
-        "https://realt.by/40"
+        "https://realt.by/40", null
     );
 
     // When
@@ -390,7 +390,7 @@ class ListingFormatterTest {
         null, null, null, null,
         null, null, null, null,
         "realt", null, null,
-        "https://realt.by/41"
+        "https://realt.by/41", null
     );
 
     // When
@@ -580,7 +580,7 @@ class ListingFormatterTest {
     var listing = new ListingSummaryResponse(
         30L, null, BigDecimal.valueOf(500), "USD", null, null, 2, null, null,
         "Минск", "Советский район", "ул. Пушкина, 5", "realt", null, null,
-        "https://realt.by/30"
+        "https://realt.by/30", null
     );
 
     // When
@@ -598,7 +598,7 @@ class ListingFormatterTest {
     var listing = new ListingSummaryResponse(
         31L, null, BigDecimal.valueOf(500), "USD", null, null, 2, null, null,
         null, null, "ул. Ленина, 10", "realt", null, null,
-        "https://realt.by/31"
+        "https://realt.by/31", null
     );
 
     // When
@@ -615,7 +615,7 @@ class ListingFormatterTest {
     var listing = new ListingSummaryResponse(
         32L, null, BigDecimal.valueOf(500), "USD", null, null, 2, null, null,
         null, null, null, "realt", null, null,
-        "https://realt.by/32"
+        "https://realt.by/32", null
     );
 
     // When
@@ -632,7 +632,7 @@ class ListingFormatterTest {
     var listing = new ListingSummaryResponse(
         33L, null, BigDecimal.valueOf(500), "USD", null, null, 2, null, null,
         "Минск", "Советский район", null, "realt", null, null,
-        "https://realt.by/33"
+        "https://realt.by/33", null
     );
 
     // When
@@ -882,7 +882,8 @@ class ListingFormatterTest {
         "realt",
         Instant.parse("2026-05-01T10:30:00Z"),
         null,
-        "https://realt.by/1"
+        "https://realt.by/1",
+        null
     );
 
     // When
@@ -998,7 +999,7 @@ class ListingFormatterTest {
         id, null, price, currency,
         priceUsd, null, rooms, propertyType,
         null, city, district,
-        null, sourceId, publishedAt, null, sourceUrl
+        null, sourceId, publishedAt, null, sourceUrl, null
     );
   }
 
@@ -1021,7 +1022,7 @@ class ListingFormatterTest {
         id, null, price, currency,
         null, null, null, null,
         areaTotalM2, city, district,
-        null, sourceId, publishedAt, photoUrl, sourceUrl
+        null, sourceId, publishedAt, photoUrl, sourceUrl, null
     );
   }
 }

@@ -41,6 +41,7 @@ public interface RawListingMapper {
   @Mapping(target = "lastRepostedAt", ignore = true)
   @Mapping(target = "photoUrl", expression = "java(extractFirstPhotoUrl(raw))")
   @Mapping(source = "priceByn", target = "priceByn")
+  @Mapping(source = "isNegotiable", target = "isNegotiable")
   Listing toEntity(RawListing raw);
 
   /**
@@ -74,6 +75,7 @@ public interface RawListingMapper {
   @Mapping(target = "lastRepostedAt", ignore = true)
   @Mapping(target = "photoUrl", expression = "java(extractFirstPhotoUrl(raw))")
   @Mapping(source = "priceByn", target = "priceByn")
+  @Mapping(source = "isNegotiable", target = "isNegotiable")
   void updateEntity(RawListing raw, @MappingTarget Listing listing);
 
   /**

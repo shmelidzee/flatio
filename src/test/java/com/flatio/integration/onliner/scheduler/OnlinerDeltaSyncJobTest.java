@@ -263,7 +263,7 @@ class OnlinerDeltaSyncJobTest {
         2, null, null, null,
         "Минск", null, null, null,
         "https://onliner.by/" + externalId,
-        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null, null
+        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null, null, null
     );
   }
 

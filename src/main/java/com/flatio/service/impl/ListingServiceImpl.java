@@ -113,7 +113,7 @@ public class ListingServiceImpl implements ListingService {
    * @return the response with {@code priceUsd} populated, or the original if enrichment is skipped
    */
   private ListingSummaryResponse enrichWithPriceUsd(ListingSummaryResponse response, BigDecimal usdToByn) {
-    if (response.priceUsd() != null || usdToByn == null
+    if (response.priceUsd() != null || usdToByn == null || Boolean.TRUE.equals(response.isNegotiable())
         || response.price() == null || !CURRENCY_BYN.equals(response.currency())) {
       return response;
     }
@@ -122,7 +122,8 @@ public class ListingServiceImpl implements ListingService {
         response.id(), response.title(), response.price(), response.currency(),
         priceUsd, response.priceByn(), response.rooms(), response.propertyType(),
         response.areaTotalM2(), response.city(), response.district(), response.address(),
-        response.sourceId(), response.publishedAt(), response.photoUrl(), response.sourceUrl()
+        response.sourceId(), response.publishedAt(), response.photoUrl(), response.sourceUrl(),
+        response.isNegotiable()
     );
   }
 
@@ -187,6 +188,8 @@ public class ListingServiceImpl implements ListingService {
         cb.notEqual(root.get("currency").<String>get("code"), CURRENCY_BYN)
     );
     List<Predicate> result = new ArrayList<>();
+    // Negotiable listings have no meaningful price — exclude them when any price filter is active.
+    result.add(cb.notEqual(root.get("isNegotiable"), Boolean.TRUE));
     if (criteria.priceMin() != null) {
       result.add(cb.or(noBynConversion, cb.greaterThanOrEqualTo(effectivePrice, criteria.priceMin())));
     }

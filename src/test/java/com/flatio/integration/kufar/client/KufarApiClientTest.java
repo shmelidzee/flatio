@@ -19,6 +19,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriBuilder;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.math.BigDecimal;
 import java.net.URI;
 import java.time.Instant;
 import java.util.List;
@@ -156,7 +157,7 @@ class KufarApiClientTest {
 
   @Test
   @SuppressWarnings("unchecked")
-  void should_skip_listing_when_price_is_missing_and_return_others() {
+  void should_return_negotiable_listing_when_price_is_missing() {
     // Given — ad without price and a valid ad
     var noPriceAd = new KufarAd(111L, "Без цены", null, null, null,
         "https://re.kufar.by/vi/111", null, List.of(), List.of(), null, List.of(), "2024-01-15T10:00:00+03:00");
@@ -166,9 +167,13 @@ class KufarApiClientTest {
     // When
     List<RawListing> result = apiClient.fetchAll(config, "RENT", "APARTMENT", "Fallback");
 
-    // Then — no-price listing skipped, valid one returned
-    assertThat(result).hasSize(1);
-    assertThat(result.get(0).externalId()).isEqualTo("222");
+    // Then — no-price listing returned as negotiable, valid one returned normally
+    assertThat(result).hasSize(2);
+    assertThat(result.get(0).externalId()).isEqualTo("111");
+    assertThat(result.get(0).isNegotiable()).isTrue();
+    assertThat(result.get(0).price()).isEqualByComparingTo(BigDecimal.ZERO);
+    assertThat(result.get(1).externalId()).isEqualTo("222");
+    assertThat(result.get(1).isNegotiable()).isFalse();
   }
 
   // -------------------------------------------------------------------------
@@ -621,19 +626,20 @@ class KufarApiClientTest {
   @Test
   @SuppressWarnings("unchecked")
   void should_not_propagate_exception_when_single_listing_fails() {
-    // Given — two ads, first will fail (no price), second is valid
-    var brokenAd = new KufarAd(1101L, "Битое", null, null, null,
+    // Given — two ads, first has no price (returned as negotiable), second is valid
+    var noPriceAd = new KufarAd(1101L, "Без цены", null, null, null,
         "https://re.kufar.by/vi/1101", null, List.of(), List.of(), null, List.of(), "2024-01-15T10:00:00+03:00");
     var validAd = buildValidAd(1102L, "Нормальная", 9000000L, "private");
-    mockRestClientReturning(buildResponseWithAds(List.of(brokenAd, validAd)));
+    mockRestClientReturning(buildResponseWithAds(List.of(noPriceAd, validAd)));
 
-    // When / Then — no exception thrown, valid listing returned
+    // When / Then — no exception thrown, both listings returned
     assertThatNoException().isThrownBy(
         () -> apiClient.fetchAll(config, "RENT", "APARTMENT", "Fallback"));
 
     List<RawListing> result = apiClient.fetchAll(config, "RENT", "APARTMENT", "Fallback");
-    assertThat(result).hasSize(1);
-    assertThat(result.get(0).externalId()).isEqualTo("1102");
+    assertThat(result).hasSize(2);
+    assertThat(result.get(0).isNegotiable()).isTrue();
+    assertThat(result.get(1).externalId()).isEqualTo("1102");
   }
 
   // -------------------------------------------------------------------------
@@ -682,17 +688,20 @@ class KufarApiClientTest {
 
   @Test
   @SuppressWarnings("unchecked")
-  void should_skip_listing_without_price_from_fixture() throws Exception {
-    // Given — fixture has ad 111111111 (no price) and ad 222222222 (valid)
+  void should_return_negotiable_listing_from_fixture_when_price_missing() throws Exception {
+    // Given — fixture has ad 111111111 (no price → negotiable) and ad 222222222 (valid)
     var response = loadFixture("fixtures/kufar/response-without-price.json");
     mockRestClientReturning(response);
 
     // When
     List<RawListing> result = apiClient.fetchAll(config, "RENT", "APARTMENT", "Fallback");
 
-    // Then — only the valid one returned
-    assertThat(result).hasSize(1);
-    assertThat(result.get(0).externalId()).isEqualTo("222222222");
+    // Then — no-price listing returned as negotiable, valid one returned normally
+    assertThat(result).hasSize(2);
+    assertThat(result.get(0).externalId()).isEqualTo("111111111");
+    assertThat(result.get(0).isNegotiable()).isTrue();
+    assertThat(result.get(1).externalId()).isEqualTo("222222222");
+    assertThat(result.get(1).isNegotiable()).isFalse();
   }
 
   @Test

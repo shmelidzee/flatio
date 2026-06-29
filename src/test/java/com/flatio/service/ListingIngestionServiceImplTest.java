@@ -376,7 +376,7 @@ class ListingIngestionServiceImplTest {
         2, 3, 9, BigDecimal.valueOf(55.5),
         "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
         "Минск", "https://onliner.by/usd-1",
-        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null, null
+        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null, null, null
     );
     var existing = buildExistingListing("ext-usd-1", BigDecimal.valueOf(1600));
     existing.setPriceUsd(BigDecimal.valueOf(500)); // same USD price
@@ -401,7 +401,7 @@ class ListingIngestionServiceImplTest {
         2, 3, 9, BigDecimal.valueOf(55.5),
         "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
         "Минск", "https://onliner.by/usd-2",
-        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null, null
+        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null, null, null
     );
     var existing = buildExistingListing("ext-usd-2", BigDecimal.valueOf(1600));
     existing.setPriceUsd(BigDecimal.valueOf(500)); // old USD price
@@ -426,7 +426,7 @@ class ListingIngestionServiceImplTest {
         2, 3, 9, BigDecimal.valueOf(55.5),
         "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
         "Минск", "https://onliner.by/usd-3",
-        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null, null
+        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null, null, null
     );
     var existing = buildExistingListing("ext-usd-3", BigDecimal.valueOf(1600));
     // existing.priceUsd stays null — source didn't provide it historically
@@ -491,7 +491,7 @@ class ListingIngestionServiceImplTest {
         2, 3, 9, BigDecimal.valueOf(55.5),
         "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
         "Минск", "https://onliner.by/pu2",
-        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null, null
+        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null, null, null
     );
     var mapped = new Listing();
     mapped.setDealType(DealType.RENT_DAILY);
@@ -558,7 +558,7 @@ class ListingIngestionServiceImplTest {
         2, 3, 9, BigDecimal.valueOf(55.5),
         "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
         "Минск", "https://onliner.by/skip1",
-        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null, null
+        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null, null, null
     );
 
     // When
@@ -577,7 +577,7 @@ class ListingIngestionServiceImplTest {
         2, 3, 9, BigDecimal.valueOf(55.5),
         "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
         "Минск", "https://onliner.by/skip2",
-        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null, null
+        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null, null, null
     );
 
     // When
@@ -596,7 +596,7 @@ class ListingIngestionServiceImplTest {
         2, 3, 9, BigDecimal.valueOf(55.5),
         "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
         "Минск", "https://onliner.by/skip3",
-        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null, null
+        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null, null, null
     );
 
     // When
@@ -616,7 +616,7 @@ class ListingIngestionServiceImplTest {
         2, 3, 9, BigDecimal.valueOf(55.5),
         "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
         "Минск", "https://onliner.by/batch-skip",
-        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null, null
+        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null, null, null
     );
     var rawValid = buildRawListing("ext-batch-valid", BigDecimal.valueOf(500));
 
@@ -900,7 +900,7 @@ class ListingIngestionServiceImplTest {
         BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
         "Минск", "https://onliner.by/" + externalId,
         Instant.parse("2026-06-01T10:00:00Z"),
-        List.of(), null, null
+        List.of(), null, null, null
     );
   }
 

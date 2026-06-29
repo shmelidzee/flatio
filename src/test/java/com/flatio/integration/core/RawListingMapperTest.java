@@ -137,7 +137,7 @@ class RawListingMapperTest {
         "ext-min", "Title", null, "RENT", null,
         BigDecimal.valueOf(300), "BYN", null, null,
         null, null, null, null, null, null, null, null,
-        "https://example.com/ext-min", null, List.of(), null, null
+        "https://example.com/ext-min", null, List.of(), null, null, null
     );
 
     // When
@@ -182,7 +182,7 @@ class RawListingMapperTest {
         BigDecimal.valueOf(53.9006), BigDecimal.valueOf(27.5590),
         "Минск", "https://onliner.by/1",
         Instant.parse("2026-06-01T10:00:00Z"),
-        List.of("https://photo.com/1.jpg"), null, null
+        List.of("https://photo.com/1.jpg"), null, null, null
     );
   }
 }

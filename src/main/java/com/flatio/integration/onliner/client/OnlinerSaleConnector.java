@@ -216,17 +216,24 @@ public class OnlinerSaleConnector implements ListingConnector {
   }
 
   private RawListing toRawListing(OnlinerSaleApartment apartment) {
+    BigDecimal price;
+    BigDecimal priceUsd;
+    boolean isNegotiable;
     if (apartment.price() == null) {
-      throw new IllegalArgumentException("Missing price for sale apartment id=" + apartment.id());
+      price = BigDecimal.ZERO;
+      priceUsd = null;
+      isNegotiable = true;
+    } else {
+      Map<String, OnlinerConvertedPrice> converted = apartment.price().converted();
+      OnlinerConvertedPrice bynConverted = converted != null ? converted.get("BYN") : null;
+      if (bynConverted == null) {
+        throw new IllegalArgumentException("Missing BYN converted price for sale apartment id=" + apartment.id());
+      }
+      price = new BigDecimal(bynConverted.amount());
+      isNegotiable = price.compareTo(BigDecimal.ZERO) == 0;
+      OnlinerConvertedPrice usdConverted = converted.get("USD");
+      priceUsd = usdConverted != null ? new BigDecimal(usdConverted.amount()) : null;
     }
-    Map<String, OnlinerConvertedPrice> converted = apartment.price().converted();
-    OnlinerConvertedPrice bynConverted = converted != null ? converted.get("BYN") : null;
-    if (bynConverted == null) {
-      throw new IllegalArgumentException("Missing BYN converted price for sale apartment id=" + apartment.id());
-    }
-    BigDecimal price = new BigDecimal(bynConverted.amount());
-    OnlinerConvertedPrice usdConverted = converted != null ? converted.get("USD") : null;
-    BigDecimal priceUsd = usdConverted != null ? new BigDecimal(usdConverted.amount()) : null;
     BigDecimal lat = apartment.location() != null ? apartment.location().latitude() : null;
     BigDecimal lon = apartment.location() != null ? apartment.location().longitude() : null;
     String address = apartment.location() != null ? apartment.location().address() : null;
@@ -257,7 +264,8 @@ public class OnlinerSaleConnector implements ListingConnector {
         publishedAt,
         photos,
         isOwner,
-        null
+        null,
+        isNegotiable
     );
   }
 
