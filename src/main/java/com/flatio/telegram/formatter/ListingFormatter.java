@@ -39,6 +39,7 @@ public class ListingFormatter {
 
   private static final int CAPTION_MAX_LENGTH = 1024;
   private static final String LABEL_NEGOTIABLE = "Договорная";
+  private static final String LABEL_ADDRESS_UNKNOWN = "Адрес не указан";
   private static final DateTimeFormatter PUBLISHED_FORMATTER =
       DateTimeFormatter.ofPattern("HH:mm, dd.MM.yyyy").withZone(ZoneId.of("Europe/Minsk"));
 
@@ -90,7 +91,7 @@ public class ListingFormatter {
    * <ol>
    *   <li>Room-count prefix + price: {@code {N}-комнатная за $USD (BYN BYN)}</li>
    *   <li>Address — uses {@code address} field when present; falls back to district and/or city;
-   *       omitted when all three are absent</li>
+   *       shows "Адрес не указан" for Kufar sources when all three are absent, omitted for others</li>
    * </ol>
    *
    * @param sb      the caption builder to append to, never null
@@ -111,7 +112,13 @@ public class ListingFormatter {
     String address = formatLocation(listing.address(), listing.district(), listing.city());
     if (!address.isEmpty()) {
       sb.append("\n").append(escapeHtml(address));
+    } else if (isKufarSource(listing.sourceId())) {
+      sb.append("\n").append(LABEL_ADDRESS_UNKNOWN);
     }
+  }
+
+  private boolean isKufarSource(String sourceId) {
+    return sourceId != null && sourceId.toUpperCase(Locale.ROOT).startsWith("KUFAR");
   }
 
   private String buildRoomTypePrefix(Integer rooms, String propertyType) {
