@@ -550,4 +550,84 @@ class SearchFilterWizardTest {
     assertThat(state.getPriceMin()).isEqualByComparingTo(BigDecimal.valueOf(1_000));
     assertThat(state.getPriceMax()).isEqualByComparingTo(BigDecimal.valueOf(2_000));
   }
+
+  // -------------------------------------------------------------------------
+  // applyKeyword — free-text keyword input (#305)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_advance_to_done_when_keyword_applied() {
+    // Given
+    wizard.start(1L);
+
+    // When
+    var state = wizard.applyKeyword(1L, "квартира");
+
+    // Then
+    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.DONE);
+  }
+
+  @Test
+  void should_store_multi_word_query_when_keyword_has_spaces() {
+    // Given
+    wizard.start(1L);
+
+    // When — user types three words including a city name in the keyword box
+    var state = wizard.applyKeyword(1L, "тихий двор Минск");
+
+    // Then — full multi-word string stored unchanged; PostgreSQL websearch_to_tsquery tokenises it
+    assertThat(state.getQuery()).isEqualTo("тихий двор Минск");
+  }
+
+  @Test
+  void should_set_null_query_when_keyword_is_blank() {
+    // Given
+    wizard.start(1L);
+
+    // When
+    var state = wizard.applyKeyword(1L, "   ");
+
+    // Then — blank treated as "skip" (no keyword filter)
+    assertThat(state.getQuery()).isNull();
+    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.DONE);
+  }
+
+  @Test
+  void should_set_null_query_when_keyword_is_null() {
+    // Given
+    wizard.start(1L);
+
+    // When
+    var state = wizard.applyKeyword(1L, null);
+
+    // Then
+    assertThat(state.getQuery()).isNull();
+    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.DONE);
+  }
+
+  @Test
+  void should_strip_surrounding_whitespace_but_preserve_internal_spaces_in_keyword() {
+    // Given
+    wizard.start(1L);
+
+    // When
+    var state = wizard.applyKeyword(1L, "  тихий двор  ");
+
+    // Then — leading/trailing whitespace trimmed; internal spaces kept for FTS tokenisation
+    assertThat(state.getQuery()).isEqualTo("тихий двор");
+  }
+
+  @Test
+  void should_preserve_special_characters_without_modification_when_keyword_contains_sql_tokens() {
+    // Given — SQL injection attempt; protection is delegated to parameterised websearch_to_tsquery,
+    // so the wizard must NOT sanitise or truncate the string (doing so would break FTS operators)
+    wizard.start(1L);
+
+    // When
+    var state = wizard.applyKeyword(1L, "тихий район'; DROP TABLE listings; --");
+
+    // Then — string stored as-is; parameterised query in ListingRepository prevents injection
+    assertThat(state.getQuery()).isEqualTo("тихий район'; DROP TABLE listings; --");
+    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.DONE);
+  }
 }
