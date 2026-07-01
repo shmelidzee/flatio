@@ -198,7 +198,7 @@ flatio:
         cron: ${FLATIO_SYNC_REALT_HOUSE_SALE_FULL_CRON:0 0 8 * * *}
     kufar-apartment-rent:
       delta:
-        cron: ${FLATIO_SYNC_KUFAR_APARTMENT_RENT_DELTA_CRON:0 */15 * * * *}
+        cron: ${FLATIO_SYNC_KUFAR_APARTMENT_RENT_DELTA_CRON:0 */10 * * * *}
       full:
         cron: ${FLATIO_SYNC_KUFAR_APARTMENT_RENT_FULL_CRON:0 30 2 * * *}
     kufar-apartment-sale:
@@ -208,7 +208,7 @@ flatio:
         cron: ${FLATIO_SYNC_KUFAR_APARTMENT_SALE_FULL_CRON:0 30 3 * * *}
     kufar-room-rent:
       delta:
-        cron: ${FLATIO_SYNC_KUFAR_ROOM_RENT_DELTA_CRON:0 */15 * * * *}
+        cron: ${FLATIO_SYNC_KUFAR_ROOM_RENT_DELTA_CRON:0 */10 * * * *}
       full:
         cron: ${FLATIO_SYNC_KUFAR_ROOM_RENT_FULL_CRON:0 30 4 * * *}
     kufar-room-sale:
@@ -223,7 +223,7 @@ flatio:
         cron: ${FLATIO_SYNC_KUFAR_HOUSE_RENT_FULL_CRON:0 30 6 * * *}
     kufar-house-sale:
       delta:
-        cron: ${FLATIO_SYNC_KUFAR_HOUSE_SALE_DELTA_CRON:0 */15 * * * *}
+        cron: ${FLATIO_SYNC_KUFAR_HOUSE_SALE_DELTA_CRON:0 */20 * * * *}
       full:
         cron: ${FLATIO_SYNC_KUFAR_HOUSE_SALE_FULL_CRON:0 30 7 * * *}
   geocoding:
