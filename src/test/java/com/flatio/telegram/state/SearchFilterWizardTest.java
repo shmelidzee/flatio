@@ -616,4 +616,18 @@ class SearchFilterWizardTest {
     // Then — leading/trailing whitespace trimmed; internal spaces kept for FTS tokenisation
     assertThat(state.getQuery()).isEqualTo("тихий двор");
   }
+
+  @Test
+  void should_preserve_special_characters_without_modification_when_keyword_contains_sql_tokens() {
+    // Given — SQL injection attempt; protection is delegated to parameterised websearch_to_tsquery,
+    // so the wizard must NOT sanitise or truncate the string (doing so would break FTS operators)
+    wizard.start(1L);
+
+    // When
+    var state = wizard.applyKeyword(1L, "тихий район'; DROP TABLE listings; --");
+
+    // Then — string stored as-is; parameterised query in ListingRepository prevents injection
+    assertThat(state.getQuery()).isEqualTo("тихий район'; DROP TABLE listings; --");
+    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.DONE);
+  }
 }
