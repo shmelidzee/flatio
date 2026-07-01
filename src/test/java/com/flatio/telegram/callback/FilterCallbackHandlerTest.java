@@ -11,6 +11,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.User;
@@ -20,6 +21,7 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMa
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -41,8 +43,9 @@ class FilterCallbackHandlerTest {
   @BeforeEach
   void setUp() {
     freshState = new SearchFilterState();
-    when(keyboardFactory.getStepText(any())).thenReturn("step text");
-    when(keyboardFactory.buildForStep(any())).thenReturn(mock(InlineKeyboardMarkup.class));
+    // lenient: not all tests invoke handle() or handleKeywordText(), so these stubs may be unused
+    lenient().when(keyboardFactory.getStepText(any())).thenReturn("step text");
+    lenient().when(keyboardFactory.buildForStep(any())).thenReturn(mock(InlineKeyboardMarkup.class));
   }
 
   @Test
@@ -175,6 +178,62 @@ class FilterCallbackHandlerTest {
 
     // Then
     assertEditMessage(result, "555", 42);
+  }
+
+  // -------------------------------------------------------------------------
+  // handleKeywordText — free-text keyword input routing (#305)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_apply_multi_word_keyword_and_return_done_step_message() {
+    // Given
+    var doneState = new SearchFilterState();
+    doneState.setCurrentStep(FilterStep.DONE);
+    doneState.setQuery("тихий двор Минск");
+    when(wizard.applyKeyword(1L, "тихий двор Минск")).thenReturn(doneState);
+
+    // When
+    var result = handler.handleKeywordText(1L, "100", "тихий двор Минск");
+
+    // Then — wizard receives the full multi-word string; result is a SendMessage for the DONE step
+    verify(wizard).applyKeyword(1L, "тихий двор Минск");
+    assertThat(result).isNotNull().isInstanceOf(SendMessage.class);
+    assertThat(result.getChatId()).isEqualTo("100");
+  }
+
+  // -------------------------------------------------------------------------
+  // isAtKeywordStep — routing guard in FlatioBot (#305)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_return_true_when_wizard_is_at_keyword_step() {
+    // Given
+    var state = new SearchFilterState();
+    state.setCurrentStep(FilterStep.KEYWORD);
+    when(wizard.getState(1L)).thenReturn(Optional.of(state));
+
+    // When / Then
+    assertThat(handler.isAtKeywordStep(1L)).isTrue();
+  }
+
+  @Test
+  void should_return_false_when_wizard_is_not_at_keyword_step() {
+    // Given
+    var state = new SearchFilterState();
+    state.setCurrentStep(FilterStep.DEAL_TYPE);
+    when(wizard.getState(1L)).thenReturn(Optional.of(state));
+
+    // When / Then
+    assertThat(handler.isAtKeywordStep(1L)).isFalse();
+  }
+
+  @Test
+  void should_return_false_when_no_wizard_state_exists() {
+    // Given
+    when(wizard.getState(1L)).thenReturn(Optional.empty());
+
+    // When / Then
+    assertThat(handler.isAtKeywordStep(1L)).isFalse();
   }
 
   private void assertEditMessage(EditMessageText result, String expectedChatId, int expectedMessageId) {

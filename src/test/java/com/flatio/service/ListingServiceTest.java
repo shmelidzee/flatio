@@ -503,6 +503,42 @@ class ListingServiceTest {
   }
 
   @Test
+  void should_route_city_keyword_to_fts_with_null_city_pattern_when_city_embedded_in_query() {
+    // Given — city name typed as keyword (V30 design: city column is part of search_vector)
+    // Issue #304: city embedded in keyword is matched via FTS, not via a separate LIKE filter
+    var pageable = PageRequest.of(0, 20);
+    Page<Listing> emptyPage = new PageImpl<>(Collections.emptyList(), pageable, 0);
+
+    when(listingRepository.fullTextSearch(
+        eq("Минск тихий двор"),
+        eq("russian"),
+        eq("ACTIVE"),
+        isNull(), isNull(), isNull(), isNull(),
+        isNull(),       // cityPattern null — city is matched via search_vector, not LIKE
+        isNull(), isNull(), isNull(),
+        eq(pageable)
+    )).thenReturn(emptyPage);
+
+    // criteria.city() = null (Telegram always sends null city; city name is in the keyword string)
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, "Минск тихий двор", null);
+
+    // When
+    listingService.search(criteria, pageable);
+
+    // Then — FTS path used (query non-null); cityPattern null because no separate city filter
+    verify(listingRepository).fullTextSearch(
+        eq("Минск тихий двор"),
+        eq("russian"),
+        eq("ACTIVE"),
+        isNull(), isNull(), isNull(), isNull(),
+        isNull(),
+        isNull(), isNull(), isNull(),
+        eq(pageable)
+    );
+    verify(listingRepository, never()).findAll(any(Specification.class), eq(pageable));
+  }
+
+  @Test
   void should_convert_city_to_like_pattern_when_routing_to_fts() {
     // Given
     var pageable = PageRequest.of(0, 20);

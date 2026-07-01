@@ -662,6 +662,26 @@ class SearchResultSenderTest {
   }
 
   @Test
+  void should_pass_multi_word_keyword_to_listing_service_criteria() throws TelegramApiException {
+    // Given — wizard state with a 3-word keyword containing a city name (AC #305: min 3 words; #304: city via keyword)
+    var state = new SearchFilterState();
+    state.setQuery("тихий двор Минск");
+    var listing = buildListing(40L, null, "https://realt.by/40");
+    when(wizard.getState(1L)).thenReturn(Optional.of(state));
+    var criteriaCaptor = ArgumentCaptor.forClass(ListingSearchCriteria.class);
+    when(listingService.search(criteriaCaptor.capture(), any())).thenReturn(pageOf(listing));
+    when(listingFormatter.buildCaption(listing)).thenReturn("caption");
+    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+
+    // When
+    searchResultSender.handle(buildCallback(1L, 100L, 10));
+
+    // Then — full multi-word query passed unchanged; city name embedded in keyword routed via FTS
+    assertThat(criteriaCaptor.getValue().query()).isEqualTo("тихий двор Минск");
+    assertThat(criteriaCaptor.getValue().city()).isNull();
+  }
+
+  @Test
   void should_not_save_filter_when_search_returns_empty() throws TelegramApiException {
     // Given
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
