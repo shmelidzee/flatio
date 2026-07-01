@@ -973,6 +973,145 @@ class ListingFormatterTest {
   }
 
   // -------------------------------------------------------------------------
+  // buildCaption — HOUSE property type (issue #303)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_show_dom_prefix_for_house_type_without_rooms() {
+    // Given — Kufar house listing with no rooms count
+    var listing = buildListingWithRooms(
+        80L,
+        null,
+        "HOUSE",
+        BigDecimal.valueOf(1_500),
+        "BYN",
+        null,
+        null,
+        null,
+        "KUFAR_HOUSE_RENT",
+        null,
+        "https://re.kufar.by/80"
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then — "Дом за X" format (thousands separator may be NBSP U+00A0)
+    assertThat(caption).startsWith("Дом за");
+    assertThat(caption).containsPattern("1.500 BYN");
+    assertThat(caption).doesNotContain("-комнатная");
+  }
+
+  @Test
+  void should_show_rooms_dom_prefix_for_house_type_with_rooms() {
+    // Given — Kufar house listing with 3 rooms
+    var listing = buildListingWithRooms(
+        81L,
+        3,
+        "HOUSE",
+        BigDecimal.valueOf(2_000),
+        "BYN",
+        null,
+        null,
+        null,
+        "KUFAR_HOUSE_RENT",
+        null,
+        "https://re.kufar.by/81"
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then — "N-комнатный дом за X" format (thousands separator may be NBSP U+00A0)
+    assertThat(caption).startsWith("3-комнатный дом за");
+    assertThat(caption).containsPattern("2.000 BYN");
+  }
+
+  @Test
+  void should_not_show_house_address_unknown_when_address_is_present() {
+    // Given — Kufar house listing with a real address
+    var listing = new ListingSummaryResponse(
+        82L, null, BigDecimal.valueOf(1_500), "BYN",
+        null, null, null, "HOUSE",
+        null, null, null,
+        "г. Минск, ул. Садовая, 1", "KUFAR_HOUSE_RENT", null, null,
+        "https://re.kufar.by/82", null
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then — real address shown; placeholder must not appear
+    assertThat(caption).contains("г. Минск, ул. Садовая, 1");
+    assertThat(caption).doesNotContain("Адрес не указан");
+  }
+
+  @Test
+  void should_not_affect_apartment_type_when_house_handling_added() {
+    // Given — regular apartment listing (regression guard for #303)
+    var listing = buildListingWithRooms(
+        83L,
+        2,
+        null,
+        BigDecimal.valueOf(1_200),
+        "BYN",
+        null,
+        null,
+        null,
+        "KUFAR_APARTMENT_RENT",
+        null,
+        "https://re.kufar.by/83"
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then — original "N-комнатная" format preserved
+    assertThat(caption).startsWith("2-комнатная за");
+    assertThat(caption).doesNotContain("дом");
+  }
+
+  // -------------------------------------------------------------------------
+  // buildCaption — "Адрес не указан" for Kufar source (issue #302)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_show_address_unknown_when_all_location_fields_null_for_kufar_source() {
+    // Given — Kufar listing with address, city and district all absent
+    var listing = new ListingSummaryResponse(
+        70L, null, BigDecimal.valueOf(1_000), "BYN",
+        null, null, 2, null,
+        null, null, null,
+        null, "KUFAR_APARTMENT_RENT", null, null,
+        "https://re.kufar.by/70", null
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then — fallback label shown on the second line
+    assertThat(caption).contains("Адрес не указан");
+  }
+
+  @Test
+  void should_not_show_address_unknown_when_all_location_fields_null_for_realt_source() {
+    // Given — Realt listing with address, city and district all absent
+    var listing = new ListingSummaryResponse(
+        71L, null, BigDecimal.valueOf(500), "USD",
+        null, null, 2, null,
+        null, null, null,
+        null, "REALT", null, null,
+        "https://realt.by/71", null
+    );
+
+    // When
+    var caption = listingFormatter.buildCaption(listing);
+
+    // Then — non-Kufar sources omit the fallback label entirely
+    assertThat(caption).doesNotContain("Адрес не указан");
+  }
+
+  // -------------------------------------------------------------------------
   // buildKeyboard
   // -------------------------------------------------------------------------
 

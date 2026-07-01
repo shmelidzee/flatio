@@ -675,6 +675,53 @@ class KufarApiClientTest {
 
   @Test
   @SuppressWarnings("unchecked")
+  void should_parse_address_from_object_when_vl_is_structured() throws Exception {
+    // Given — fixture where "vl" of the address parameter is a JSON object, not a plain string
+    var response = loadFixture("fixtures/kufar/response-with-object-address.json");
+    mockRestClientReturning(response);
+
+    // When
+    List<RawListing> result = apiClient.fetchAll(config, "RENT", "APARTMENT", "Fallback");
+
+    // Then — address components assembled into "city, district, street, building"
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).address()).isEqualTo("Минск, Центральный, ул. Якуба Коласа, 5");
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_parse_address_from_re_location_param_when_address_param_absent() throws Exception {
+    // Given — house fixture where address is keyed "re_location", not "address" (Kufar house API)
+    var response = loadFixture("fixtures/kufar/response-house-with-re-location.json");
+    mockRestClientReturning(response);
+
+    // When
+    List<RawListing> result = apiClient.fetchAll(config, "RENT", "HOUSE", "Fallback");
+
+    // Then — address assembled from "re_location" param; rooms also parsed
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).address()).isEqualTo("г. Минск, Сокольники, ул. Садовая, 1");
+    assertThat(result.get(0).rooms()).isEqualTo(3);
+    assertThat(result.get(0).propertyType()).isEqualTo("HOUSE");
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_return_null_address_when_both_address_and_re_location_are_absent() {
+    // Given — ad with no address params at all
+    var ad = buildValidAd(888L, "Дом без адреса", 20000000L, "private");
+    mockRestClientReturning(buildResponseWithAds(List.of(ad)));
+
+    // When
+    List<RawListing> result = apiClient.fetchAll(config, "RENT", "HOUSE", "Fallback");
+
+    // Then — null address returned; formatter will show "Адрес не указан" for Kufar
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).address()).isNull();
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
   void should_return_empty_list_from_empty_fixture() throws Exception {
     // Given
     var response = loadFixture("fixtures/kufar/empty-response.json");

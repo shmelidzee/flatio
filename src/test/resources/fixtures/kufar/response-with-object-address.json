@@ -1,0 +1,32 @@
+{
+  "ads": [
+    {
+      "ad_id": 555555555,
+      "subject": "Квартира с адресом-объектом",
+      "body": "Тест десериализации структурированного адреса.",
+      "price_byn": "10000000",
+      "currency": "BYR",
+      "ad_link": "https://re.kufar.by/vi/555555555",
+      "company_ad": false,
+      "account_parameters": [],
+      "ad_parameters": [
+        {"pl": "Тип сделки", "p": "type", "vl": "Долгосрочная аренда", "v": "let"},
+        {"pl": "Комнат", "p": "rooms", "vl": "2", "v": "2"},
+        {
+          "pl": "Адрес",
+          "p": "address",
+          "vl": {"city": "Минск", "district": "Центральный", "street": "ул. Якуба Коласа", "building": "5"},
+          "v": "Минск, Центральный, ул. Якуба Коласа, 5"
+        }
+      ],
+      "images": [],
+      "list_time": "2024-01-15T10:30:00+03:00"
+    }
+  ],
+  "pagination": {
+    "pages": [
+      {"token": null, "label": "prev"}
+    ]
+  },
+  "total": 1
+}

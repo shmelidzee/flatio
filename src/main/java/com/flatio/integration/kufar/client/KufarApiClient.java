@@ -50,6 +50,8 @@ public class KufarApiClient {
   private static final String PARAM_FLOORS_TOTAL = "re_number_floors";
   private static final String PARAM_AREA = "size";
   private static final String PARAM_ADDRESS = "address";
+  // Kufar uses "re_location" as address key in house/cottage category responses
+  private static final String PARAM_ADDRESS_ALT = "re_location";
 
   private final RestClient restClient;
   private final KufarProperties properties;
@@ -185,6 +187,9 @@ public class KufarApiClient {
     Integer floorsTotal = parseIntParam(adParams, PARAM_FLOORS_TOTAL);
     BigDecimal area = parseBigDecimalParam(adParams, PARAM_AREA);
     String address = parseStringParam(adParams, PARAM_ADDRESS);
+    if (address == null) {
+      address = parseStringParam(adParams, PARAM_ADDRESS_ALT);
+    }
     List<String> photoUrls = extractPhotoUrls(ad);
     Instant publishedAt = parseListTime(ad.listTime());
     Boolean isOwner = resolveIsOwner(ad);

@@ -125,6 +125,9 @@ public class ListingFormatter {
     if ("ROOM".equals(propertyType)) {
       return "Комната";
     }
+    if ("HOUSE".equals(propertyType)) {
+      return rooms != null && rooms > 0 ? rooms + "-комнатный дом" : "Дом";
+    }
     if (rooms != null && rooms > 0) {
       return rooms + "-комнатная";
     }
