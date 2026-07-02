@@ -277,6 +277,12 @@ resilience4j:
         limit-for-period: 1
         limit-refresh-period: 1s
         timeout-duration: 5s
+      # One HTTP call per ad (detail page), separate from the batched connector-kufar
+      # search API calls above — slower refresh since this hits a heavier HTML endpoint.
+      connector-kufar-detail:
+        limit-for-period: 1
+        limit-refresh-period: 2s
+        timeout-duration: 5s
     # Inbound REST rate limits — config templates only, no eagerly-created instance bean.
     # RateLimitFilter creates one RateLimiter per caller (IP or user) on demand via
     # RateLimiterRegistry.rateLimiter(key, configName), all sharing the named config below.
@@ -348,6 +354,17 @@ resilience4j:
           - com.flatio.integration.core.ConnectorTransientException
         ignore-exceptions:
           - io.github.resilience4j.circuitbreaker.CallNotPermittedException
+      connector-kufar-detail:
+        max-attempts: 3
+        wait-duration: 2s
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - org.springframework.web.client.HttpServerErrorException
+          - org.springframework.web.client.ResourceAccessException
+          - com.flatio.integration.core.ConnectorTransientException
+        ignore-exceptions:
+          - io.github.resilience4j.circuitbreaker.CallNotPermittedException
   circuitbreaker:
     instances:
       connector-onliner:
@@ -383,6 +400,14 @@ resilience4j:
         automatic-transition-from-open-to-half-open-enabled: true
         permitted-number-of-calls-in-half-open-state: 1
       connector-kufar:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 5
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 100
+        wait-duration-in-open-state: 60s
+        automatic-transition-from-open-to-half-open-enabled: true
+        permitted-number-of-calls-in-half-open-state: 1
+      connector-kufar-detail:
         sliding-window-type: COUNT_BASED
         sliding-window-size: 5
         minimum-number-of-calls: 5

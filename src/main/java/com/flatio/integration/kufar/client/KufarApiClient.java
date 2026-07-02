@@ -39,7 +39,9 @@ import java.util.Objects;
  * <p>The Kufar search API does not expose a street-level address field in {@code ad_parameters}
  * (confirmed against a live response — see issue #311). The most precise location data always
  * present is {@code region} (oblast or Minsk) and {@code area} (city or district), which are
- * combined into {@link RawListing#address()}.
+ * combined as a fallback. The precise street-level address, when available, is fetched
+ * separately per ad from the detail page via {@link KufarAdDetailClient} (see issue #313)
+ * and takes priority over the region/area fallback in {@link RawListing#address()}.
  */
 @Service
 @Slf4j
@@ -60,11 +62,13 @@ public class KufarApiClient {
 
   private final RestClient restClient;
   private final KufarProperties properties;
+  private final KufarAdDetailClient adDetailClient;
 
   public KufarApiClient(@Qualifier("kufarRestClient") RestClient restClient,
-      KufarProperties properties) {
+      KufarProperties properties, KufarAdDetailClient adDetailClient) {
     this.restClient = restClient;
     this.properties = properties;
+    this.adDetailClient = adDetailClient;
   }
 
   /**
@@ -191,7 +195,7 @@ public class KufarApiClient {
     Integer floor = parseIntParam(adParams, PARAM_FLOOR);
     Integer floorsTotal = parseIntParam(adParams, PARAM_FLOORS_TOTAL);
     BigDecimal area = parseBigDecimalParam(adParams, PARAM_SIZE);
-    String address = resolveAddress(adParams);
+    String address = resolvePreciseOrFallbackAddress(adParams, ad.adLink());
     List<String> photoUrls = extractPhotoUrls(ad);
     Instant publishedAt = parseListTime(ad.listTime());
     Boolean isOwner = resolveIsOwner(ad);
@@ -229,6 +233,19 @@ public class KufarApiClient {
   }
 
   /**
+   * Resolves the ad's address, preferring the precise street-level address from the ad
+   * detail page over the coarser {@code region}/{@code area} fallback.
+   *
+   * @param adParams ad parameters to search for the region/area fallback
+   * @param adLink   absolute URL of the ad detail page
+   * @return precise address if available, otherwise the region/area fallback, or null if neither exists
+   */
+  private String resolvePreciseOrFallbackAddress(List<KufarAdParameter> adParams, String adLink) {
+    String preciseAddress = adDetailClient.fetchPreciseAddress(adLink);
+    return preciseAddress != null ? preciseAddress : resolveFallbackAddress(adParams);
+  }
+
+  /**
    * Builds an address string from the {@code region} and {@code area} ad parameters.
    *
    * <p>Kufar's search API does not return a street-level address field. {@code region}
@@ -238,7 +255,7 @@ public class KufarApiClient {
    * @param adParams ad parameters to search
    * @return combined "region, area" string, either part alone, or null if neither is present
    */
-  private String resolveAddress(List<KufarAdParameter> adParams) {
+  private String resolveFallbackAddress(List<KufarAdParameter> adParams) {
     String region = parseStringParam(adParams, PARAM_REGION);
     String area = parseStringParam(adParams, PARAM_AREA);
     if (region != null && area != null) {
