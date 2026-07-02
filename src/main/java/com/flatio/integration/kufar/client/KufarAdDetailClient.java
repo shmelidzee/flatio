@@ -10,6 +10,9 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
+import java.net.URI;
+import java.net.URISyntaxException;
+
 /**
  * Fetches the precise street-level address of a single Kufar ad from its detail page.
  *
@@ -27,6 +30,13 @@ import org.springframework.web.client.RestClient;
  *
  * <p>Any failure (network, timeout, missing field, unexpected shape) results in {@code null},
  * never an exception — callers fall back to the coarser region/area address.
+ *
+ * <p>{@code adLink} originates from the Kufar search API response, not from our own users,
+ * but it is still external, untrusted input used to build the request URI. Before every
+ * request its scheme and host are checked against an allowlist ({@code https}, {@code kufar.by}
+ * or a subdomain of it) to prevent a malformed or compromised source response from making this
+ * server issue requests to arbitrary hosts (SSRF), e.g. internal services or cloud metadata
+ * endpoints.
  */
 @Service
 @Slf4j
@@ -35,6 +45,8 @@ public class KufarAdDetailClient {
   private static final String NEXT_DATA_MARKER = "__NEXT_DATA__";
   private static final String SCRIPT_END_TAG = "</script>";
   private static final String[] ADDRESS_PATH = {"props", "initialState", "adView", "data", "address"};
+  private static final String ALLOWED_SCHEME = "https";
+  private static final String ALLOWED_HOST_SUFFIX = "kufar.by";
 
   private final RestClient restClient;
   private final ObjectMapper objectMapper;
@@ -55,7 +67,7 @@ public class KufarAdDetailClient {
   @CircuitBreaker(name = "connector-kufar-detail")
   @Retry(name = "connector-kufar-detail", fallbackMethod = "fetchPreciseAddressFallback")
   public String fetchPreciseAddress(String adLink) {
-    if (adLink == null || adLink.isBlank()) {
+    if (!isAllowedKufarUrl(adLink)) {
       return null;
     }
     String html = restClient.get().uri(adLink).retrieve().body(String.class);
@@ -65,6 +77,34 @@ public class KufarAdDetailClient {
   String fetchPreciseAddressFallback(String adLink, Exception e) {
     log.warn("Falling back to coarse address: adLink={}, error={}", adLink, e.getMessage());
     return null;
+  }
+
+  /**
+   * Guards against SSRF: only {@code https} URIs on {@code kufar.by} (or a subdomain) are
+   * allowed through to {@link #fetchPreciseAddress}, since {@code adLink} is untrusted data
+   * from an external API response, not a value we construct ourselves.
+   *
+   * @param adLink candidate URL, as received from the Kufar search API
+   * @return true if the URL may be requested
+   */
+  private boolean isAllowedKufarUrl(String adLink) {
+    if (adLink == null || adLink.isBlank()) {
+      return false;
+    }
+    try {
+      URI uri = new URI(adLink);
+      String host = uri.getHost();
+      boolean allowed = ALLOWED_SCHEME.equalsIgnoreCase(uri.getScheme())
+          && host != null
+          && (host.equalsIgnoreCase(ALLOWED_HOST_SUFFIX) || host.toLowerCase().endsWith("." + ALLOWED_HOST_SUFFIX));
+      if (!allowed) {
+        log.warn("Rejecting ad detail URL outside the kufar.by allowlist: adLink={}", adLink);
+      }
+      return allowed;
+    } catch (URISyntaxException e) {
+      log.warn("Rejecting malformed ad detail URL: adLink={}", adLink);
+      return false;
+    }
   }
 
   private String extractAddress(String html) {
