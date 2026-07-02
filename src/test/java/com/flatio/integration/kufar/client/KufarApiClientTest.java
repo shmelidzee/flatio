@@ -666,49 +666,91 @@ class KufarApiClientTest {
     assertThat(result.get(0).floorsTotal()).isEqualTo(9);
     assertThat(result.get(0).areaTotalM2()).isEqualByComparingTo("58.5");
     assertThat(result.get(0).isOwner()).isTrue();
-    assertThat(result.get(0).address()).isEqualTo("г. Минск, ул. Якуба Коласа, 5");
+    assertThat(result.get(0).address()).isEqualTo("Минск, Центральный");
     assertThat(result.get(0).photoUrls()).containsExactly(
         "https://rms.kufar.by/v1/gallery/adim1/123456789/1.jpg");
     assertThat(result.get(1).externalId()).isEqualTo("987654321");
     assertThat(result.get(1).isOwner()).isFalse();
   }
 
+  // -------------------------------------------------------------------------
+  // Address resolution — region + area (issue #311)
+  // -------------------------------------------------------------------------
+
   @Test
   @SuppressWarnings("unchecked")
-  void should_parse_address_from_object_when_vl_is_structured() throws Exception {
-    // Given — fixture where "vl" of the address parameter is a JSON object, not a plain string
-    var response = loadFixture("fixtures/kufar/response-with-object-address.json");
-    mockRestClientReturning(response);
+  void should_combine_region_and_area_when_both_params_present() {
+    // Given — region (oblast/Minsk) and area (city/district) both present in ad_parameters,
+    // the only address-like fields confirmed present in the real Kufar API (see issue #311)
+    var adParams = List.of(
+        new KufarAdParameter("Область", "region", "Брестская область", "brest-region"),
+        new KufarAdParameter("Город", "area", "Брест", "brest")
+    );
+    var ad = buildAdWithParams(1201L, "Дом в Бресте", 10000000L, adParams);
+    mockRestClientReturning(buildResponseWithAds(List.of(ad)));
 
     // When
-    List<RawListing> result = apiClient.fetchAll(config, "RENT", "APARTMENT", "Fallback");
+    List<RawListing> result = apiClient.fetchAll(config, "SELL", "HOUSE", "Fallback");
 
-    // Then — address components assembled into "city, district, street, building"
-    assertThat(result).hasSize(1);
-    assertThat(result.get(0).address()).isEqualTo("Минск, Центральный, ул. Якуба Коласа, 5");
+    // Then
+    assertThat(result.get(0).address()).isEqualTo("Брестская область, Брест");
   }
 
   @Test
   @SuppressWarnings("unchecked")
-  void should_parse_address_from_re_location_param_when_address_param_absent() throws Exception {
-    // Given — house fixture where address is keyed "re_location", not "address" (Kufar house API)
-    var response = loadFixture("fixtures/kufar/response-house-with-re-location.json");
-    mockRestClientReturning(response);
+  void should_return_region_only_when_area_param_is_absent() {
+    // Given — only region present
+    var adParams = List.of(
+        new KufarAdParameter("Область", "region", "Минск", "minsk")
+    );
+    var ad = buildAdWithParams(1202L, "Квартира в Минске", 10000000L, adParams);
+    mockRestClientReturning(buildResponseWithAds(List.of(ad)));
 
     // When
-    List<RawListing> result = apiClient.fetchAll(config, "RENT", "HOUSE", "Fallback");
+    List<RawListing> result = apiClient.fetchAll(config, "SELL", "APARTMENT", "Fallback");
 
-    // Then — address assembled from "re_location" param; rooms also parsed
-    assertThat(result).hasSize(1);
-    assertThat(result.get(0).address()).isEqualTo("г. Минск, Сокольники, ул. Садовая, 1");
-    assertThat(result.get(0).rooms()).isEqualTo(3);
-    assertThat(result.get(0).propertyType()).isEqualTo("HOUSE");
+    // Then
+    assertThat(result.get(0).address()).isEqualTo("Минск");
   }
 
   @Test
   @SuppressWarnings("unchecked")
-  void should_return_null_address_when_both_address_and_re_location_are_absent() {
-    // Given — ad with no address params at all
+  void should_return_area_only_when_region_param_is_absent() {
+    // Given — only area present
+    var adParams = List.of(
+        new KufarAdParameter("Город", "area", "Другие города", "other-cities")
+    );
+    var ad = buildAdWithParams(1203L, "Квартира", 10000000L, adParams);
+    mockRestClientReturning(buildResponseWithAds(List.of(ad)));
+
+    // When
+    List<RawListing> result = apiClient.fetchAll(config, "SELL", "APARTMENT", "Fallback");
+
+    // Then
+    assertThat(result.get(0).address()).isEqualTo("Другие города");
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_fall_back_to_v_when_region_vl_is_blank() {
+    // Given — vl blank (machine-only param), v holds the human-readable value
+    var adParams = List.of(
+        new KufarAdParameter("Область", "region", "", "Гомельская область")
+    );
+    var ad = buildAdWithParams(1204L, "Квартира", 10000000L, adParams);
+    mockRestClientReturning(buildResponseWithAds(List.of(ad)));
+
+    // When
+    List<RawListing> result = apiClient.fetchAll(config, "SELL", "APARTMENT", "Fallback");
+
+    // Then
+    assertThat(result.get(0).address()).isEqualTo("Гомельская область");
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_return_null_address_when_region_and_area_are_absent() {
+    // Given — ad with no region/area params at all
     var ad = buildValidAd(888L, "Дом без адреса", 20000000L, "private");
     mockRestClientReturning(buildResponseWithAds(List.of(ad)));
 
@@ -719,6 +761,10 @@ class KufarApiClientTest {
     assertThat(result).hasSize(1);
     assertThat(result.get(0).address()).isNull();
   }
+
+  // -------------------------------------------------------------------------
+  // Fixture-based deserialization (continued)
+  // -------------------------------------------------------------------------
 
   @Test
   @SuppressWarnings("unchecked")
@@ -805,6 +851,22 @@ class KufarApiClientTest {
         new KufarAccount(1L, accountType),
         List.of(),
         List.of(),
+        null,
+        List.of(),
+        "2024-01-15T10:00:00+03:00"
+    );
+  }
+
+  /**
+   * Builds a valid KufarAd with the given ad_parameters (used for region/area address tests).
+   */
+  private KufarAd buildAdWithParams(Long adId, String subject, Long priceByn, List<KufarAdParameter> adParams) {
+    return new KufarAd(
+        adId, subject, null, priceByn, "BYR",
+        "https://re.kufar.by/vi/" + adId,
+        new KufarAccount(1L, "private"),
+        List.of(),
+        adParams,
         null,
         List.of(),
         "2024-01-15T10:00:00+03:00"
