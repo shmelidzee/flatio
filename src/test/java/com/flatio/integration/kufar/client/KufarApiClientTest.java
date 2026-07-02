@@ -50,6 +50,9 @@ class KufarApiClientTest {
   @Mock
   private RestClient.ResponseSpec responseSpec;
 
+  @Mock
+  private KufarAdDetailClient adDetailClient;
+
   private KufarApiClient apiClient;
   private KufarProperties.CategoryConfig config;
 
@@ -68,7 +71,7 @@ class KufarApiClientTest {
         new KufarProperties.CategoryConfig("KUFAR_HOUSE_RENT", "BY", "1020", "let"),
         new KufarProperties.CategoryConfig("KUFAR_HOUSE_SALE", "BY", "1020", "sell")
     );
-    apiClient = new KufarApiClient(restClient, properties);
+    apiClient = new KufarApiClient(restClient, properties, adDetailClient);
     config = properties.apartmentRent();
   }
 
@@ -390,7 +393,7 @@ class KufarApiClientTest {
         new KufarProperties.CategoryConfig("KUFAR_HOUSE_RENT", "BY", "1020", "let"),
         new KufarProperties.CategoryConfig("KUFAR_HOUSE_SALE", "BY", "1020", "sell")
     );
-    var clientWithSlash = new KufarApiClient(restClient, propertiesWithSlash);
+    var clientWithSlash = new KufarApiClient(restClient, propertiesWithSlash, adDetailClient);
     var image = new KufarImage("1", "adim1/uuid.jpg");
     var ad = new KufarAd(605L, "Квартира", null, 8000000L, "BYR",
         "https://re.kufar.by/vi/605", null, List.of(), List.of(), null,
@@ -760,6 +763,66 @@ class KufarApiClientTest {
     // Then — null address returned; formatter will show "Адрес не указан" for Kufar
     assertThat(result).hasSize(1);
     assertThat(result.get(0).address()).isNull();
+  }
+
+  // -------------------------------------------------------------------------
+  // Precise address resolution via ad detail page (issue #313)
+  // -------------------------------------------------------------------------
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_use_precise_address_when_ad_detail_client_returns_address() {
+    // Given — region/area fallback data present, but the detail-page client resolves a
+    // street-level address which must take priority
+    var adParams = List.of(
+        new KufarAdParameter("Область", "region", "Гомельская область", "gomel-region"),
+        new KufarAdParameter("Город", "area", "Гомель", "gomel")
+    );
+    var ad = buildAdWithParams(1301L, "Квартира в Гомеле", 10000000L, adParams);
+    mockRestClientReturning(buildResponseWithAds(List.of(ad)));
+    when(adDetailClient.fetchPreciseAddress("https://re.kufar.by/vi/1301"))
+        .thenReturn("Ленина пр, 59, Гомель, Гомельская область");
+
+    // When
+    List<RawListing> result = apiClient.fetchAll(config, "SELL", "APARTMENT", "Fallback");
+
+    // Then — precise address wins over region+area
+    assertThat(result.get(0).address()).isEqualTo("Ленина пр, 59, Гомель, Гомельская область");
+    verify(adDetailClient).fetchPreciseAddress("https://re.kufar.by/vi/1301");
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_fall_back_to_region_and_area_when_ad_detail_client_returns_null() {
+    // Given — detail-page client explicitly fails to resolve a precise address (network error,
+    // missing field, or unexpected __NEXT_DATA__ shape — all collapse to null)
+    var adParams = List.of(
+        new KufarAdParameter("Область", "region", "Минская область", "minsk-region"),
+        new KufarAdParameter("Город", "area", "Молодечно", "molodechno")
+    );
+    var ad = buildAdWithParams(1302L, "Квартира в Молодечно", 10000000L, adParams);
+    mockRestClientReturning(buildResponseWithAds(List.of(ad)));
+    when(adDetailClient.fetchPreciseAddress("https://re.kufar.by/vi/1302")).thenReturn(null);
+
+    // When
+    List<RawListing> result = apiClient.fetchAll(config, "SELL", "APARTMENT", "Fallback");
+
+    // Then — falls back to region+area, does not propagate the failure
+    assertThat(result.get(0).address()).isEqualTo("Минская область, Молодечно");
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_pass_ad_link_from_ad_to_detail_client() {
+    // Given — a distinct adLink per ad, used to verify the correct link is forwarded
+    var ad = buildValidAd(1303L, "Квартира", 10000000L, "private");
+    mockRestClientReturning(buildResponseWithAds(List.of(ad)));
+
+    // When
+    apiClient.fetchAll(config, "SELL", "APARTMENT", "Fallback");
+
+    // Then
+    verify(adDetailClient).fetchPreciseAddress("https://re.kufar.by/vi/1303");
   }
 
   // -------------------------------------------------------------------------

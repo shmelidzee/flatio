@@ -50,4 +50,27 @@ public class KufarClientConfig {
         .defaultHeader("Accept", MediaType.APPLICATION_JSON_VALUE)
         .build();
   }
+
+  /**
+   * Creates a pre-configured RestClient for fetching Kufar ad detail pages (HTML).
+   *
+   * <p>No base URL is set — each ad's absolute {@code ad_link} (a different origin,
+   * {@code re.kufar.by}, from the {@code api.kufar.by} search API) is passed directly
+   * to {@code RestClient.get().uri(...)}. Same timeouts and User-Agent as the search API client.
+   *
+   * @param builder Spring-managed RestClient.Builder
+   * @return RestClient with User-Agent, HTML Accept header, and timeouts configured
+   */
+  @Bean("kufarAdDetailRestClient")
+  public RestClient kufarAdDetailRestClient(RestClient.Builder builder) {
+    var factorySettings = ClientHttpRequestFactorySettings.DEFAULTS
+        .withConnectTimeout(CONNECT_TIMEOUT)
+        .withReadTimeout(READ_TIMEOUT);
+
+    return builder
+        .requestFactory(ClientHttpRequestFactories.get(factorySettings))
+        .defaultHeader("User-Agent", KUFAR_USER_AGENT)
+        .defaultHeader("Accept", MediaType.TEXT_HTML_VALUE)
+        .build();
+  }
 }
