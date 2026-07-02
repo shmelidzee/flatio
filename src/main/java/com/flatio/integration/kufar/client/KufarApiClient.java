@@ -35,6 +35,11 @@ import java.util.Objects;
  * <p>Property attributes (rooms, floor, total floors, area) are extracted from
  * {@code ad_parameters} keyed by the machine {@code p} field. Geocoordinates are intentionally
  * not parsed here — the Nominatim geocoding pipeline fills them in from the address.
+ *
+ * <p>The Kufar search API does not expose a street-level address field in {@code ad_parameters}
+ * (confirmed against a live response — see issue #311). The most precise location data always
+ * present is {@code region} (oblast or Minsk) and {@code area} (city or district), which are
+ * combined into {@link RawListing#address()}.
  */
 @Service
 @Slf4j
@@ -48,10 +53,10 @@ public class KufarApiClient {
   private static final String PARAM_ROOMS = "rooms";
   private static final String PARAM_FLOOR = "floor";
   private static final String PARAM_FLOORS_TOTAL = "re_number_floors";
-  private static final String PARAM_AREA = "size";
-  private static final String PARAM_ADDRESS = "address";
-  // Kufar uses "re_location" as address key in house/cottage category responses
-  private static final String PARAM_ADDRESS_ALT = "re_location";
+  private static final String PARAM_SIZE = "size";
+  private static final String PARAM_REGION = "region";
+  private static final String PARAM_AREA = "area";
+  private static final String ADDRESS_PART_SEPARATOR = ", ";
 
   private final RestClient restClient;
   private final KufarProperties properties;
@@ -185,11 +190,8 @@ public class KufarApiClient {
     Integer rooms = parseIntParam(adParams, PARAM_ROOMS);
     Integer floor = parseIntParam(adParams, PARAM_FLOOR);
     Integer floorsTotal = parseIntParam(adParams, PARAM_FLOORS_TOTAL);
-    BigDecimal area = parseBigDecimalParam(adParams, PARAM_AREA);
-    String address = parseStringParam(adParams, PARAM_ADDRESS);
-    if (address == null) {
-      address = parseStringParam(adParams, PARAM_ADDRESS_ALT);
-    }
+    BigDecimal area = parseBigDecimalParam(adParams, PARAM_SIZE);
+    String address = resolveAddress(adParams);
     List<String> photoUrls = extractPhotoUrls(ad);
     Instant publishedAt = parseListTime(ad.listTime());
     Boolean isOwner = resolveIsOwner(ad);
@@ -224,6 +226,25 @@ public class KufarApiClient {
         null,
         isNegotiable
     );
+  }
+
+  /**
+   * Builds an address string from the {@code region} and {@code area} ad parameters.
+   *
+   * <p>Kufar's search API does not return a street-level address field. {@code region}
+   * (oblast or Minsk) and {@code area} (city or district) are the most precise location
+   * data always present in {@code ad_parameters}, so they are joined into a single string.
+   *
+   * @param adParams ad parameters to search
+   * @return combined "region, area" string, either part alone, or null if neither is present
+   */
+  private String resolveAddress(List<KufarAdParameter> adParams) {
+    String region = parseStringParam(adParams, PARAM_REGION);
+    String area = parseStringParam(adParams, PARAM_AREA);
+    if (region != null && area != null) {
+      return region + ADDRESS_PART_SEPARATOR + area;
+    }
+    return region != null ? region : area;
   }
 
   private Boolean resolveIsOwner(KufarAd ad) {
