@@ -12,10 +12,10 @@ import java.io.IOException;
  * Single parameter from a Kufar ad's {@code ad_parameters} array.
  *
  * <p>{@code p} is the machine-readable key (e.g. {@code "rooms"}, {@code "floor"},
- * {@code "re_number_floors"}, {@code "size"}, {@code "address"}). {@code vl} is the human-readable
- * value label (may be a JSON string, a single-element JSON array, or a JSON object with address
- * components — all handled transparently by {@link FirstElementDeserializer}).
- * {@code v} is the raw machine value (string or number — normalized to String).
+ * {@code "re_number_floors"}, {@code "size"}, {@code "region"}, {@code "area"}). {@code vl} is the
+ * human-readable value label (a JSON string, a single-element JSON array, or — defensively —
+ * a JSON object, all handled by {@link FirstElementDeserializer}). {@code v} is the raw machine
+ * value (string or number — normalized to String).
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record KufarAdParameter(
