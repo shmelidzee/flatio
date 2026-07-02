@@ -32,15 +32,13 @@ public record KufarAdParameter(
    *   <li>JSON String → returned as-is</li>
    *   <li>JSON Number → converted via {@code toString()}</li>
    *   <li>JSON Array → first element converted to String; empty array → {@code null}</li>
-   *   <li>JSON Object → address components (city, district, street, building) joined by comma;
-   *       {@code null} if no known fields present</li>
+   *   <li>JSON Object → skipped, returns {@code null}</li>
    *   <li>JSON null → {@code null}</li>
    * </ul>
    *
-   * <p>The object branch exists because the Kufar API may return the {@code address} parameter's
-   * {@code vl} as a structured object rather than a plain string. Consuming the full object on
-   * {@code START_OBJECT} also keeps the underlying {@link JsonParser} in a consistent state,
-   * preventing deserialization failures for the surrounding record.
+   * <p>No known Kufar {@code ad_parameters} value is a JSON object in real API responses
+   * (verified against a live response — see issue #311); the object branch is a defensive
+   * fallback so an unexpected shape does not throw and skip the whole listing.
    */
   static class FirstElementDeserializer extends StdDeserializer<String> {
 
@@ -64,53 +62,10 @@ public record KufarAdParameter(
         return first;
       }
       if (token == JsonToken.START_OBJECT) {
-        return assembleAddressFromObject(p);
+        p.skipChildren();
+        return null;
       }
       return p.getText();
-    }
-
-    private static String assembleAddressFromObject(JsonParser p) throws IOException {
-      String city = null;
-      String district = null;
-      String street = null;
-      String building = null;
-      JsonToken token;
-      while ((token = p.nextToken()) != JsonToken.END_OBJECT) {
-        if (token != JsonToken.FIELD_NAME) {
-          continue;
-        }
-        String fieldName = p.getText();
-        token = p.nextToken();
-        if (token.isScalarValue()) {
-          String value = p.getText();
-          if (value != null && !value.isBlank()) {
-            switch (fieldName) {
-              case "city" -> city = value.trim();
-              case "district" -> district = value.trim();
-              case "street" -> street = value.trim();
-              case "building", "house", "house_number" -> building = value.trim();
-              default -> { }
-            }
-          }
-        } else if (token == JsonToken.START_OBJECT || token == JsonToken.START_ARRAY) {
-          p.skipChildren();
-        }
-      }
-      var sb = new StringBuilder();
-      appendAddressPart(sb, city);
-      appendAddressPart(sb, district);
-      appendAddressPart(sb, street);
-      appendAddressPart(sb, building);
-      return sb.isEmpty() ? null : sb.toString();
-    }
-
-    private static void appendAddressPart(StringBuilder sb, String part) {
-      if (part != null && !part.isBlank()) {
-        if (!sb.isEmpty()) {
-          sb.append(", ");
-        }
-        sb.append(part);
-      }
     }
   }
 }
