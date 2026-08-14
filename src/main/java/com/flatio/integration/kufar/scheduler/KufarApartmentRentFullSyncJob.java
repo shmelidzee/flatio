@@ -87,6 +87,10 @@ public class KufarApartmentRentFullSyncJob {
   }
 
   private void performFullSync(Source source) {
+    if (!source.isActive()) {
+      log.debug("KufarApartmentRent full sync skipped: source disabled: source={}", connector.getSourceId());
+      return;
+    }
     running.set(true);
     Instant start = Instant.now();
     try {

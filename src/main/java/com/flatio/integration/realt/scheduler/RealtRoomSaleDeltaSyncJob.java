@@ -54,6 +54,10 @@ public class RealtRoomSaleDeltaSyncJob {
     Instant runStart = Instant.now();
     try {
       Source source = sourceService.findByCodeOrThrow(realtRoomSaleConnector.getSourceId());
+      if (!source.isActive()) {
+        log.debug("RealtRoomSale delta sync skipped: source disabled: source={}", realtRoomSaleConnector.getSourceId());
+        return;
+      }
       Optional<Instant> lastRunAt = syncRunService.findLastSuccessfulRunAt(realtRoomSaleConnector.getSourceId());
 
       if (lastRunAt.isPresent()) {

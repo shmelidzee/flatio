@@ -104,6 +104,10 @@ public class RealtSaleFullSyncJob {
   }
 
   private void performFullSync(Source source) {
+    if (!source.isActive()) {
+      log.debug("RealtSale full sync skipped: source disabled: source={}", realtSaleConnector.getSourceId());
+      return;
+    }
     running.set(true);
     Instant start = Instant.now();
     try {

@@ -70,6 +70,10 @@ public class RealtDeltaSyncJob {
       Source source = sourceRepository.findByCode(realtConnector.getSourceId())
           .orElseThrow(() -> new IllegalStateException(
               "Source not registered in DB: " + realtConnector.getSourceId()));
+      if (!source.isActive()) {
+        log.debug("Realt delta sync skipped: source disabled: source={}", realtConnector.getSourceId());
+        return;
+      }
 
       Optional<Instant> lastRunAt = syncRunService.findLastSuccessfulRunAt(realtConnector.getSourceId());
 

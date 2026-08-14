@@ -48,6 +48,10 @@ public class KufarApartmentRentDeltaSyncJob {
     Instant runStart = Instant.now();
     try {
       Source source = sourceService.findByCodeOrThrow(connector.getSourceId());
+      if (!source.isActive()) {
+        log.debug("KufarApartmentRent delta sync skipped: source disabled: source={}", connector.getSourceId());
+        return;
+      }
       Optional<Instant> lastRunAt = syncRunService.findLastSuccessfulRunAt(connector.getSourceId());
 
       if (lastRunAt.isPresent()) {
