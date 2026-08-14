@@ -54,6 +54,10 @@ public class RealtHouseRentDeltaSyncJob {
     Instant runStart = Instant.now();
     try {
       Source source = sourceService.findByCodeOrThrow(realtHouseRentConnector.getSourceId());
+      if (!source.isActive()) {
+        log.debug("RealtHouseRent delta sync skipped: source disabled: source={}", realtHouseRentConnector.getSourceId());
+        return;
+      }
       Optional<Instant> lastRunAt = syncRunService.findLastSuccessfulRunAt(realtHouseRentConnector.getSourceId());
 
       if (lastRunAt.isPresent()) {

@@ -154,6 +154,19 @@ class OnlinerDeltaSyncJobTest {
   }
 
   @Test
+  void should_skip_sync_when_source_is_disabled() {
+    // Given
+    source.setActive(false);
+
+    // When
+    deltaSyncJob.runDeltaSync();
+
+    // Then — disabled source is never fetched or recorded
+    verify(onlinerConnector, never()).fetchDelta(any());
+    verify(syncRunService, never()).record(any());
+  }
+
+  @Test
   void should_not_propagate_exception_when_fetch_throws() {
     // Given
     when(onlinerConnector.fetchDelta(any())).thenThrow(new RuntimeException("Connection refused"));

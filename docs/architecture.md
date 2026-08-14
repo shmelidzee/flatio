@@ -346,6 +346,54 @@ Defaults to `http://localhost:3000`. Wildcard `*` is never accepted.
 
 ---
 
+## Admin Interface
+
+**Decision (OQ-18, closed 2026-08-14):** the admin UI is a **separate SPA**, not Swagger-UI-only.
+
+A design (screens: Дашборд, Объявления, Источники, Пользователи) was provided by the product
+owner as a Claude Design artifact. It informed the shape of the admin REST API below, but the
+SPA itself is **not implemented in this milestone** — M1.6 delivers the backend endpoints only.
+Building the SPA against this design is tracked as a separate follow-up issue. Until the SPA
+ships, Swagger UI (`/swagger-ui.html`) remains available as an interim way to exercise the
+admin endpoints — it is not the long-term admin interface.
+
+### Admin endpoints (M1.6)
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/v1/admin/sources` | List sources with status, sync interval, last successful sync |
+| `PATCH /api/v1/admin/sources/{sourceId}` | Enable/disable a source and/or change its sync interval |
+| `GET /api/v1/admin/sync-runs` | Paginated sync run history, optional `sourceId` filter |
+| `GET /api/v1/admin/sync-runs/latest` | Most recent sync run per source |
+| `GET /api/v1/admin/listings` | Search listings across all statuses (moderation view) |
+| `PATCH /api/v1/admin/listings/{id}` | Manually change a listing's status |
+| `DELETE /api/v1/admin/listings/{id}/duplicate-group` | Unlink a listing from its duplicate group |
+
+All admin endpoints require the `ADMIN` role (see [Security](#security)) and are implemented by
+`AdminSourceController` and `AdminListingController` in `com.flatio.web.controller`.
+
+Implementation notes and known gaps between the design and the M1.6 backend are recorded in the
+pull request that introduced these endpoints (issues #33, #35), for the product owner to
+reconcile with the SPA design before it is built.
+
+### Known deviations from Issue AC
+
+- The issue text for #33 refers to a `DataSource` entity. The existing `Source` entity (already
+  used by every connector's scheduler) already covers `sourceId`/`displayName`/`isEnabled`, so it
+  was extended with `syncIntervalMinutes` instead of introducing a duplicate entity.
+  `lastSyncAt` is derived from `SyncRunService` rather than stored, to avoid a second source of
+  truth. `syncIntervalMinutes` is stored and editable via the API but does not yet dynamically
+  reschedule the connector's cron trigger — the AC only requires the scheduler to honor
+  `isEnabled`, which it now does for all 28 connector jobs.
+- The issue text for #35 refers to a listing `status` value of `DUPLICATE`, but `ListingStatus`
+  only has `ACTIVE` / `INACTIVE` / `REPOSTED` (confirmed against the design, which shows the same
+  three status badges). Duplicate listings are instead identified by a shared `dedupHash` —
+  `GET /api/v1/admin/listings?duplicatesOnly=true` filters for them, and
+  `DELETE /api/v1/admin/listings/{id}/duplicate-group` clears the hash on the given listing only,
+  leaving the rest of its former group intact.
+
+---
+
 ## REST API Conventions
 
 - Base path: `/api/v1/`

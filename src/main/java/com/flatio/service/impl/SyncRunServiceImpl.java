@@ -51,4 +51,13 @@ public class SyncRunServiceImpl implements SyncRunService {
         .findTopBySourceIdAndStatusOrderByFinishedAtDesc(sourceId, SyncRunStatus.SUCCESS)
         .map(SyncRun::getFinishedAt);
   }
+
+  @Override
+  @Transactional
+  public void cleanupOldRuns(int keepPerSource) {
+    int deleted = syncRunRepository.deleteOldRunsBeyondLimitForAllSources(keepPerSource);
+    if (deleted > 0) {
+      log.debug("Sync run cleanup: deleted={}, keptPerSource={}", deleted, keepPerSource);
+    }
+  }
 }

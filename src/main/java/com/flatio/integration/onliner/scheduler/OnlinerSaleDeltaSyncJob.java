@@ -59,6 +59,10 @@ public class OnlinerSaleDeltaSyncJob {
       Source source = sourceRepository.findByCode(onlinerSaleConnector.getSourceId())
           .orElseThrow(() -> new IllegalStateException(
               "Source not registered in DB: " + onlinerSaleConnector.getSourceId()));
+      if (!source.isActive()) {
+        log.debug("Onliner sale delta sync skipped: source disabled: source={}", onlinerSaleConnector.getSourceId());
+        return;
+      }
 
       List<RawListing> rawListings = onlinerSaleConnector.fetchDelta(since);
 

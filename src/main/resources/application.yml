@@ -156,6 +156,9 @@ flatio:
   sync:
     interval-ms: ${FLATIO_SYNC_INTERVAL_MS:1800000}
     inactive-threshold: ${FLATIO_SYNC_INACTIVE_THRESHOLD:3}
+    cleanup:
+      cron: ${FLATIO_SYNC_CLEANUP_CRON:0 30 1 * * *}
+      keep-per-source: ${FLATIO_SYNC_CLEANUP_KEEP_PER_SOURCE:100}
     onliner:
       delta:
         cron: ${FLATIO_SYNC_ONLINER_DELTA_CRON:0 */10 * * * *}

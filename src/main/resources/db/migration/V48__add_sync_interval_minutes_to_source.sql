@@ -1,0 +1,1 @@
+ALTER TABLE source ADD COLUMN sync_interval_minutes INTEGER NOT NULL DEFAULT 60;

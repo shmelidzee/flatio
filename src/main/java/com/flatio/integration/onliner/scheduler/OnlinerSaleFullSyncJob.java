@@ -89,6 +89,10 @@ public class OnlinerSaleFullSyncJob {
   }
 
   private void performFullSync(Source source) {
+    if (!source.isActive()) {
+      log.debug("Onliner sale full sync skipped: source disabled: source={}", onlinerSaleConnector.getSourceId());
+      return;
+    }
     Instant start = Instant.now();
     List<RawListing> rawListings = onlinerSaleConnector.fetchAll();
 

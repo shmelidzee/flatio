@@ -173,4 +173,30 @@ class SyncRunServiceImplTest {
     // Then — correct source and SUCCESS status are passed
     verify(syncRunRepository).findTopBySourceIdAndStatusOrderByFinishedAtDesc("REALT", SyncRunStatus.SUCCESS);
   }
+
+  // -------------------------------------------------------------------------
+  // cleanupOldRuns
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_delete_old_runs_across_all_sources_in_one_call() {
+    // Given
+    when(syncRunRepository.deleteOldRunsBeyondLimitForAllSources(100)).thenReturn(5);
+
+    // When
+    syncRunService.cleanupOldRuns(100);
+
+    // Then — a single bulk query handles every source, no per-source loop
+    verify(syncRunRepository).deleteOldRunsBeyondLimitForAllSources(100);
+  }
+
+  @Test
+  void should_not_log_when_nothing_deleted() {
+    // Given
+    when(syncRunRepository.deleteOldRunsBeyondLimitForAllSources(100)).thenReturn(0);
+
+    // When / Then — no exception, single call regardless of result
+    syncRunService.cleanupOldRuns(100);
+    verify(syncRunRepository).deleteOldRunsBeyondLimitForAllSources(100);
+  }
 }
