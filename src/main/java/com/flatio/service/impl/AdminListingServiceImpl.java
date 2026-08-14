@@ -1,0 +1,130 @@
+package com.flatio.service.impl;
+
+import com.flatio.common.exception.ListingNotFoundException;
+import com.flatio.domain.listing.Listing;
+import com.flatio.domain.listing.ListingStatus;
+import com.flatio.repository.ListingRepository;
+import com.flatio.service.AdminListingService;
+import com.flatio.web.dto.AdminListingSearchCriteria;
+import com.flatio.web.dto.ListingSummaryResponse;
+import com.flatio.web.mapper.ListingMapper;
+import jakarta.persistence.criteria.CommonAbstractCriteria;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.JoinType;
+import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
+import java.util.ArrayList;
+import java.util.List;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+@Transactional(readOnly = true)
+@Slf4j
+@RequiredArgsConstructor
+public class AdminListingServiceImpl implements AdminListingService {
+
+  private final ListingRepository listingRepository;
+  private final ListingMapper listingMapper;
+
+  @Override
+  public Page<ListingSummaryResponse> search(AdminListingSearchCriteria criteria, Pageable pageable) {
+    log.debug("Admin searching listings with criteria={}", criteria);
+    return listingRepository.findAll(buildSearchSpec(criteria), pageable)
+        .map(listingMapper::toSummaryResponse);
+  }
+
+  @Override
+  @Transactional
+  public ListingSummaryResponse updateStatus(Long id, ListingStatus status, String adminId) {
+    Listing listing = listingRepository.findById(id)
+        .orElseThrow(() -> new ListingNotFoundException(id));
+    listing.setStatus(status);
+    listingRepository.save(listing);
+    log.info("Admin action: action=updateListingStatus, listingId={}, status={}, adminId={}",
+        id, status, adminId);
+    return listingMapper.toSummaryResponse(listing);
+  }
+
+  @Override
+  @Transactional
+  public void unlinkDuplicateGroup(Long id, String adminId) {
+    Listing listing = listingRepository.findById(id)
+        .orElseThrow(() -> new ListingNotFoundException(id));
+    listing.setDedupHash(null);
+    listingRepository.save(listing);
+    log.info("Admin action: action=unlinkDuplicateGroup, listingId={}, adminId={}", id, adminId);
+  }
+
+  private Specification<Listing> buildSearchSpec(AdminListingSearchCriteria criteria) {
+    return (root, query, cb) -> {
+      List<Predicate> predicates = new ArrayList<>();
+
+      if (!Long.class.equals(query.getResultType())) {
+        root.fetch("source", JoinType.INNER);
+        root.fetch("currency", JoinType.INNER);
+        query.distinct(true);
+      }
+
+      if (criteria.status() != null) {
+        predicates.add(cb.equal(root.get("status"), criteria.status()));
+      }
+      if (criteria.dealType() != null) {
+        predicates.add(cb.equal(root.get("dealType"), criteria.dealType()));
+      }
+      if (criteria.propertyType() != null) {
+        predicates.add(cb.equal(root.get("propertyType"), criteria.propertyType()));
+      }
+      if (criteria.rooms() != null) {
+        predicates.add(cb.equal(root.get("rooms"), criteria.rooms()));
+      }
+      if (criteria.priceMin() != null) {
+        predicates.add(cb.greaterThanOrEqualTo(root.get("price"), criteria.priceMin()));
+      }
+      if (criteria.priceMax() != null) {
+        predicates.add(cb.lessThanOrEqualTo(root.get("price"), criteria.priceMax()));
+      }
+      if (criteria.city() != null && !criteria.city().isBlank()) {
+        predicates.add(cb.like(cb.lower(root.get("city")), "%" + criteria.city().toLowerCase() + "%"));
+      }
+      if (criteria.sourceId() != null) {
+        predicates.add(cb.equal(root.get("source").get("code"), criteria.sourceId()));
+      }
+      if (Boolean.TRUE.equals(criteria.duplicatesOnly())) {
+        predicates.add(cb.isNotNull(root.get("dedupHash")));
+        predicates.add(cb.exists(buildDuplicateExistsSubquery(query, cb, root)));
+      }
+
+      return cb.and(predicates.toArray(new Predicate[0]));
+    };
+  }
+
+  /**
+   * Builds a correlated subquery matching another listing with the same non-null dedup hash.
+   *
+   * <p>Used to filter for listings that are part of a duplicate group — i.e. at least one other
+   * listing (any source, any status) shares the same {@code dedupHash}.
+   *
+   * @param query the outer criteria query, used to derive the subquery
+   * @param cb    the shared criteria builder
+   * @param root  the outer query's Listing root
+   * @return a subquery selecting the id of a matching duplicate, for use with {@code cb.exists}
+   */
+  private Subquery<Long> buildDuplicateExistsSubquery(
+      CommonAbstractCriteria query, CriteriaBuilder cb, Root<Listing> root) {
+    Subquery<Long> subquery = query.subquery(Long.class);
+    Root<Listing> other = subquery.from(Listing.class);
+    subquery.select(other.get("id"));
+    subquery.where(
+        cb.equal(other.get("dedupHash"), root.get("dedupHash")),
+        cb.notEqual(other.get("id"), root.get("id"))
+    );
+    return subquery;
+  }
+}
