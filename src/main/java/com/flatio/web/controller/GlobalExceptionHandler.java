@@ -2,6 +2,8 @@ package com.flatio.web.controller;
 
 import com.flatio.common.exception.InvalidTelegramAuthException;
 import com.flatio.common.exception.ListingNotFoundException;
+import com.flatio.common.exception.SubscriptionLimitExceededException;
+import com.flatio.common.exception.SubscriptionNotFoundException;
 import com.flatio.web.dto.ErrorResponse;
 import com.flatio.web.dto.ValidationError;
 import jakarta.servlet.http.HttpServletRequest;
@@ -30,6 +32,22 @@ public class GlobalExceptionHandler {
   public ErrorResponse handleListingNotFound(ListingNotFoundException ex, HttpServletRequest request) {
     log.warn("Resource not found on {}: {}", request.getRequestURI(), ex.getMessage());
     return buildError(HttpStatus.NOT_FOUND, ex.getMessage(), request.getRequestURI(), List.of());
+  }
+
+  @ExceptionHandler(SubscriptionNotFoundException.class)
+  @ResponseStatus(HttpStatus.NOT_FOUND)
+  public ErrorResponse handleSubscriptionNotFound(SubscriptionNotFoundException ex, HttpServletRequest request) {
+    log.warn("Resource not found on {}: {}", request.getRequestURI(), ex.getMessage());
+    return buildError(HttpStatus.NOT_FOUND, ex.getMessage(), request.getRequestURI(), List.of());
+  }
+
+  @ExceptionHandler(SubscriptionLimitExceededException.class)
+  @ResponseStatus(HttpStatus.UNPROCESSABLE_ENTITY)
+  public ErrorResponse handleSubscriptionLimitExceeded(
+      SubscriptionLimitExceededException ex, HttpServletRequest request
+  ) {
+    log.warn("Subscription limit exceeded on {}: {}", request.getRequestURI(), ex.getMessage());
+    return buildError(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage(), request.getRequestURI(), List.of());
   }
 
   @ExceptionHandler(InvalidTelegramAuthException.class)
