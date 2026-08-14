@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Set;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
@@ -58,8 +59,11 @@ public class Subscription {
   @Column(name = "search_criteria", nullable = false, columnDefinition = "jsonb")
   private Map<String, Object> searchCriteria;
 
+  // BatchSize avoids N+1 when loading a page of subscriptions: triggers for all subscriptions
+  // in the batch are fetched with one extra IN-clause query instead of one query per subscription.
   @ElementCollection(fetch = FetchType.LAZY)
   @CollectionTable(name = "subscription_triggers", joinColumns = @JoinColumn(name = "subscription_id"))
+  @BatchSize(size = 20)
   @Enumerated(EnumType.STRING)
   @Column(name = "trigger_type", nullable = false, length = 30)
   private Set<TriggerType> triggers = new HashSet<>();

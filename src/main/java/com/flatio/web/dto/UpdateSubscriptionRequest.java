@@ -36,7 +36,8 @@ public record UpdateSubscriptionRequest(
     @Schema(description = "Delivery channel", example = "TELEGRAM", requiredMode = REQUIRED)
     @NotNull SubscriptionChannelType channelType,
 
-    @Schema(description = "Minimum price drop percentage for the PRICE_DROP trigger", example = "5.00")
+    @Schema(description = "Minimum price drop percentage for the PRICE_DROP trigger; defaults to 5% when omitted",
+        example = "5.00")
     BigDecimal priceDropThreshold,
 
     @Schema(description = "Start of the quiet hours window (no notifications sent)", example = "23:00:00")
