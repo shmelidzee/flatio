@@ -6,8 +6,10 @@ import org.springframework.boot.web.client.ClientHttpRequestFactorySettings;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
+import java.net.http.HttpClient;
 import java.time.Duration;
 
 /**
@@ -58,17 +60,28 @@ public class KufarClientConfig {
    * {@code re.kufar.by}, from the {@code api.kufar.by} search API) is passed directly
    * to {@code RestClient.get().uri(...)}. Same timeouts and User-Agent as the search API client.
    *
+   * <p>HTTP redirects are not followed ({@code HttpClient.Redirect.NEVER}) —
+   * {@link com.flatio.integration.kufar.client.KufarAdDetailClient} validates {@code adLink}
+   * against a {@code kufar.by} allowlist before this client is called, but that check only
+   * covers the original URL. Without disabling redirects, a compromised or malformed response
+   * could 3xx this server to an arbitrary host (SSRF via redirect, see issue #315). A 3xx
+   * response is returned as-is and degrades to a missing {@code __NEXT_DATA__} marker, which
+   * {@code KufarAdDetailClient} already handles by returning {@code null}.
+   *
    * @param builder Spring-managed RestClient.Builder
-   * @return RestClient with User-Agent, HTML Accept header, and timeouts configured
+   * @return RestClient with User-Agent, HTML Accept header, timeouts, and redirects disabled
    */
   @Bean("kufarAdDetailRestClient")
   public RestClient kufarAdDetailRestClient(RestClient.Builder builder) {
-    var factorySettings = ClientHttpRequestFactorySettings.DEFAULTS
-        .withConnectTimeout(CONNECT_TIMEOUT)
-        .withReadTimeout(READ_TIMEOUT);
+    var httpClient = HttpClient.newBuilder()
+        .followRedirects(HttpClient.Redirect.NEVER)
+        .connectTimeout(CONNECT_TIMEOUT)
+        .build();
+    var requestFactory = new JdkClientHttpRequestFactory(httpClient);
+    requestFactory.setReadTimeout(READ_TIMEOUT);
 
     return builder
-        .requestFactory(ClientHttpRequestFactories.get(factorySettings))
+        .requestFactory(requestFactory)
         .defaultHeader("User-Agent", KUFAR_USER_AGENT)
         .defaultHeader("Accept", MediaType.TEXT_HTML_VALUE)
         .build();
