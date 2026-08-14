@@ -2,23 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
     "allow": [
-      "Bash(./gradlew test)",
-      "Bash(./gradlew test:*)",
-      "Bash(./gradlew check)",
-      "Bash(./gradlew check:*)",
-      "Bash(./gradlew clean)",
-      "Bash(./gradlew build)",
-      "Bash(./gradlew build:*)",
-      "Bash(./gradlew compileJava)",
-      "Bash(./gradlew compileTestJava)",
-      "Bash(./gradlew dependencies)",
-      "Bash(./gradlew dependencyInsight:*)",
-      "Bash(./gradlew tasks)",
-      "Bash(./gradlew bootRun:*)",
-      "Bash(./gradlew integrationTest)",
-      "Bash(./gradlew integrationTest:*)",
-      "Bash(./gradlew flywayInfo)",
-      "Bash(./gradlew flywayValidate)",
+      "Bash(./gradlew:*)",
 
       "Bash(git status)",
       "Bash(git diff:*)",
@@ -79,8 +63,6 @@
       "Write(src/test/resources/*)",
 
       "Bash(git pull origin develop)",
-      "Bash(./gradlew clean build)",
-      "Bash(./gradlew jacocoTestReport)",
 
       "mcp__github__get_pull_request_status",
       "mcp__github__list_commits",

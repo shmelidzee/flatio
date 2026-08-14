@@ -4,6 +4,7 @@ import com.flatio.repository.CityRepository;
 import com.flatio.repository.ListingRepository;
 import com.flatio.repository.PriceHistoryRepository;
 import com.flatio.repository.SourceRepository;
+import com.flatio.repository.SubscriptionRepository;
 import com.flatio.repository.SyncRunRepository;
 import com.flatio.repository.UserAuthProviderRepository;
 import com.flatio.repository.UserRepository;
@@ -85,6 +86,9 @@ class KufarAdDetailClientResilienceTest {
 
   @MockBean
   private SyncRunRepository syncRunRepository;
+
+  @MockBean
+  private SubscriptionRepository subscriptionRepository;
 
   @MockBean(name = "kufarAdDetailRestClient")
   private RestClient restClient;

@@ -244,6 +244,10 @@ flatio:
         low-max: ${SELL_PRICE_LOW_MAX:100000}
         medium-max: ${SELL_PRICE_MEDIUM_MAX:200000}
         high-max: ${SELL_PRICE_HIGH_MAX:400000}
+  subscription:
+    limits:
+      user-max-active: ${SUBSCRIPTION_LIMIT_USER_MAX_ACTIVE:3}
+      pro-max-active: ${SUBSCRIPTION_LIMIT_PRO_MAX_ACTIVE:20}
   health:
     freshness:
       threshold-minutes: ${FLATIO_HEALTH_FRESHNESS_THRESHOLD_MINUTES:30}

@@ -7,6 +7,7 @@ import com.flatio.repository.CityRepository;
 import com.flatio.repository.ListingRepository;
 import com.flatio.repository.PriceHistoryRepository;
 import com.flatio.repository.SourceRepository;
+import com.flatio.repository.SubscriptionRepository;
 import com.flatio.repository.SyncRunRepository;
 import com.flatio.repository.UserAuthProviderRepository;
 import com.flatio.repository.UserRepository;
@@ -82,6 +83,9 @@ class LogbackProdProfileTest {
 
   @MockBean
   SyncRunRepository syncRunRepository;
+
+  @MockBean
+  SubscriptionRepository subscriptionRepository;
 
   @Autowired
   private ApplicationContext applicationContext;
