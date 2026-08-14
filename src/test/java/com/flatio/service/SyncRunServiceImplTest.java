@@ -1,16 +1,13 @@
 package com.flatio.service;
 
-import com.flatio.domain.source.Source;
 import com.flatio.domain.source.SyncRun;
 import com.flatio.domain.source.SyncRunStatus;
 import com.flatio.domain.source.SyncType;
-import com.flatio.repository.SourceRepository;
 import com.flatio.repository.SyncRunRepository;
 import com.flatio.service.domain.BatchIngestResult;
 import com.flatio.service.domain.SyncRunRequest;
 import com.flatio.service.impl.SyncRunServiceImpl;
 import java.time.Instant;
-import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,9 +18,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -32,9 +27,6 @@ class SyncRunServiceImplTest {
 
   @Mock
   private SyncRunRepository syncRunRepository;
-
-  @Mock
-  private SourceRepository sourceRepository;
 
   @InjectMocks
   private SyncRunServiceImpl syncRunService;
@@ -187,37 +179,24 @@ class SyncRunServiceImplTest {
   // -------------------------------------------------------------------------
 
   @Test
-  void should_delete_old_runs_for_every_registered_source() {
+  void should_delete_old_runs_across_all_sources_in_one_call() {
     // Given
-    Source onliner = buildSource("ONLINER");
-    Source realt = buildSource("REALT");
-    when(sourceRepository.findAll()).thenReturn(List.of(onliner, realt));
-    when(syncRunRepository.deleteOldRunsBeyondLimit("ONLINER", 100)).thenReturn(5);
-    when(syncRunRepository.deleteOldRunsBeyondLimit("REALT", 100)).thenReturn(0);
+    when(syncRunRepository.deleteOldRunsBeyondLimitForAllSources(100)).thenReturn(5);
 
     // When
     syncRunService.cleanupOldRuns(100);
 
-    // Then — cleanup runs once per source, using each source's code
-    verify(syncRunRepository).deleteOldRunsBeyondLimit("ONLINER", 100);
-    verify(syncRunRepository).deleteOldRunsBeyondLimit("REALT", 100);
+    // Then — a single bulk query handles every source, no per-source loop
+    verify(syncRunRepository).deleteOldRunsBeyondLimitForAllSources(100);
   }
 
   @Test
-  void should_not_query_repository_when_no_sources_registered() {
+  void should_not_log_when_nothing_deleted() {
     // Given
-    when(sourceRepository.findAll()).thenReturn(List.of());
+    when(syncRunRepository.deleteOldRunsBeyondLimitForAllSources(100)).thenReturn(0);
 
-    // When
+    // When / Then — no exception, single call regardless of result
     syncRunService.cleanupOldRuns(100);
-
-    // Then
-    verify(syncRunRepository, never()).deleteOldRunsBeyondLimit(any(), anyInt());
-  }
-
-  private Source buildSource(String code) {
-    var source = new Source();
-    source.setCode(code);
-    return source;
+    verify(syncRunRepository).deleteOldRunsBeyondLimitForAllSources(100);
   }
 }

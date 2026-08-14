@@ -3,6 +3,7 @@ package com.flatio.service.impl;
 import com.flatio.common.exception.SourceNotFoundException;
 import com.flatio.domain.source.Source;
 import com.flatio.repository.SourceRepository;
+import com.flatio.repository.SyncRunRepository;
 import com.flatio.service.SyncRunService;
 import com.flatio.web.dto.AdminSourceResponse;
 import com.flatio.web.dto.AdminSourceUpdateRequest;
@@ -21,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -29,6 +31,9 @@ class AdminSourceServiceImplTest {
 
   @Mock
   private SourceRepository sourceRepository;
+
+  @Mock
+  private SyncRunRepository syncRunRepository;
 
   @Mock
   private SyncRunService syncRunService;
@@ -49,16 +54,18 @@ class AdminSourceServiceImplTest {
     Source source = buildSource("onliner", true, 60);
     when(sourceRepository.findAll(any(Sort.class))).thenReturn(List.of(source));
     Instant lastSync = Instant.parse("2026-08-14T09:00:00Z");
-    when(syncRunService.findLastSuccessfulRunAt("onliner")).thenReturn(Optional.of(lastSync));
+    when(syncRunRepository.findLastSuccessfulFinishedAtGroupedBySource())
+        .thenReturn(List.<Object[]>of(new Object[] {"onliner", lastSync}));
     AdminSourceResponse expected = mock(AdminSourceResponse.class);
     when(adminSourceMapper.toResponse(source, lastSync)).thenReturn(expected);
 
     // When
     List<AdminSourceResponse> result = adminSourceService.findAll();
 
-    // Then
+    // Then — a single bulk query is used, no per-source lookup
     assertThat(result).containsExactly(expected);
     verify(adminSourceMapper).toResponse(source, lastSync);
+    verify(syncRunService, never()).findLastSuccessfulRunAt(any());
   }
 
   @Test
@@ -66,7 +73,7 @@ class AdminSourceServiceImplTest {
     // Given
     Source source = buildSource("domovita", false, 60);
     when(sourceRepository.findAll(any(Sort.class))).thenReturn(List.of(source));
-    when(syncRunService.findLastSuccessfulRunAt("domovita")).thenReturn(Optional.empty());
+    when(syncRunRepository.findLastSuccessfulFinishedAtGroupedBySource()).thenReturn(List.of());
 
     // When
     adminSourceService.findAll();

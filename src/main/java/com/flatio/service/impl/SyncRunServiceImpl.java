@@ -1,9 +1,7 @@
 package com.flatio.service.impl;
 
-import com.flatio.domain.source.Source;
 import com.flatio.domain.source.SyncRun;
 import com.flatio.domain.source.SyncRunStatus;
-import com.flatio.repository.SourceRepository;
 import com.flatio.repository.SyncRunRepository;
 import com.flatio.service.SyncRunService;
 import com.flatio.service.domain.SyncRunRequest;
@@ -21,7 +19,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class SyncRunServiceImpl implements SyncRunService {
 
   private final SyncRunRepository syncRunRepository;
-  private final SourceRepository sourceRepository;
 
   @Override
   @Transactional
@@ -58,12 +55,9 @@ public class SyncRunServiceImpl implements SyncRunService {
   @Override
   @Transactional
   public void cleanupOldRuns(int keepPerSource) {
-    for (Source source : sourceRepository.findAll()) {
-      int deleted = syncRunRepository.deleteOldRunsBeyondLimit(source.getCode(), keepPerSource);
-      if (deleted > 0) {
-        log.debug("Sync run cleanup: source={}, deleted={}, kept={}",
-            source.getCode(), deleted, keepPerSource);
-      }
+    int deleted = syncRunRepository.deleteOldRunsBeyondLimitForAllSources(keepPerSource);
+    if (deleted > 0) {
+      log.debug("Sync run cleanup: deleted={}, keptPerSource={}", deleted, keepPerSource);
     }
   }
 }

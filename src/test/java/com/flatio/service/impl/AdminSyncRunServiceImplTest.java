@@ -1,13 +1,10 @@
 package com.flatio.service.impl;
 
-import com.flatio.domain.source.Source;
 import com.flatio.domain.source.SyncRun;
-import com.flatio.repository.SourceRepository;
 import com.flatio.repository.SyncRunRepository;
 import com.flatio.web.dto.AdminSyncRunResponse;
 import com.flatio.web.mapper.AdminSyncRunMapper;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -30,9 +27,6 @@ class AdminSyncRunServiceImplTest {
 
   @Mock
   private SyncRunRepository syncRunRepository;
-
-  @Mock
-  private SourceRepository sourceRepository;
 
   @Mock
   private AdminSyncRunMapper adminSyncRunMapper;
@@ -85,31 +79,31 @@ class AdminSyncRunServiceImplTest {
   // -------------------------------------------------------------------------
 
   @Test
-  void should_return_latest_run_for_each_source_that_has_run() {
+  void should_return_latest_run_per_source_from_single_bulk_query() {
     // Given
-    Source onliner = buildSource("onliner");
-    Source domovita = buildSource("domovita");
-    when(sourceRepository.findAll()).thenReturn(List.of(onliner, domovita));
-
     SyncRun onlinerRun = new SyncRun();
-    when(syncRunRepository.findTopBySourceIdOrderByStartedAtDesc("onliner"))
-        .thenReturn(Optional.of(onlinerRun));
-    when(syncRunRepository.findTopBySourceIdOrderByStartedAtDesc("domovita"))
-        .thenReturn(Optional.empty());
-
+    when(syncRunRepository.findLatestPerSource()).thenReturn(List.of(onlinerRun));
     AdminSyncRunResponse response = mock(AdminSyncRunResponse.class);
-    when(adminSyncRunMapper.toResponse(onlinerRun)).thenReturn(response);
+    when(adminSyncRunMapper.toResponseList(List.of(onlinerRun))).thenReturn(List.of(response));
 
     // When
     List<AdminSyncRunResponse> result = adminSyncRunService.findLatestPerSource();
 
-    // Then — only the source with a recorded run appears
+    // Then — a single bulk query is used, no per-source loop
     assertThat(result).containsExactly(response);
+    verify(syncRunRepository).findLatestPerSource();
   }
 
-  private Source buildSource(String code) {
-    var source = new Source();
-    source.setCode(code);
-    return source;
+  @Test
+  void should_return_empty_list_when_no_source_has_run_yet() {
+    // Given
+    when(syncRunRepository.findLatestPerSource()).thenReturn(List.of());
+    when(adminSyncRunMapper.toResponseList(List.of())).thenReturn(List.of());
+
+    // When
+    List<AdminSyncRunResponse> result = adminSyncRunService.findLatestPerSource();
+
+    // Then
+    assertThat(result).isEmpty();
   }
 }
