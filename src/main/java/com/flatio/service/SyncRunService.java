@@ -30,4 +30,12 @@ public interface SyncRunService {
    * @return the latest successful finish time for that source, or empty if none exists
    */
   Optional<Instant> findLastSuccessfulRunAt(String sourceId);
+
+  /**
+   * Deletes old sync run records, keeping only the most recent {@code keepPerSource}
+   * runs for each registered source.
+   *
+   * @param keepPerSource number of most recent runs to retain per source
+   */
+  void cleanupOldRuns(int keepPerSource);
 }

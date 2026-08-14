@@ -38,6 +38,9 @@ public class Source {
   @Column(nullable = false)
   private boolean active;
 
+  @Column(name = "sync_interval_minutes", nullable = false)
+  private int syncIntervalMinutes;
+
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "country_id", nullable = false)
   private Country country;
