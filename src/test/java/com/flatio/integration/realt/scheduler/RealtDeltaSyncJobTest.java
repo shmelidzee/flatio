@@ -58,8 +58,10 @@ class RealtDeltaSyncJobTest {
 
   @BeforeEach
   void setUp() {
+    Source source = new Source();
+    source.setActive(true);
     when(realtConnector.getSourceId()).thenReturn(SOURCE_ID);
-    when(sourceRepository.findByCode(SOURCE_ID)).thenReturn(Optional.of(new Source()));
+    when(sourceRepository.findByCode(SOURCE_ID)).thenReturn(Optional.of(source));
     // @Lazy @Autowired field is not set by @InjectMocks constructor injection; inject explicitly
     ReflectionTestUtils.setField(job, "realtFullSyncJob", realtFullSyncJob);
   }
@@ -190,6 +192,22 @@ class RealtDeltaSyncJobTest {
     verify(realtConnector, never()).fetch();
     verify(realtConnector, never()).fetchDelta(any());
     verify(listingIngestionService, never()).ingestBatch(any(), any());
+    verify(syncRunService, never()).record(any());
+  }
+
+  @Test
+  void should_skip_sync_when_source_is_disabled() {
+    // Given
+    Source disabled = new Source();
+    disabled.setActive(false);
+    when(sourceRepository.findByCode(SOURCE_ID)).thenReturn(Optional.of(disabled));
+
+    // When
+    job.runDeltaSync();
+
+    // Then — disabled source is never fetched or recorded
+    verify(realtConnector, never()).fetch();
+    verify(realtConnector, never()).fetchDelta(any());
     verify(syncRunService, never()).record(any());
   }
 

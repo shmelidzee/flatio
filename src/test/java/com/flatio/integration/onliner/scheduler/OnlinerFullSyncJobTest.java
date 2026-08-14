@@ -166,6 +166,19 @@ class OnlinerFullSyncJobTest {
   }
 
   @Test
+  void should_skip_sync_when_source_is_disabled() {
+    // Given
+    source.setActive(false);
+
+    // When
+    fullSyncJob.runFullSync();
+
+    // Then — disabled source is never fetched or recorded
+    verify(onlinerConnector, never()).fetchAll();
+    verify(syncRunService, never()).record(any());
+  }
+
+  @Test
   void should_not_propagate_exception_when_fetchAll_throws() {
     // Given
     when(onlinerConnector.fetchAll()).thenThrow(new RuntimeException("Timeout"));
