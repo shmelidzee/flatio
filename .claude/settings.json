@@ -1,93 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
-    "allow": [
-      "Bash(./gradlew:*)",
-
-      "Bash(git status)",
-      "Bash(git diff:*)",
-      "Bash(git log:*)",
-      "Bash(git show:*)",
-      "Bash(git branch:*)",
-      "Bash(git checkout -b feature/*)",
-      "Bash(git checkout -b fix/*)",
-      "Bash(git checkout -b docs/*)",
-      "Bash(git checkout feature/*)",
-      "Bash(git checkout fix/*)",
-      "Bash(git checkout docs/*)",
-      "Bash(git checkout master)",
-      "Bash(git checkout develop)",
-      "Bash(git add:*)",
-      "Bash(git commit -m:*)",
-      "Bash(git commit --amend:*)",
-      "Bash(git rebase -i:*)",
-      "Bash(git worktree add:*)",
-      "Bash(git worktree list)",
-      "Bash(git worktree remove:*)",
-      "Bash(git push -u origin feature/*)",
-      "Bash(git push origin feature/*)",
-      "Bash(git push -u origin fix/*)",
-      "Bash(git push origin fix/*)",
-      "Bash(git push -u origin docs/*)",
-      "Bash(git push origin docs/*)",
-
-      "Bash(gh issue view:*)",
-      "Bash(gh issue list:*)",
-      "Bash(gh issue comment:*)",
-      "Bash(gh issue create:*)",
-      "Bash(gh issue edit:*)",
-      "Bash(gh pr view:*)",
-      "Bash(gh pr list:*)",
-      "Bash(gh pr create:*)",
-      "Bash(gh pr checkout:*)",
-      "Bash(gh pr diff:*)",
-      "Bash(gh pr comment:*)",
-      "Bash(gh pr review --comment:*)",
-      "Bash(gh pr review --request-changes:*)",
-
-      "Bash(docker compose ps)",
-      "Bash(docker compose logs:*)",
-      "Bash(docker ps)",
-
-      "Edit(src/main/java/*)",
-      "Write(src/main/java/*)",
-      "Edit(src/test/java/*)",
-      "Write(src/test/java/*)",
-      "Edit(src/integrationTest/java/*)",
-      "Write(src/integrationTest/java/*)",
-      "Edit(src/main/resources/application.yml)",
-      "Write(src/main/resources/application.yml)",
-      "Edit(src/main/resources/db/migration/*)",
-      "Write(src/main/resources/db/migration/*)",
-      "Edit(src/test/resources/*)",
-      "Write(src/test/resources/*)",
-
-      "Bash(git pull origin develop)",
-
-      "mcp__github__get_pull_request_status",
-      "mcp__github__list_commits",
-      "mcp__github__search_code",
-
-      "mcp__notion__API-post-search",
-      "mcp__notion__API-retrieve-a-page",
-      "mcp__notion__API-retrieve-a-database",
-      "mcp__notion__API-get-block-children",
-      "mcp__notion__API-retrieve-a-block",
-
-      "mcp__github__list_issues",
-      "mcp__github__get_issue",
-      "mcp__github__search_issues",
-      "mcp__github__list_pull_requests",
-      "mcp__github__get_pull_request",
-      "mcp__github__get_pull_request_files",
-      "mcp__github__get_pull_request_comments",
-      "mcp__github__get_pull_request_reviews",
-      "mcp__github__create_issue",
-      "mcp__github__update_issue",
-      "mcp__github__add_issue_comment",
-      "mcp__github__create_pull_request",
-      "mcp__github__create_pull_request_review"
-    ],
+    "defaultMode": "bypassPermissions",
 
     "deny": [
       "Bash(git push origin master)",
@@ -121,28 +35,15 @@
       "Bash(./gradlew flywayRepair)",
       "Bash(./gradlew flywayBaseline)",
 
+      "Bash(npm publish:*)",
+      "Bash(yarn publish:*)",
+      "Bash(pnpm publish:*)",
+
       "Edit(.env)",
       "Edit(.env.*)",
       "Edit(.claude/settings.local.json)",
       "Edit(docker/docker-compose.prod.yml)",
       "Edit(src/main/resources/application-local.yml)"
-    ],
-
-    "ask": [
-      "Bash(./gradlew flywayMigrate)",
-      "Bash(docker compose up:*)",
-      "Bash(docker compose down)",
-      "Bash(docker compose restart:*)",
-
-      "Edit(build.gradle.kts)",
-      "Edit(settings.gradle.kts)",
-      "Edit(gradle/libs.versions.toml)",
-      "Edit(Dockerfile)",
-      "Edit(docker/docker-compose.yml)",
-
-      "mcp__notion__API-post-page",
-      "mcp__notion__API-patch-page",
-      "mcp__notion__API-patch-block-children"
     ]
   }
 }
