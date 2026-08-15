@@ -1,9 +1,11 @@
+import com.github.gradle.node.npm.task.NpmTask
 import org.springframework.boot.gradle.tasks.bundling.BootJar
 
 plugins {
   java
   id("org.springframework.boot") version "3.2.12"
   id("io.spring.dependency-management") version "1.1.6"
+  id("com.github.node-gradle.node") version "7.0.2"
 }
 
 group = "com.flatio"
@@ -92,4 +94,55 @@ tasks.register("integrationTest") {
 
 tasks.named<BootJar>("bootJar") {
   archiveFileName.set("app.jar")
+}
+
+// Admin SPA build — see docs/architecture.md "Admin Interface" for the full pipeline.
+val frontendDir = layout.projectDirectory.dir("frontend/admin")
+val frontendDist = frontendDir.dir("dist")
+val staticAdminDir = layout.projectDirectory.dir("src/main/resources/static/admin")
+
+node {
+  // CI (actions/setup-node), Docker (apk-installed Node) and local dev machines all provide
+  // their own Node — the plugin does not need to download a separate copy.
+  download.set(false)
+  nodeProjectDir.set(frontendDir)
+}
+
+tasks.register<NpmTask>("npmCiFrontend") {
+  group = "frontend"
+  description = "Installs admin frontend dependencies via npm ci"
+  npmCommand.set(listOf("ci"))
+  inputs.file(frontendDir.file("package.json"))
+  inputs.file(frontendDir.file("package-lock.json"))
+  outputs.dir(frontendDir.dir("node_modules"))
+}
+
+tasks.register<NpmTask>("buildFrontend") {
+  group = "frontend"
+  description = "Builds the admin SPA (tsc + vite build)"
+  dependsOn("npmCiFrontend")
+  npmCommand.set(listOf("run", "build"))
+  inputs.dir(frontendDir.dir("src"))
+  inputs.file(frontendDir.file("index.html"))
+  inputs.file(frontendDir.file("vite.config.ts"))
+  inputs.file(frontendDir.file("tsconfig.json"))
+  inputs.file(frontendDir.file("tailwind.config.js"))
+  inputs.file(frontendDir.file("postcss.config.js"))
+  outputs.dir(frontendDist)
+}
+
+tasks.register<Sync>("copyFrontendToStatic") {
+  group = "frontend"
+  description = "Copies the built admin SPA into src/main/resources/static/admin"
+  dependsOn("buildFrontend")
+  from(frontendDist)
+  into(staticAdminDir)
+}
+
+tasks.named("processResources") {
+  dependsOn("copyFrontendToStatic")
+}
+
+tasks.named<Delete>("clean") {
+  delete(staticAdminDir)
 }
