@@ -143,6 +143,29 @@ tasks.named("processResources") {
   dependsOn("copyFrontendToStatic")
 }
 
+tasks.register<NpmTask>("lintFrontend") {
+  group = "frontend"
+  description = "Lints the admin frontend via ESLint"
+  dependsOn("npmCiFrontend")
+  npmCommand.set(listOf("run", "lint"))
+  inputs.dir(frontendDir.dir("src"))
+  inputs.file(frontendDir.file(".eslintrc.cjs"))
+}
+
+tasks.register<NpmTask>("testFrontend") {
+  group = "frontend"
+  description = "Runs the admin frontend test suite via Vitest"
+  dependsOn("npmCiFrontend")
+  npmCommand.set(listOf("run", "test"))
+  inputs.dir(frontendDir.dir("src"))
+}
+
+// Wired into 'check' so "./gradlew build" and CI's "./gradlew build integrationTest" both gate
+// on the frontend, per issue #320's DoD ("npm run lint и npm run test зелёные").
+tasks.named("check") {
+  dependsOn("lintFrontend", "testFrontend")
+}
+
 tasks.named<Delete>("clean") {
   delete(staticAdminDir)
 }
