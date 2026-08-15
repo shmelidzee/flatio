@@ -35,6 +35,9 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
  *   <li>{@code /api/v1/auth/**} — publicly accessible; this is where JWT access tokens
  *       are issued, so it cannot itself require a token (see {@code AuthController})</li>
  *   <li>{@code /api/v1/**} — requires any authenticated user</li>
+ *   <li>{@code /admin/**} — publicly accessible; this is the static admin SPA shell
+ *       ({@code index.html}, JS, CSS — see {@code AdminSpaWebConfig}), not the API. The SPA
+ *       itself calls the JWT-protected {@code /api/v1/admin/**} endpoints once loaded</li>
  *   <li>Swagger UI, OpenAPI docs, and Actuator health/info — publicly accessible</li>
  *   <li>{@code POST /<bot-token>} — publicly accessible; this is the Telegram webhook
  *       endpoint (see {@code TelegramWebhookConfig}). Telegram cannot send a JWT, and the
@@ -79,6 +82,7 @@ public class SecurityConfig {
             .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
             .requestMatchers("/api/v1/auth/**").permitAll()
             .requestMatchers("/api/v1/**").authenticated()
+            .requestMatchers("/admin", "/admin/", "/admin/**").permitAll()
             .requestMatchers(
                 "/swagger-ui/**", "/swagger-ui.html",
                 "/v3/api-docs/**", "/api-docs/**",

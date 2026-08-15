@@ -294,6 +294,7 @@ JWT-based stateless authentication via Spring Security. Sessions are disabled.
 |------|--------|
 | `/api/v1/admin/**` | `ADMIN` role required |
 | `/api/v1/**` | Any authenticated user |
+| `/admin`, `/admin/**` | Public — static admin SPA shell (see [Admin Interface](#admin-interface)), not the API |
 | `/swagger-ui/**`, `/v3/api-docs/**`, `/actuator/health/**`, `/actuator/info` | Public |
 | `POST /<bot-token>` | Public — Telegram webhook (see below) |
 | Everything else | Denied — HTTP 403 (fail-closed) |
@@ -351,11 +352,9 @@ Defaults to `http://localhost:3000`. Wildcard `*` is never accepted.
 **Decision (OQ-18, closed 2026-08-14):** the admin UI is a **separate SPA**, not Swagger-UI-only.
 
 A design (screens: Дашборд, Объявления, Источники, Пользователи) was provided by the product
-owner as a Claude Design artifact. It informed the shape of the admin REST API below, but the
-SPA itself is **not implemented in this milestone** — M1.6 delivers the backend endpoints only.
-Building the SPA against this design is tracked as a separate follow-up issue. Until the SPA
-ships, Swagger UI (`/swagger-ui.html`) remains available as an interim way to exercise the
-admin endpoints — it is not the long-term admin interface.
+owner as a Claude Design artifact. It informed the shape of the admin REST API below and the
+frontend scaffold (#320). Until the SPA has real screens wired to the admin endpoints, Swagger
+UI (`/swagger-ui.html`) remains available as an interim way to exercise them.
 
 ### Admin endpoints (M1.6)
 
@@ -391,6 +390,49 @@ reconcile with the SPA design before it is built.
   `GET /api/v1/admin/listings?duplicatesOnly=true` filters for them, and
   `DELETE /api/v1/admin/listings/{id}/duplicate-group` clears the hash on the given listing only,
   leaving the rest of its former group intact.
+
+### Admin SPA frontend (#320)
+
+The admin SPA lives in `frontend/admin/` as a self-contained npm project — Vite + React 18 +
+TypeScript (strict) + Tailwind CSS (dark theme) + React Router + TanStack Query.
+`frontend/admin/src/api/schema.ts` holds TypeScript types generated from the live OpenAPI spec
+(`npm run generate:api-types`, backed by `openapi-typescript` against `/v3/api-docs`); regenerate
+it after any admin API change and commit the result — it is not generated at build time, so the
+frontend type-checks without a running backend.
+
+**Build pipeline — one deploy artifact, not two services.**
+
+```
+npm ci && npm run build          (frontend/admin, via node-gradle plugin)
+        ↓ dist/
+Sync → src/main/resources/static/admin/   (Gradle "copyFrontendToStatic" task)
+        ↓
+./gradlew build                  (bundles static/admin/** into app.jar, via processResources)
+        ↓
+AdminSpaWebConfig                (serves it at /admin with SPA-fallback routing)
+```
+
+`copyFrontendToStatic` is wired as a `processResources` dependency, so it runs automatically
+for every `./gradlew build`/`bootRun`/`bootJar` — no separate frontend deploy step. The
+`com.github.node-gradle.node` plugin is configured with `download.set(false)`: it expects Node on
+`PATH` rather than fetching its own copy, so the same Node install (v24) is used locally, in the
+Dockerfile builder stage (`apk add nodejs npm`), and in CI (`actions/setup-node`, cached on
+`frontend/admin/package-lock.json`). `src/main/resources/static/admin/` itself is generated and
+gitignored — never hand-edit it.
+
+`AdminSpaWebConfig` (`com.flatio.config`) serves `static/admin` at `/admin`: an existing file
+(JS/CSS/`index.html`) is returned as-is; any other `/admin/**` path (e.g. `/admin/listings`, a
+route only React Router knows about) falls back to `index.html` so the SPA can resolve
+client-side routes instead of 404ing. `/admin/**` is `permitAll()` in `SecurityConfig` — it is
+only the static shell, not the API; the SPA itself calls the JWT-protected
+`/api/v1/admin/**` endpoints once loaded.
+
+**What's scaffolded vs. what's still a stub:** sidebar navigation (Дашборд/Объявления/
+Источники/Пользователи) and route structure are in place; each page is currently a placeholder
+with no real data wired up. `/admin/login` renders a static placeholder — the real Telegram
+Login Widget flow (issue #321, blocked by this one) will replace it and add the actual
+authenticated API calls. `ProtectedRoute` currently only checks that a token exists in
+`localStorage`, not that it's valid or unexpired; that hardens once #321 lands.
 
 ---
 

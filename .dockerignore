@@ -1,0 +1,5 @@
+.git
+build
+.gradle
+frontend/admin/node_modules
+frontend/admin/dist

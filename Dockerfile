@@ -1,9 +1,11 @@
 FROM eclipse-temurin:21-jdk-alpine AS builder
+RUN apk add --no-cache nodejs npm
 WORKDIR /workspace
 COPY gradlew .
 COPY gradle gradle
 COPY build.gradle.kts .
 COPY settings.gradle.kts .
+COPY frontend frontend
 COPY src src
 RUN chmod +x ./gradlew && ./gradlew build -x test --no-daemon
 
