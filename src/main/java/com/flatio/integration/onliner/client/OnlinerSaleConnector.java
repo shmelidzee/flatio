@@ -237,6 +237,12 @@ public class OnlinerSaleConnector implements ListingConnector {
     BigDecimal lat = apartment.location() != null ? apartment.location().latitude() : null;
     BigDecimal lon = apartment.location() != null ? apartment.location().longitude() : null;
     String address = apartment.location() != null ? apartment.location().address() : null;
+    // Diagnostic for #327 (address arriving/persisting empty): logs the address exactly as
+    // parsed from the source response, before it enters RawListing/persistence, so a future
+    // recurrence can be localized to fetch-time (empty here) vs. mapping/persist-time (non-empty
+    // here but empty in the DB).
+    log.debug("Onliner sale apartment parsed: id={}, hasLocation={}, address={}",
+        apartment.id(), apartment.location() != null, address);
     String resolvedPhoto = resolvePhotoUrl(apartment.photo());
     List<String> photos = resolvedPhoto != null ? List.of(resolvedPhoto) : List.of();
     Instant publishedAt = apartment.createdAt() != null ? apartment.createdAt().toInstant() : null;
