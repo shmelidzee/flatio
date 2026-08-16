@@ -286,10 +286,21 @@ resilience4j:
         timeout-duration: 5s
       # One HTTP call per ad (detail page), separate from the batched connector-kufar
       # search API calls above — slower refresh since this hits a heavier HTML endpoint.
+      # This single RateLimiter instance is shared by all Kufar sync jobs (up to 6 running
+      # concurrently — see issue #328), not one per job. limit-for-period/limit-refresh-period
+      # stay untouched here — they bound real request throughput to Kufar (scraping etiquette,
+      # issue #313). timeout-duration only bounds how long a thread blocks waiting for a permit,
+      # so it must be sized independently: with 6 callers contending for 1 permit every 2s, a
+      # thread can be queued up to (6 - 1) * 2s = 10s before it is next in line. 5s made most of
+      # that queuing look like a genuine per-ad failure, dumping calls into
+      # KufarAdDetailClient#fetchPreciseAddressFallback purely due to sibling-job contention
+      # (#328). 15s covers the 10s worst case plus margin, while genuine per-ad failures (network
+      # errors, broken __NEXT_DATA__) still fail fast — they never depend on this timeout because
+      # KufarAdDetailClient#fetchPreciseAddress fails outside of and after permit acquisition.
       connector-kufar-detail:
         limit-for-period: 1
         limit-refresh-period: 2s
-        timeout-duration: 5s
+        timeout-duration: 15s
     # Inbound REST rate limits — config templates only, no eagerly-created instance bean.
     # RateLimitFilter creates one RateLimiter per caller (IP or user) on demand via
     # RateLimiterRegistry.rateLimiter(key, configName), all sharing the named config below.
