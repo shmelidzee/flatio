@@ -64,12 +64,18 @@ import static org.mockito.Mockito.when;
         "JWT_SECRET_KEY=test-secret-key-for-kufar-executor-isolation-test-min-256-bits-long",
         // The real ScheduledAnnotationBeanPostProcessor registers KufarApartmentRentDeltaSyncJob
         // / FullSyncJob's actual @Scheduled cron triggers in this full context. Left at their
-        // production defaults (e.g. every 10 minutes), a trigger could coincidentally fire mid-test
-        // — racing the manual runDeltaSync()/runFullSync() calls below and the Mockito stubbing
-        // that precedes them. Pinned to Feb 29 (leap day only) so the real scheduler never fires
-        // during a test run; only the explicit calls below exercise the method.
-        "flatio.sync.kufar-apartment-rent.delta.cron=0 0 0 29 2 *",
-        "flatio.sync.kufar-apartment-rent.full.cron=0 0 0 29 2 *"
+        // production defaults (e.g. every 10 minutes), a trigger can fire mid-test — racing the
+        // manual runDeltaSync()/runFullSync() calls below and the Mockito stubbing that precedes
+        // them (observed once on a loaded `clean build` machine: a genuine cron-fired invocation
+        // hit sourceService.findByCodeOrThrow() in the split second between two Given-block
+        // when(...) calls, before it was stubbed, causing a spurious NPE unrelated to the
+        // property under test). A future calendar date is not reliable here — Spring's own
+        // Scheduled#CRON_DISABLED sentinel ("-") is the documented way to make
+        // ScheduledAnnotationBeanPostProcessor skip registering the trigger altogether, so the
+        // real scheduler can never fire during this test; only the explicit calls below invoke
+        // the method.
+        "flatio.sync.kufar-apartment-rent.delta.cron=-",
+        "flatio.sync.kufar-apartment-rent.full.cron=-"
     }
 )
 class KufarSyncExecutorIsolationTest {
@@ -166,8 +172,12 @@ class KufarSyncExecutorIsolationTest {
 
       // And — the offloaded work genuinely started (proves the job actually ran, not merely
       // returned early due to some short-circuit) and did so on the dedicated pool, not on the
-      // thread that called runDeltaSync()
-      assertThat(workStarted.await(2, TimeUnit.SECONDS)).isTrue();
+      // thread that called runDeltaSync(). 10s margin (not a tight bound) — under a loaded
+      // `clean build` (frontend lint/build/npm tasks running just before :test) core-thread
+      // startup on kufarSyncExecutor can take longer than a couple hundred ms; this only bounds
+      // "eventually", it does not weaken the actual property under test (the calling thread
+      // already returned above, well before this wait even starts).
+      assertThat(workStarted.await(10, TimeUnit.SECONDS)).isTrue();
       assertThat(executingThreadName.get()).startsWith("flatio-kufar-sync-");
       assertThat(executingThreadName.get()).isNotEqualTo(callingThreadName);
     } finally {
@@ -199,9 +209,11 @@ class KufarSyncExecutorIsolationTest {
       fullSyncJob.runFullSync();
       long elapsedMs = (System.nanoTime() - before) / 1_000_000;
 
-      // Then — same non-blocking guarantee as the delta job, for the full-sync job
+      // Then — same non-blocking guarantee as the delta job, for the full-sync job. 10s margin on
+      // workStarted for the same reason as the delta-sync test above (loaded `clean build`
+      // environment, not a change to the property under test).
       assertThat(elapsedMs).isLessThan(500);
-      assertThat(workStarted.await(2, TimeUnit.SECONDS)).isTrue();
+      assertThat(workStarted.await(10, TimeUnit.SECONDS)).isTrue();
       assertThat(executingThreadName.get()).startsWith("flatio-kufar-sync-");
       assertThat(executingThreadName.get()).isNotEqualTo(callingThreadName);
     } finally {
