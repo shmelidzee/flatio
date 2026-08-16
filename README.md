@@ -7,6 +7,7 @@
 - **Java 21** (JDK)
 - **Docker** и **Docker Compose**
 - **Gradle 8.x** (или используйте обёртку `./gradlew`)
+- **Node.js 24** и npm на `PATH` — нужны для сборки admin SPA (`frontend/admin/`); `./gradlew build` / `bootRun` собирают его автоматически (см. `docs/architecture.md`, раздел «Admin Interface»)
 
 ## Быстрый старт
 

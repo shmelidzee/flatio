@@ -5,6 +5,11 @@
 - Java 21 (Temurin recommended)
 - Docker + Docker Compose
 - Gradle 8.x (or use the included wrapper `./gradlew`)
+- Node.js 24 + npm on `PATH` — required to build the admin SPA (`frontend/admin/`).
+  `./gradlew build` / `bootRun` invoke `npm ci && npm run build` automatically via the
+  `com.github.node-gradle.node` plugin (`download.set(false)` — it expects Node already
+  installed, does not fetch its own copy). See `docs/architecture.md`, "Admin Interface"
+  section, for the full pipeline.
 
 ---
 

@@ -7,6 +7,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **PR #329 — Каркас admin-фронтенда: Vite+React+TS+Tailwind, сборка через Gradle (issue #320)**
+  - `frontend/admin/` — новый npm-проект: Vite + React 18 + TypeScript (strict) + Tailwind CSS
+    (тёмная тема) + React Router v7 (не v6 — из-за CVE в 6.x) + TanStack Query
+  - `frontend/admin/src/api/schema.ts` — TypeScript-типы, сгенерированные `openapi-typescript`
+    из `/v3/api-docs` (`npm run generate:api-types`); коммитятся в репозиторий, не генерируются
+    в билде — фронтенд типизируется без запущенного бэкенда
+  - Gradle: плагин `com.github.node-gradle.node`, таски `npmCiFrontend` / `buildFrontend` /
+    `copyFrontendToStatic` копируют `dist/` в `src/main/resources/static/admin`; подключены как
+    зависимость `processResources` — `./gradlew build` / `bootRun` теперь требуют Node.js 24
+    на `PATH` (плагин настроен с `download.set(false)`, свою копию Node не скачивает)
+  - `com.flatio.config.AdminSpaWebConfig` (новый) — отдаёт `/admin/**` как статику SPA с
+    фолбэком на `index.html` для client-side роутинга React Router
+  - `com.flatio.security.SecurityConfig` — явный `permitAll()` на `/admin`, `/admin/`, `/admin/**`
+    (только статический шелл SPA; `/api/v1/admin/**` остаётся под `hasRole(ADMIN)`)
+  - `Dockerfile` — `apk add nodejs npm` в builder-стадии; `.github/workflows/ci.yml` —
+    `actions/setup-node@v4` (node-version 24) с npm-кэшем перед `./gradlew build integrationTest`;
+    `check` теперь зависит от `lintFrontend` и `testFrontend`
+  - Sidebar-layout на 4 пункта (Дашборд/Объявления/Источники/Пользователи) — заглушки без
+    реальных данных; `ProtectedRoute` редиректит на `/admin/login` при отсутствии токена в
+    `localStorage`; сам логин-экран — заглушка (реальный Telegram Login Widget — issue #321,
+    заблокирован этим PR)
+  - `docs/architecture.md` — раздел «Admin SPA frontend (#320)» с полным описанием пайплайна сборки
+
 ### Fixed
 - **PR #300 — «Договорная» вместо «0 BYN»; извлечение адреса из Kufar (issues #298, #299)**
   - Flyway V45 — `ALTER TABLE listings ADD COLUMN is_negotiable BOOLEAN NOT NULL DEFAULT FALSE`
