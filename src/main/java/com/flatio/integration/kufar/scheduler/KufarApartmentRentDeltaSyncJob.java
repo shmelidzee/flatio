@@ -19,6 +19,7 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -42,7 +43,12 @@ public class KufarApartmentRentDeltaSyncJob {
 
   /**
    * Determines sync mode from the last successful run and fetches accordingly.
+   *
+   * <p>Runs asynchronously on {@code kufarSyncExecutor} (see {@code SchedulerConfig}) so the
+   * shared scheduler pool is not blocked by {@code connector-kufar-detail} RateLimiter waits
+   * (issue #332).
    */
+  @Async("kufarSyncExecutor")
   @Scheduled(cron = "${flatio.sync.kufar-apartment-rent.delta.cron}")
   public void runDeltaSync() {
     Instant runStart = Instant.now();

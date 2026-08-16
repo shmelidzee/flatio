@@ -71,7 +71,12 @@ public class KufarApartmentRentFullSyncJob {
 
   /**
    * Runs a full crawl of all Kufar apartment rental listings and applies the missed-sync penalty.
+   *
+   * <p>Runs asynchronously on {@code kufarSyncExecutor} (see {@code SchedulerConfig}) so the
+   * shared scheduler pool is not blocked by {@code connector-kufar-detail} RateLimiter waits
+   * (issue #332).
    */
+  @Async("kufarSyncExecutor")
   @Scheduled(cron = "${flatio.sync.kufar-apartment-rent.full.cron}")
   public void runFullSync() {
     log.info("KufarApartmentRent full sync started (scheduled)");

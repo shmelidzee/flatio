@@ -61,6 +61,12 @@ public class KufarHouseRentFullSyncJob {
     }
   }
 
+  /**
+   * Runs asynchronously on {@code kufarSyncExecutor} (see {@code SchedulerConfig}) so the
+   * shared scheduler pool is not blocked by {@code connector-kufar-detail} RateLimiter waits
+   * (issue #332).
+   */
+  @Async("kufarSyncExecutor")
   @Scheduled(cron = "${flatio.sync.kufar-house-rent.full.cron}")
   public void runFullSync() {
     log.info("KufarHouseRent full sync started (scheduled)");
