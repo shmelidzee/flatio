@@ -1,7 +1,10 @@
 package com.flatio.integration.onliner.client;
 
+import com.flatio.domain.listing.Listing;
 import com.flatio.integration.core.ConnectorTransientException;
 import com.flatio.integration.core.RawListing;
+import com.flatio.integration.core.RawListingMapper;
+import com.flatio.integration.core.RawListingMapperImpl;
 import com.flatio.integration.onliner.config.OnlinerSaleProperties;
 import com.flatio.integration.onliner.dto.OnlinerConvertedPrice;
 import com.flatio.integration.onliner.dto.OnlinerLocation;
@@ -482,6 +485,29 @@ class OnlinerSaleConnectorTest {
     assertThat(result.get(1).rooms()).isEqualTo(3);
     assertThat(result.get(1).isOwner()).isFalse();   // seller.type = "agent"
     assertThat(result.get(1).photoUrls()).isEmpty();
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_persist_non_blank_address_through_full_pipeline_when_valid_sale_fixture_provided() throws IOException {
+    // Given — regression test for #327 (Onliner address reported empty in the DB) for the sale
+    // connector counterpart. Chains fetch -> RawListing -> RawListingMapper -> Listing in one
+    // test against a realistic fixture, so a future regression at any of those three seams
+    // (Jackson deserialization, toRawListing, or the MapStruct mapper) fails this test.
+    var response = loadFixture("fixtures/onliner/valid-sale-response.json");
+    mockRestClientReturning(response);
+    RawListingMapper mapper = new RawListingMapperImpl();
+
+    // When
+    List<RawListing> rawListings = connector.fetch();
+    Listing firstListing = mapper.toEntity(rawListings.get(0));
+    Listing secondListing = mapper.toEntity(rawListings.get(1));
+
+    // Then — the fixture's location.address survives fetch -> RawListing -> Listing unchanged
+    assertThat(rawListings.get(0).address()).isEqualTo("Минск, Орловская ул. 11");
+    assertThat(firstListing.getAddress()).isEqualTo("Минск, Орловская ул. 11");
+    assertThat(rawListings.get(1).address()).isEqualTo("Минск, ул. Немига, 5");
+    assertThat(secondListing.getAddress()).isEqualTo("Минск, ул. Немига, 5");
   }
 
   @Test
