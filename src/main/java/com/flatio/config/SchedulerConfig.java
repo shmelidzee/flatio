@@ -76,8 +76,14 @@ public class SchedulerConfig implements SchedulingConfigurer {
      * common divisors of 60 — see {@code flatio.sync.kufar-*.delta.cron}) plus one full sync
      * overlapping (full syncs run at distinct hours but delta jobs run every 10-20 minutes
      * around the clock, so an overlap with some full sync is possible) — 6 + 1 = 7 core threads.
-     * {@code maxPoolSize} and {@code queueCapacity} add generous headroom above the 12 Kufar
-     * jobs that exist today so a burst is queued rather than rejected.
+     * Per {@link ThreadPoolTaskExecutor}/{@link java.util.concurrent.ThreadPoolExecutor} semantics,
+     * threads beyond {@code corePoolSize} are only created once the queue is completely full, so
+     * at today's expected parallelism (~6-7 concurrent Kufar jobs, all absorbed by the 7 core
+     * threads) the pool is not expected to grow past {@code corePoolSize} in practice —
+     * {@code maxPoolSize=12} is a safety ceiling, not a routinely-used capacity, reached only if
+     * the 20-slot queue backs up (e.g. an unusually slow Kufar response holding threads longer
+     * than usual). {@code queueCapacity} bounds how many pending submissions are held before that
+     * ceiling is tested, so a burst is queued rather than rejected outright.
      *
      * @return executor used by {@code @Async("kufarSyncExecutor")} on every Kufar sync job's
      *     {@code @Scheduled} method
