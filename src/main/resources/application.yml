@@ -240,6 +240,14 @@ flatio:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
   scheduler:
+    # Shared ThreadPoolTaskScheduler (SchedulerConfig#configureTasks) for Onliner/Realt sync jobs
+    # and the health-freshness watchdog cron triggers. Since #332, Kufar sync jobs no longer run
+    # here: their @Scheduled entry methods are also @Async("kufarSyncExecutor"), so the cron
+    # trigger fires on this pool but the actual (potentially RateLimiter-blocking) job body is
+    # handed off to the dedicated kufarSyncExecutor bean (see SchedulerConfig) in effectively zero
+    # time. This pool's size therefore only needs to cover Onliner/Realt/watchdog concurrency, not
+    # connector-kufar-detail contention — see the connector-kufar-detail timeout-duration comment
+    # below for that pool's sizing.
     pool-size: ${FLATIO_SCHEDULER_POOL:5}
   filter:
     price:
@@ -297,6 +305,13 @@ resilience4j:
       # (#328). 15s covers the 10s worst case plus margin, while genuine per-ad failures (network
       # errors, broken __NEXT_DATA__) still fail fast — they never depend on this timeout because
       # KufarAdDetailClient#fetchPreciseAddress fails outside of and after permit acquisition.
+      #
+      # Issue #332: this 15s worst-case wait happens on the dedicated kufarSyncExecutor thread
+      # pool (SchedulerConfig#kufarSyncExecutor, core=7/max=12 — sized for the 6 concurrent delta
+      # jobs above plus one overlapping full sync), never on the shared flatio.scheduler.pool-size
+      # ThreadPoolTaskScheduler used by Onliner/Realt sync and the health-freshness watchdog. Every
+      # Kufar sync job's @Scheduled method is also @Async("kufarSyncExecutor"), so blocking here
+      # cannot delay those unrelated cron ticks regardless of how this timeout-duration is tuned.
       connector-kufar-detail:
         limit-for-period: 1
         limit-refresh-period: 2s
