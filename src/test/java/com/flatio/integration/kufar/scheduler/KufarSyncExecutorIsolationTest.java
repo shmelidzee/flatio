@@ -3,6 +3,14 @@ package com.flatio.integration.kufar.scheduler;
 import com.flatio.domain.country.Country;
 import com.flatio.domain.source.Source;
 import com.flatio.integration.kufar.client.KufarApartmentRentConnector;
+import com.flatio.integration.onliner.scheduler.OnlinerFullSyncJob;
+import com.flatio.integration.onliner.scheduler.OnlinerSaleFullSyncJob;
+import com.flatio.integration.realt.scheduler.RealtFullSyncJob;
+import com.flatio.integration.realt.scheduler.RealtHouseRentFullSyncJob;
+import com.flatio.integration.realt.scheduler.RealtHouseSaleFullSyncJob;
+import com.flatio.integration.realt.scheduler.RealtRoomFullSyncJob;
+import com.flatio.integration.realt.scheduler.RealtRoomSaleFullSyncJob;
+import com.flatio.integration.realt.scheduler.RealtSaleFullSyncJob;
 import com.flatio.repository.CityRepository;
 import com.flatio.repository.ListingRepository;
 import com.flatio.repository.PriceHistoryRepository;
@@ -125,6 +133,58 @@ class KufarSyncExecutorIsolationTest {
   @MockBean
   private ListingIngestionService listingIngestionService;
 
+  // Every other *FullSyncJob bean in this full context has its own onApplicationReady()
+  // (ApplicationReadyEvent -> @Async("startupSyncExecutor")) that calls sourceService /
+  // syncRunService / listingIngestionService — the SAME shared @MockBean instances this test
+  // stubs and asserts against. Technical Reviewer reproduced a genuine intermittent failure
+  // (issue #332 PR review) caused by exactly this: those 13 other jobs' startup threads invoking
+  // the shared mocks concurrently with this test's own Given-block stubbing and
+  // runDeltaSync()/runFullSync() call — Mockito mocks are not thread-safe against concurrent
+  // stub-registration-vs-invocation from different threads. Mocking these beans outright (rather
+  // than only scoping stubs to SOURCE_CODE, which narrows the effect of the race but does not
+  // remove the concurrent access itself) makes their onApplicationReady() a no-op: Spring still
+  // invokes it via the registered @EventListener, but calling a method on a Mockito mock never
+  // executes the real body, so it never touches sourceService/syncRunService/
+  // listingIngestionService at all.
+  @MockBean
+  private KufarApartmentSaleFullSyncJob kufarApartmentSaleFullSyncJob;
+
+  @MockBean
+  private KufarHouseRentFullSyncJob kufarHouseRentFullSyncJob;
+
+  @MockBean
+  private KufarHouseSaleFullSyncJob kufarHouseSaleFullSyncJob;
+
+  @MockBean
+  private KufarRoomRentFullSyncJob kufarRoomRentFullSyncJob;
+
+  @MockBean
+  private KufarRoomSaleFullSyncJob kufarRoomSaleFullSyncJob;
+
+  @MockBean
+  private OnlinerFullSyncJob onlinerFullSyncJob;
+
+  @MockBean
+  private OnlinerSaleFullSyncJob onlinerSaleFullSyncJob;
+
+  @MockBean
+  private RealtFullSyncJob realtFullSyncJob;
+
+  @MockBean
+  private RealtSaleFullSyncJob realtSaleFullSyncJob;
+
+  @MockBean
+  private RealtRoomFullSyncJob realtRoomFullSyncJob;
+
+  @MockBean
+  private RealtRoomSaleFullSyncJob realtRoomSaleFullSyncJob;
+
+  @MockBean
+  private RealtHouseRentFullSyncJob realtHouseRentFullSyncJob;
+
+  @MockBean
+  private RealtHouseSaleFullSyncJob realtHouseSaleFullSyncJob;
+
   @Autowired
   private KufarApartmentRentDeltaSyncJob deltaSyncJob;
 
@@ -142,13 +202,10 @@ class KufarSyncExecutorIsolationTest {
     String callingThreadName = Thread.currentThread().getName();
 
     when(connector.getSourceId()).thenReturn(SOURCE_CODE);
-    // Scoped to SOURCE_CODE (not anyString()): the other 11 Kufar connectors and Onliner/Realt
-    // connectors are real beans in this context too, each with its own onApplicationReady
-    // (ApplicationReadyEvent -> @Async("startupSyncExecutor")) that also calls
-    // sourceService.findByCodeOrThrow. A blanket stub would make every one of them resolve to an
-    // "active source" and, combined with listingIngestionService.countBySource defaulting to 0,
-    // trigger real full-sync network fetches against those connectors' real HTTP clients during
-    // context startup.
+    // Scoped to SOURCE_CODE (not anyString()) as defense in depth on top of the 13
+    // @MockBean(...FullSyncJob) fields above, which already stop those beans' onApplicationReady
+    // from calling sourceService/listingIngestionService for any other source at all. Kept narrow
+    // regardless, so this stub can never accidentally resolve an unrelated source to "active".
     when(sourceService.findByCodeOrThrow(eq(SOURCE_CODE))).thenReturn(activeSource());
     when(syncRunService.findLastSuccessfulRunAt(eq(SOURCE_CODE)))
         .thenReturn(Optional.of(Instant.now().minusSeconds(900)));
