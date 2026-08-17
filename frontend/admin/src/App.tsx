@@ -4,6 +4,7 @@ import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { AdminLayout } from "./components/layout/AdminLayout";
 import { LoginPage } from "./pages/LoginPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
+import { SourcesPage } from "./pages/SourcesPage";
 
 export function App(): ReactElement {
   return (
@@ -13,7 +14,7 @@ export function App(): ReactElement {
         <Route element={<AdminLayout />}>
           <Route path="/" element={<PlaceholderPage title="Дашборд" />} />
           <Route path="/listings" element={<PlaceholderPage title="Объявления" />} />
-          <Route path="/sources" element={<PlaceholderPage title="Источники" />} />
+          <Route path="/sources" element={<SourcesPage />} />
           <Route path="/users" element={<PlaceholderPage title="Пользователи" />} />
         </Route>
       </Route>
