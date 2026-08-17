@@ -142,8 +142,8 @@ class SearchResultSenderTest {
   }
 
   @Test
-  void should_send_text_card_when_photo_download_returns_empty() throws TelegramApiException {
-    // Given — proxy download fails for the listing photo
+  void should_send_placeholder_photo_when_photo_download_returns_empty() throws TelegramApiException {
+    // Given — proxy download fails for the listing photo (e.g. source returns a non-image response)
     var listing = buildListing(3L, "https://content.onliner.by/photo.jpg", "https://onliner.by/3");
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
     when(listingService.search(any(), any())).thenReturn(pageOf(listing));
@@ -154,8 +154,33 @@ class SearchResultSenderTest {
     // When
     searchResultSender.handle(buildCallback(1L, 100L, 10));
 
-    // Then — text card used instead of photo; 2 SendMessage (text card + navigation), 0 SendPhoto
-    verify(telegramClient, never()).execute(any(SendPhoto.class));
+    // Then — issue #333: placeholder photo used instead of a text-only card;
+    // 1 SendPhoto (placeholder), 1 SendMessage (navigation only)
+    ArgumentCaptor<SendPhoto> photoCaptor = ArgumentCaptor.forClass(SendPhoto.class);
+    verify(telegramClient).execute(photoCaptor.capture());
+    assertThat(photoCaptor.getValue().getPhoto().getAttachName()).isEqualTo(TEST_NO_PHOTO_URL);
+    verify(telegramClient, times(1)).execute(any(SendMessage.class));
+  }
+
+  @Test
+  void should_send_text_card_when_photo_download_empty_and_placeholder_send_also_fails()
+      throws TelegramApiException {
+    // Given — proxy download fails, and Telegram also rejects the placeholder photo
+    var listing = buildListing(3L, "https://content.onliner.by/photo.jpg", "https://onliner.by/3");
+    when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
+    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingFormatter.buildCaption(listing)).thenReturn("caption");
+    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(photoProxyClient.download(anyString(), eq(3L))).thenReturn(Optional.empty());
+    lenient().when(telegramClient.execute(any(EditMessageText.class))).thenReturn(mock());
+    when(telegramClient.execute(any(SendPhoto.class)))
+        .thenThrow(new TelegramApiException("Placeholder rejected"));
+
+    // When
+    searchResultSender.handle(buildCallback(1L, 100L, 10));
+
+    // Then — text card fallback: 2 SendMessage (text card + navigation), 0 successful SendPhoto
+    verify(telegramClient).execute(any(SendPhoto.class));
     verify(telegramClient, times(2)).execute(any(SendMessage.class));
   }
 
