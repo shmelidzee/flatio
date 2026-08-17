@@ -114,4 +114,17 @@ describe("SourcesPage", () => {
     const historyTable = screen.getByText("SUCCESS").closest("table") as HTMLTableElement;
     expect(within(historyTable).getByText("DELTA")).toBeInTheDocument();
   });
+
+  it("should_expand_sync_run_history_when_row_activated_with_enter_key", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse([ONLINER_SOURCE]));
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ content: [], totalPages: 0 }));
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Onliner")).toBeInTheDocument());
+
+    const row = screen.getByRole("button", { name: /Onliner/ });
+    fireEvent.keyDown(row, { key: "Enter" });
+
+    await waitFor(() => expect(row).toHaveAttribute("aria-expanded", "true"));
+  });
 });

@@ -148,8 +148,18 @@ function SourceRow({
   return (
     <>
       <tr
-        className="cursor-pointer border-t border-surface-border hover:bg-surface-raised"
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        aria-label={`История синков: ${source.displayName ?? source.sourceId}`}
+        className="cursor-pointer border-t border-surface-border hover:bg-surface-raised focus:outline-none focus-visible:bg-surface-raised"
         onClick={onToggleExpanded}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onToggleExpanded();
+          }
+        }}
       >
         <td className="px-4 py-3 font-mono text-gray-300">{source.sourceId}</td>
         <td className="px-4 py-3">{source.displayName}</td>
