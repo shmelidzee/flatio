@@ -35,6 +35,20 @@ public record AdminListingSearchCriteria(
     @Schema(description = "Number of rooms filter", example = "2")
     Integer rooms,
 
+    @Schema(description = "Minimum total area in square meters (inclusive)", example = "30")
+    BigDecimal areaMin,
+
+    @Schema(description = "Maximum total area in square meters (inclusive)", example = "80")
+    BigDecimal areaMax,
+
+    @Schema(
+        description = "Case-insensitive substring match against title, description and address. "
+            + "Unlike the public search's full-text query, this is a plain substring match — moderation "
+            + "tooling favours predictable matches over ranked relevance.",
+        example = "Минск"
+    )
+    String query,
+
     @Schema(description = "Listing status filter; omit to search across all statuses", example = "INACTIVE")
     ListingStatus status,
 

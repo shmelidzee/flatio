@@ -96,5 +96,9 @@ public record ListingResponse(
     Instant createdAt,
 
     @Schema(description = "Price change history, newest entry first")
-    List<PriceHistoryEntry> priceHistory
+    List<PriceHistoryEntry> priceHistory,
+
+    @Schema(description = "True if at least one other listing shares this listing's deduplication hash",
+        example = "false")
+    Boolean hasDuplicates
 ) {}

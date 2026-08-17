@@ -236,7 +236,7 @@ class ListingControllerTest {
         id, "ext-1", "realt", "Test listing", null, DealType.SELL, null, "APARTMENT",
         BigDecimal.valueOf(75_000), null, "USD", 2, 5, 9,
         BigDecimal.valueOf(52.5), "ул. Ленина, 1", "Минск", null, null, null,
-        true, null, ListingStatus.ACTIVE, "https://realt.by/1", Instant.now(), Instant.now(), List.of()
+        true, null, ListingStatus.ACTIVE, "https://realt.by/1", Instant.now(), Instant.now(), List.of(), false
     );
   }
 }

@@ -976,6 +976,11 @@ export interface components {
             createdAt?: string;
             /** @description Price change history, newest entry first */
             priceHistory?: components["schemas"]["PriceHistoryEntry"][];
+            /**
+             * @description True if at least one other listing shares this listing's deduplication hash
+             * @example false
+             */
+            hasDuplicates?: boolean;
         };
         /** @description A single price history record for a listing */
         PriceHistoryEntry: {
@@ -1121,6 +1126,21 @@ export interface components {
              * @example 2
              */
             rooms?: number;
+            /**
+             * @description Minimum total area in square meters (inclusive)
+             * @example 30
+             */
+            areaMin?: number;
+            /**
+             * @description Maximum total area in square meters (inclusive)
+             * @example 80
+             */
+            areaMax?: number;
+            /**
+             * @description Case-insensitive substring match against title, description and address. Unlike the public search's full-text query, this is a plain substring match — moderation tooling favours predictable matches over ranked relevance.
+             * @example Минск
+             */
+            query?: string;
             /**
              * @description Listing status filter; omit to search across all statuses
              * @example INACTIVE
