@@ -50,4 +50,52 @@ public class SchedulerConfig implements SchedulingConfigurer {
         executor.initialize();
         return executor;
     }
+
+    /**
+     * Dedicated thread pool for the recurring {@code @Scheduled} Kufar delta/full sync jobs.
+     *
+     * <p>All 12 Kufar sync jobs (6 categories x delta/full) call {@code KufarAdDetailClient
+     * #fetchPreciseAddress} once per ad, which blocks its calling thread on the shared
+     * {@code connector-kufar-detail} RateLimiter for up to its {@code timeout-duration} (15s,
+     * see {@code application.yml}) whenever sibling Kufar jobs contend for the same permit
+     * (issue #328). Without this executor, that blocking happens directly on the shared
+     * {@link ThreadPoolTaskScheduler} thread configured in {@link #configureTasks}
+     * (size {@code flatio.scheduler.pool-size}, default 5) — the same pool that runs the
+     * unrelated Onliner/Realt sync jobs and the health-freshness watchdog, so Kufar-detail
+     * contention could delay those cron ticks (issue #332).
+     *
+     * <p>Every Kufar {@code @Scheduled} entry method is additionally annotated with
+     * {@code @Async("kufarSyncExecutor")}: the cron trigger still fires on the shared scheduler
+     * thread, but the {@code @Async} proxy immediately hands the actual (blocking) job body off
+     * to this pool and returns, freeing the scheduler thread in effectively zero time. Kufar
+     * jobs therefore never occupy a shared scheduler thread for the RateLimiter wait, and
+     * Onliner/Realt sync and the health watchdog are unaffected by Kufar-detail contention
+     * regardless of how long that wait is.
+     *
+     * <p>Sized for the worst case of all 6 delta jobs firing on the same cron tick (they share
+     * common divisors of 60 — see {@code flatio.sync.kufar-*.delta.cron}) plus one full sync
+     * overlapping (full syncs run at distinct hours but delta jobs run every 10-20 minutes
+     * around the clock, so an overlap with some full sync is possible) — 6 + 1 = 7 core threads.
+     * Per {@link ThreadPoolTaskExecutor}/{@link java.util.concurrent.ThreadPoolExecutor} semantics,
+     * threads beyond {@code corePoolSize} are only created once the queue is completely full, so
+     * at today's expected parallelism (~6-7 concurrent Kufar jobs, all absorbed by the 7 core
+     * threads) the pool is not expected to grow past {@code corePoolSize} in practice —
+     * {@code maxPoolSize=12} is a safety ceiling, not a routinely-used capacity, reached only if
+     * the 20-slot queue backs up (e.g. an unusually slow Kufar response holding threads longer
+     * than usual). {@code queueCapacity} bounds how many pending submissions are held before that
+     * ceiling is tested, so a burst is queued rather than rejected outright.
+     *
+     * @return executor used by {@code @Async("kufarSyncExecutor")} on every Kufar sync job's
+     *     {@code @Scheduled} method
+     */
+    @Bean(name = "kufarSyncExecutor")
+    public TaskExecutor kufarSyncExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(7);
+        executor.setMaxPoolSize(12);
+        executor.setQueueCapacity(20);
+        executor.setThreadNamePrefix("flatio-kufar-sync-");
+        executor.initialize();
+        return executor;
+    }
 }
