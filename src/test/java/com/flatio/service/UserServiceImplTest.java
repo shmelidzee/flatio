@@ -143,6 +143,38 @@ class UserServiceImplTest {
   }
 
   // -------------------------------------------------------------------------
+  // findByTelegramId
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_return_user_when_telegram_id_exists() {
+    // Given
+    var existingUser = buildUser(42L);
+    when(userRepository.findByTelegramId("42")).thenReturn(Optional.of(existingUser));
+
+    // When
+    var result = userService.findByTelegramId(42L);
+
+    // Then
+    assertThat(result).isPresent();
+    assertThat(result.get().getId()).isEqualTo(42L);
+    verify(userRepository, never()).save(any());
+  }
+
+  @Test
+  void should_return_empty_when_telegram_id_not_found() {
+    // Given
+    when(userRepository.findByTelegramId("404")).thenReturn(Optional.empty());
+
+    // When
+    var result = userService.findByTelegramId(404L);
+
+    // Then
+    assertThat(result).isEmpty();
+    verify(userAuthProviderRepository, never()).save(any());
+  }
+
+  // -------------------------------------------------------------------------
   // helpers
   // -------------------------------------------------------------------------
 

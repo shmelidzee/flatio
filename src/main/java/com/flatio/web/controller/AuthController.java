@@ -3,6 +3,7 @@ package com.flatio.web.controller;
 import com.flatio.service.AuthService;
 import com.flatio.web.dto.AuthResponse;
 import com.flatio.web.dto.TelegramAuthRequest;
+import com.flatio.web.dto.TelegramLoginWidgetRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -43,5 +44,30 @@ public class AuthController {
   @PostMapping("/telegram")
   public AuthResponse telegramLogin(@Valid @RequestBody TelegramAuthRequest request) {
     return authService.authenticateWithTelegram(request.initData());
+  }
+
+  /**
+   * Exchanges a Telegram Login Widget callback payload for a JWT access token.
+   *
+   * <p>Unlike {@link #telegramLogin}, this never creates a new user — the Telegram identity
+   * must already belong to a registered {@code ADMIN} user. Intended for browser-based login
+   * to the admin panel, where Telegram WebApp {@code initData} is not available.
+   *
+   * @param request the widget callback payload
+   * @return issued access token and its validity period
+   */
+  @Operation(
+      summary = "Exchange a Telegram Login Widget payload for a JWT",
+      description = "Validates the signature and freshness of a Telegram Login Widget callback, "
+          + "and issues a JWT access token if the Telegram user is a registered ADMIN. "
+          + "Never creates a new user."
+  )
+  @ApiResponse(responseCode = "200", description = "Token issued")
+  @ApiResponse(responseCode = "400", description = "Invalid request body")
+  @ApiResponse(responseCode = "401", description = "Widget payload signature invalid or expired")
+  @ApiResponse(responseCode = "403", description = "Telegram user is unknown or not an ADMIN")
+  @PostMapping("/telegram-login-widget")
+  public AuthResponse telegramLoginWidget(@Valid @RequestBody TelegramLoginWidgetRequest request) {
+    return authService.authenticateWithTelegramLoginWidget(request);
   }
 }

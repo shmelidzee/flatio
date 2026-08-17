@@ -116,4 +116,21 @@ class SecurityConfigTest {
           }
         });
   }
+
+  @Test
+  void should_not_return_forbidden_when_posting_to_telegram_login_widget_endpoint_without_token() throws Exception {
+    // Given / When — same rule as /api/v1/auth/telegram: this is also where a JWT is issued,
+    // so it cannot itself require one.
+    // Then
+    mockMvc.perform(post("/api/v1/auth/telegram-login-widget")
+            .contentType("application/json")
+            .content("{\"id\":1,\"first_name\":\"Test\",\"auth_date\":1700000000,\"hash\":\"irrelevant\"}"))
+        .andExpect(result -> {
+          int status = result.getResponse().getStatus();
+          if (status == 403) {
+            throw new AssertionError(
+                "/api/v1/auth/telegram-login-widget was rejected by Spring Security with 403 Forbidden");
+          }
+        });
+  }
 }
