@@ -4,6 +4,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -25,11 +26,15 @@ class SchedulerConfigTest {
   private final SchedulerConfig config = new SchedulerConfig();
 
   private ThreadPoolTaskExecutor kufarSyncExecutor;
+  private ThreadPoolTaskExecutor startupSyncExecutor;
 
   @AfterEach
   void tearDown() {
     if (kufarSyncExecutor != null) {
       kufarSyncExecutor.shutdown();
+    }
+    if (startupSyncExecutor != null) {
+      startupSyncExecutor.shutdown();
     }
   }
 
@@ -45,5 +50,31 @@ class SchedulerConfigTest {
     assertThat(kufarSyncExecutor.getMaxPoolSize()).isEqualTo(12);
     assertThat(kufarSyncExecutor.getQueueCapacity()).isEqualTo(20);
     assertThat(kufarSyncExecutor.getThreadNamePrefix()).isEqualTo("flatio-kufar-sync-");
+  }
+
+  @Test
+  void should_wait_for_in_flight_tasks_when_kufar_sync_executor_shuts_down() {
+    // Given / When
+    kufarSyncExecutor = (ThreadPoolTaskExecutor) config.kufarSyncExecutor();
+
+    // Then — issue #337: in-flight Kufar sync jobs get a grace period instead of being
+    // interrupted immediately on application shutdown
+    assertThat((Boolean) ReflectionTestUtils.getField(kufarSyncExecutor, "waitForTasksToCompleteOnShutdown"))
+        .isTrue();
+    assertThat((Long) ReflectionTestUtils.getField(kufarSyncExecutor, "awaitTerminationMillis"))
+        .isEqualTo(20_000L);
+  }
+
+  @Test
+  void should_wait_for_in_flight_tasks_when_startup_sync_executor_shuts_down() {
+    // Given / When
+    startupSyncExecutor = (ThreadPoolTaskExecutor) config.startupSyncExecutor();
+
+    // Then — issue #337: in-flight startup syncs get a grace period instead of being
+    // interrupted immediately on application shutdown
+    assertThat((Boolean) ReflectionTestUtils.getField(startupSyncExecutor, "waitForTasksToCompleteOnShutdown"))
+        .isTrue();
+    assertThat((Long) ReflectionTestUtils.getField(startupSyncExecutor, "awaitTerminationMillis"))
+        .isEqualTo(20_000L);
   }
 }
