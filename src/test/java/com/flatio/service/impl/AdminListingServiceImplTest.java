@@ -54,7 +54,8 @@ class AdminListingServiceImplTest {
         .thenReturn(new PageImpl<>(List.of(listing)));
     when(listingMapper.toSummaryResponse(listing)).thenReturn(summary);
 
-    var criteria = new AdminListingSearchCriteria(null, null, null, null, null, null, null, null, null);
+    var criteria = new AdminListingSearchCriteria(
+        null, null, null, null, null, null, null, null, null, null, null, null);
 
     // When
     Page<ListingSummaryResponse> result = adminListingService.search(criteria, pageable);
@@ -71,7 +72,7 @@ class AdminListingServiceImplTest {
         .thenReturn(new PageImpl<>(List.of()));
 
     var criteria = new AdminListingSearchCriteria(
-        null, null, null, null, null, null, null, ListingStatus.INACTIVE, null);
+        null, null, null, null, null, null, null, null, null, null, ListingStatus.INACTIVE, null);
 
     // When
     Page<ListingSummaryResponse> result = adminListingService.search(criteria, pageable);

@@ -22,21 +22,25 @@ public interface ListingMapper {
    * Converts a Listing entity and its pre-fetched price history to a full response DTO.
    *
    * <p>Price history must be fetched separately by the service and passed here to avoid
-   * lazy-load issues and keep the Listing entity free of bidirectional associations.
+   * lazy-load issues and keep the Listing entity free of bidirectional associations. Likewise
+   * {@code hasDuplicates} is a computed existence check the service performs separately, not a
+   * field on the entity.
    *
-   * @param listing      the listing entity, must not be null
-   * @param priceHistory price history entries, newest first; may be empty, never null
+   * @param listing       the listing entity, must not be null
+   * @param priceHistory  price history entries, newest first; may be empty, never null
+   * @param hasDuplicates true if another listing shares this one's deduplication hash
    * @return full listing response DTO, never null
    */
   @Mapping(source = "listing.source.code", target = "sourceId")
   @Mapping(source = "listing.currency.code", target = "currency")
   @Mapping(source = "priceHistory", target = "priceHistory")
   @Mapping(source = "listing.isNegotiable", target = "isNegotiable")
+  @Mapping(source = "hasDuplicates", target = "hasDuplicates")
   @Mapping(target = "price",
       expression = "java(Boolean.TRUE.equals(listing.getIsNegotiable()) ? null : listing.getPrice())")
   @Mapping(target = "priceLabel",
       expression = "java(resolveNegotiableLabel(listing.getIsNegotiable()))")
-  ListingResponse toResponse(Listing listing, List<PriceHistoryEntry> priceHistory);
+  ListingResponse toResponse(Listing listing, List<PriceHistoryEntry> priceHistory, boolean hasDuplicates);
 
   /**
    * Converts a Listing entity to a summary response DTO for list displays.

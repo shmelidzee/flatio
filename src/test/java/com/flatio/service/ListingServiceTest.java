@@ -87,7 +87,7 @@ class ListingServiceTest {
     when(listingRepository.findById(1L)).thenReturn(Optional.of(listing));
     when(priceHistoryRepository.findByListingOrderByRecordedAtDesc(listing)).thenReturn(priceHistory);
     when(listingMapper.toHistoryEntry(priceHistory.get(0))).thenReturn(historyEntry);
-    when(listingMapper.toResponse(eq(listing), any())).thenReturn(expectedResponse);
+    when(listingMapper.toResponse(eq(listing), any(), eq(false))).thenReturn(expectedResponse);
 
     // When
     var result = listingService.findById(1L);
@@ -97,6 +97,7 @@ class ListingServiceTest {
     assertThat(result.id()).isEqualTo(1L);
     verify(listingRepository).findById(1L);
     verify(priceHistoryRepository).findByListingOrderByRecordedAtDesc(listing);
+    verify(listingRepository, never()).existsByDedupHashAndIdNot(any(), any());
   }
 
   @Test
@@ -107,13 +108,50 @@ class ListingServiceTest {
 
     when(listingRepository.findById(2L)).thenReturn(Optional.of(listing));
     when(priceHistoryRepository.findByListingOrderByRecordedAtDesc(listing)).thenReturn(Collections.emptyList());
-    when(listingMapper.toResponse(eq(listing), eq(Collections.emptyList()))).thenReturn(expectedResponse);
+    when(listingMapper.toResponse(eq(listing), eq(Collections.emptyList()), eq(false))).thenReturn(expectedResponse);
 
     // When
     var result = listingService.findById(2L);
 
     // Then
     assertThat(result).isNotNull();
+  }
+
+  @Test
+  void should_pass_has_duplicates_true_when_another_listing_shares_dedup_hash() {
+    // Given
+    var listing = buildListing(3L);
+    listing.setDedupHash("hash-abc");
+    var expectedResponse = buildListingResponse(3L);
+
+    when(listingRepository.findById(3L)).thenReturn(Optional.of(listing));
+    when(priceHistoryRepository.findByListingOrderByRecordedAtDesc(listing)).thenReturn(Collections.emptyList());
+    when(listingRepository.existsByDedupHashAndIdNot("hash-abc", 3L)).thenReturn(true);
+    when(listingMapper.toResponse(eq(listing), eq(Collections.emptyList()), eq(true))).thenReturn(expectedResponse);
+
+    // When
+    var result = listingService.findById(3L);
+
+    // Then
+    assertThat(result).isNotNull();
+    verify(listingRepository).existsByDedupHashAndIdNot("hash-abc", 3L);
+  }
+
+  @Test
+  void should_skip_duplicate_check_when_dedup_hash_is_null() {
+    // Given
+    var listing = buildListing(4L);
+    var expectedResponse = buildListingResponse(4L);
+
+    when(listingRepository.findById(4L)).thenReturn(Optional.of(listing));
+    when(priceHistoryRepository.findByListingOrderByRecordedAtDesc(listing)).thenReturn(Collections.emptyList());
+    when(listingMapper.toResponse(eq(listing), eq(Collections.emptyList()), eq(false))).thenReturn(expectedResponse);
+
+    // When
+    listingService.findById(4L);
+
+    // Then
+    verify(listingRepository, never()).existsByDedupHashAndIdNot(any(), any());
   }
 
   @Test
@@ -722,7 +760,7 @@ class ListingServiceTest {
         id, "ext-1", "realt", "Test listing", null, DealType.SELL, null, "APARTMENT",
         BigDecimal.valueOf(75_000), null, "USD", 2, 5, 9,
         BigDecimal.valueOf(52.5), "ул. Ленина, 1", "Минск", null, null, null,
-        true, null, ListingStatus.ACTIVE, "https://realt.by/1", Instant.now(), Instant.now(), List.of()
+        true, null, ListingStatus.ACTIVE, "https://realt.by/1", Instant.now(), Instant.now(), List.of(), false
     );
   }
 

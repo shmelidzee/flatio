@@ -33,6 +33,18 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
   );
 
   /**
+   * Checks whether any other listing (any source, any status) shares the given deduplication hash.
+   *
+   * <p>Used to decide whether a listing's detail view offers "unlink from duplicate group" —
+   * a single extra lookup for the one listing being viewed, not a per-row check over a list.
+   *
+   * @param dedupHash the hash to match, never null
+   * @param id        the listing's own ID, excluded from the match
+   * @return true if at least one other listing shares this hash
+   */
+  boolean existsByDedupHashAndIdNot(String dedupHash, Long id);
+
+  /**
    * Finds the first active listing with the same deduplication hash from the same source
    * but with a different external ID.
    *

@@ -64,7 +64,9 @@ public class ListingServiceImpl implements ListingService {
     List<PriceHistoryEntry> historyEntries = history.stream()
         .map(listingMapper::toHistoryEntry)
         .toList();
-    return listingMapper.toResponse(listing, historyEntries);
+    boolean hasDuplicates = listing.getDedupHash() != null
+        && listingRepository.existsByDedupHashAndIdNot(listing.getDedupHash(), listing.getId());
+    return listingMapper.toResponse(listing, historyEntries, hasDuplicates);
   }
 
   @Override

@@ -90,6 +90,15 @@ public class AdminListingServiceImpl implements AdminListingService {
       if (criteria.priceMax() != null) {
         predicates.add(cb.lessThanOrEqualTo(root.get("price"), criteria.priceMax()));
       }
+      if (criteria.areaMin() != null) {
+        predicates.add(cb.greaterThanOrEqualTo(root.get("areaTotalM2"), criteria.areaMin()));
+      }
+      if (criteria.areaMax() != null) {
+        predicates.add(cb.lessThanOrEqualTo(root.get("areaTotalM2"), criteria.areaMax()));
+      }
+      if (criteria.query() != null && !criteria.query().isBlank()) {
+        predicates.add(buildKeywordPredicate(root, cb, criteria.query()));
+      }
       if (criteria.city() != null && !criteria.city().isBlank()) {
         predicates.add(cb.like(cb.lower(root.get("city")), "%" + criteria.city().toLowerCase() + "%"));
       }
@@ -103,6 +112,29 @@ public class AdminListingServiceImpl implements AdminListingService {
 
       return cb.and(predicates.toArray(new Predicate[0]));
     };
+  }
+
+  /**
+   * Builds a case-insensitive substring match against title, description and address.
+   *
+   * <p>Deliberately a plain {@code LIKE}, not the public search's PostgreSQL full-text
+   * {@code websearch_to_tsquery} — that query is a native SQL statement hardcoded to a mandatory,
+   * always-ACTIVE status filter (see {@code ListingRepository#fullTextSearch}), which does not fit
+   * this endpoint's "any status, keyword optional" search. A plain substring match is also more
+   * predictable for moderation use than ranked relevance.
+   *
+   * @param root  the query root, used to reach the title/description/address columns
+   * @param cb    the shared criteria builder
+   * @param query the raw keyword string, never null or blank
+   * @return a predicate matching any of the three columns
+   */
+  private Predicate buildKeywordPredicate(Root<Listing> root, CriteriaBuilder cb, String query) {
+    String pattern = "%" + query.toLowerCase() + "%";
+    return cb.or(
+        cb.like(cb.lower(root.get("title")), pattern),
+        cb.like(cb.lower(cb.coalesce(root.get("description"), "")), pattern),
+        cb.like(cb.lower(cb.coalesce(root.get("address"), "")), pattern)
+    );
   }
 
   /**
