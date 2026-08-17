@@ -391,7 +391,7 @@ reconcile with the SPA design before it is built.
   `DELETE /api/v1/admin/listings/{id}/duplicate-group` clears the hash on the given listing only,
   leaving the rest of its former group intact.
 
-### Admin SPA frontend (#320)
+### Admin SPA frontend (#320, #321)
 
 The admin SPA lives in `frontend/admin/` as a self-contained npm project — Vite + React 18 +
 TypeScript (strict) + Tailwind CSS (dark theme) + React Router + TanStack Query.
@@ -429,10 +429,23 @@ only the static shell, not the API; the SPA itself calls the JWT-protected
 
 **What's scaffolded vs. what's still a stub:** sidebar navigation (Дашборд/Объявления/
 Источники/Пользователи) and route structure are in place; each page is currently a placeholder
-with no real data wired up. `/admin/login` renders a static placeholder — the real Telegram
-Login Widget flow (issue #321, blocked by this one) will replace it and add the actual
-authenticated API calls. `ProtectedRoute` currently only checks that a token exists in
-`localStorage`, not that it's valid or unexpired; that hardens once #321 lands.
+with no real data wired up (screens tracked under #318, sub-issues #322–#326).
+
+**Authentication (#321).** `/admin/login` renders Telegram's official Login Widget (a script tag
+pointing at `telegram.org/js/telegram-widget.js`, wired up by `auth/TelegramLoginWidget.tsx`).
+The bot username it needs is not baked into the build — the SPA fetches it at runtime from the
+public `GET /api/v1/auth/telegram-bot-username` rather than a `VITE_`-prefixed build-time env var,
+because the SPA is built once into the Docker image and that image is reused across environments,
+so a build-time value could not vary per deployment. On a successful widget callback, the frontend
+POSTs the payload to `POST /api/v1/auth/telegram-login-widget`, which validates its Telegram
+signature (a different HMAC-secret derivation than WebApp `initData` — see
+`TelegramLoginWidgetValidator`'s Javadoc) and issues a JWT only if the Telegram identity already
+belongs to a registered `ADMIN` user; it never creates a new user, unlike the bot's own
+`/api/v1/auth/telegram` exchange. The JWT is stored in `sessionStorage`, not `localStorage`, to
+shrink the window an XSS payload could exfiltrate a live token in. `ProtectedRoute` still only
+checks that a token is *present*; `api/client.ts`'s `apiFetch` wrapper is what actually reacts to
+an expired/invalid one — any admin API call it makes that comes back HTTP 401 clears the token and
+hard-redirects to `/admin/login`. Logout (sidebar) simply clears the token and navigates there too.
 
 ---
 

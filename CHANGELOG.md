@@ -8,6 +8,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **PR #339 — Вход в admin-панель через Telegram Login Widget (issue #321)**
+  - `POST /api/v1/auth/telegram-login-widget` — валидирует HMAC-SHA256 подпись Telegram Login
+    Widget (`secret_key = SHA-256(bot_token)` — отдельный алгоритм от WebApp `initData`, который
+    использует `HMAC-SHA256("WebAppData", bot_token)`), выдаёт JWT только пользователю с
+    `role=ADMIN`; в отличие от `/api/v1/auth/telegram` никогда не создаёт новых пользователей —
+    и неизвестный Telegram-аккаунт, и найденный не-админ получают одинаковый 403
+  - `TelegramLoginWidgetValidator` (`com.flatio.security`) — новый класс, намеренно отдельный от
+    `TelegramInitDataValidator` (разный вывод HMAC-секрета для двух форматов Telegram-данных)
+  - `GET /api/v1/auth/telegram-bot-username` — публичный конфиг-эндпоинт, отдаёт SPA имя бота для
+    рендера виджета вместо `VITE_`-переменной сборки (SPA собирается один раз в Docker-образ,
+    переиспользуемый во всех окружениях — build-time значение не годится)
+  - `UserService.findByTelegramId` — новый find-only метод (не создаёт пользователя, в отличие
+    от `findOrCreate`); `AdminAccessDeniedException` → 403 через `GlobalExceptionHandler`
+  - Frontend (`frontend/admin`): `/login` рендерит настоящий Telegram Login Widget; JWT теперь
+    хранится в `sessionStorage`, не в `localStorage` (было в каркасе #320 — фикс, не регрессия);
+    `api/client.ts` (`apiFetch`) — на HTTP 401 чистит токен и делает hard-redirect на
+    `/admin/login`; logout-кнопка в Sidebar; dev-прокси `/api` → `localhost:8080` в
+    `vite.config.ts` для `npm run dev`
+  - `docs/api.md`, `docs/local-setup.md` обновлены
 - **PR #329 — Каркас admin-фронтенда: Vite+React+TS+Tailwind, сборка через Gradle (issue #320)**
   - `frontend/admin/` — новый npm-проект: Vite + React 18 + TypeScript (strict) + Tailwind CSS
     (тёмная тема) + React Router v7 (не v6 — из-за CVE в 6.x) + TanStack Query
@@ -32,6 +51,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - `docs/architecture.md` — раздел «Admin SPA frontend (#320)» с полным описанием пайплайна сборки
 
 ### Fixed
+- **PR #338 — Порог деактивации, graceful shutdown executor'ов, фоллбэк фото в Telegram, диагностика Kufar-адреса (issues #335, #337, #333, #334)**
+  - `flatio.sync.inactive-threshold` снижен с `3` до `1` — максимальная задержка деактивации
+    пропавшего объявления теперь ~1 сутки вместо ~3 (#335)
+  - `kufarSyncExecutor` и `startupSyncExecutor` (`SchedulerConfig`) — включён graceful shutdown
+    (`waitForTasksToCompleteOnShutdown=true`, `awaitTerminationSeconds=20`), меньше шума в
+    логах/метриках при деплое на Railway (#337)
+  - `SearchResultSender.sendCard` — при ошибке загрузки фото карточка теперь уходит с
+    плейсхолдер-фото вместо текстовой; текстовая карточка остаётся крайним случаем (#333)
+  - `KufarAdDetailClient` — `reason=`-тегированное логирование на каждом пути fallback на грубый
+    `region, area` адрес, чтобы измерить частоту каждой причины в прод-логах (#334 — issue
+    остаётся открытым до накопления прод-данных, инструментация не равна фиксу)
+  - issue #327 (пустой Onliner-адрес) закрыт отдельным комментарием — уже был решён ранее в
+    PR #331, чек-лист issue просто не был отмечен
+- **PR #336 — Изолировать Kufar sync job'ы от общего thread pool планировщика (issue #332)**
+  - Новый bean `kufarSyncExecutor` (`core=7, max=12, queue=20`) в `SchedulerConfig`; все 12
+    `@Scheduled`-методов Kufar sync job'ов (6 категорий × delta/full) помечены
+    `@Async("kufarSyncExecutor")`
+  - Onliner/Realt sync и health-freshness watchdog больше не блокируются конкуренцией за
+    `connector-kufar-detail` RateLimiter независимо от его `timeout-duration`
+- **PR #331 — Увеличить timeout rate limiter Kufar-detail; расследовать address Onliner (issues #328, #327)**
+  - `connector-kufar-detail.timeout-duration` увеличен с `5s` до `15s` — устраняет массовый
+    fallback на грубый адрес из-за конкуренции до 6 параллельных Kufar sync job за общий
+    `RateLimiter`, а не из-за реальных сбоев сети (#328)
+  - Расследование #327 (пустой `address` у Onliner-объявлений в БД): код-дефекта в `develop` не
+    найдено — путь `location.address → RawListing → Listing` корректен и покрыт регрессионными
+    тестами; добавлено DEBUG-логирование адреса сразу после парсинга для диагностики рецидивов
 - **PR #300 — «Договорная» вместо «0 BYN»; извлечение адреса из Kufar (issues #298, #299)**
   - Flyway V45 — `ALTER TABLE listings ADD COLUMN is_negotiable BOOLEAN NOT NULL DEFAULT FALSE`
   - `RawListing` — добавлено поле `isNegotiable` (23-е)
