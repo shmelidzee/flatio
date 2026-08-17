@@ -19,7 +19,7 @@ function renderAt(path: string) {
 
 describe("ProtectedRoute", () => {
   beforeEach(() => {
-    window.localStorage.clear();
+    window.sessionStorage.clear();
   });
 
   it("should_redirect_to_login_when_no_token_present", () => {

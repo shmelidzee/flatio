@@ -6,6 +6,7 @@ import com.flatio.domain.user.UserAuthProvider;
 import com.flatio.repository.UserAuthProviderRepository;
 import com.flatio.repository.UserRepository;
 import java.time.Instant;
+import java.util.Optional;
 
 import com.flatio.service.UserService;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +33,11 @@ public class UserServiceImpl implements UserService {
     return userRepository.findByTelegramId(externalId)
         .map(user -> refreshLastSeen(user))
         .orElseGet(() -> register(telegramId, externalId, username, firstName));
+  }
+
+  @Override
+  public Optional<User> findByTelegramId(Long telegramId) {
+    return userRepository.findByTelegramId(String.valueOf(telegramId));
   }
 
   private User refreshLastSeen(User user) {

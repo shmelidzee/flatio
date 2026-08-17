@@ -1,6 +1,7 @@
 package com.flatio.service;
 
 import com.flatio.domain.user.User;
+import java.util.Optional;
 
 /**
  * Service for managing platform users.
@@ -19,4 +20,16 @@ public interface UserService {
    * @return the persisted user, never null
    */
   User findOrCreate(Long telegramId, String username, String firstName);
+
+  /**
+   * Finds an existing user by Telegram ID without creating one if absent.
+   *
+   * <p>Unlike {@link #findOrCreate}, this never registers a new user and does not update
+   * {@code lastSeen} — intended for auth flows that must not create accounts as a side effect
+   * (e.g. admin-panel login).
+   *
+   * @param telegramId Telegram user ID (numeric)
+   * @return the user if one exists for this Telegram ID, otherwise empty
+   */
+  Optional<User> findByTelegramId(Long telegramId);
 }

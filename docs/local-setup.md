@@ -55,6 +55,17 @@ export TELEGRAM_BOT_USERNAME=your_bot_username
 ./gradlew test integrationTest
 ```
 
+### 5. Admin SPA — Telegram Login Widget (local dev)
+
+`npm run dev` inside `frontend/admin/` serves the SPA standalone (not through the Spring Boot
+static resources pipeline). Requests to `/api/**` are proxied to `http://localhost:8080` by
+`vite.config.ts` in dev mode, so the backend (`./gradlew bootRun`) must be running for
+`/admin/login` to render the [Telegram Login Widget](https://core.telegram.org/widgets/login) —
+the SPA fetches the bot username to render it from `GET /api/v1/auth/telegram-bot-username`
+rather than needing its own copy of `TELEGRAM_BOT_USERNAME` at build time. The proxy also means
+`CORS_ALLOWED_ORIGINS` does not need to include the Vite dev server's origin, since the browser
+only ever talks to Vite, not the backend directly.
+
 ---
 
 ## Load Testing

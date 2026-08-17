@@ -1,5 +1,6 @@
 package com.flatio.web.controller;
 
+import com.flatio.common.exception.AdminAccessDeniedException;
 import com.flatio.common.exception.InvalidTelegramAuthException;
 import com.flatio.common.exception.ListingNotFoundException;
 import com.flatio.common.exception.SourceNotFoundException;
@@ -63,6 +64,13 @@ public class GlobalExceptionHandler {
   public ErrorResponse handleInvalidTelegramAuth(InvalidTelegramAuthException ex, HttpServletRequest request) {
     log.warn("Telegram initData validation failed on {}: {}", request.getRequestURI(), ex.getMessage());
     return buildError(HttpStatus.UNAUTHORIZED, ex.getMessage(), request.getRequestURI(), List.of());
+  }
+
+  @ExceptionHandler(AdminAccessDeniedException.class)
+  @ResponseStatus(HttpStatus.FORBIDDEN)
+  public ErrorResponse handleAdminAccessDenied(AdminAccessDeniedException ex, HttpServletRequest request) {
+    log.warn("Admin access denied on {}: {}", request.getRequestURI(), ex.getMessage());
+    return buildError(HttpStatus.FORBIDDEN, ex.getMessage(), request.getRequestURI(), List.of());
   }
 
   @ExceptionHandler(BindException.class)

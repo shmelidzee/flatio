@@ -58,6 +58,72 @@ Base URL: `/api/v1`
 
 ---
 
+### GET /api/v1/auth/telegram-bot-username
+
+Публичный эндпоинт. Возвращает публичное имя Telegram-бота, нужное admin-SPA для рендеринга
+[Telegram Login Widget](https://core.telegram.org/widgets/login) на странице `/admin/login` —
+не секрет, то же значение видно в самом Telegram у бота. Отдаётся через API, а не зашивается в
+SPA на этапе сборки как `VITE_`-переменная, потому что SPA собирается один раз в Docker-образ и
+этот образ переиспользуется во всех окружениях — значение времени сборки не могло бы отличаться
+по окружениям так, как это позволяет рантайм-запрос; заодно имя бота остаётся определено ровно в
+одном месте (`TELEGRAM_BOT_USERNAME`).
+
+**Ответ 200:**
+
+```json
+{ "botUsername": "flatio_bot" }
+```
+
+---
+
+### POST /api/v1/auth/telegram-login-widget
+
+Публичный эндпоинт (не требует токена — это и есть точка его выдачи). Используется браузерным
+входом в admin-панель (`/admin/login`), где Telegram WebApp `initData` недоступен — вместо него
+принимает payload колбэка [Telegram Login Widget](https://core.telegram.org/widgets/login).
+
+Проверяет подпись (`HMAC-SHA256` с секретом `SHA-256(bot_token)` — **другой алгоритм вывода
+секрета**, чем у `/api/v1/auth/telegram`, см. [checking authorization](https://core.telegram.org/widgets/login#checking-authorization))
+и свежесть (`auth_date` не старше 24 часов). В отличие от `/api/v1/auth/telegram`,
+**не создаёт нового пользователя** — Telegram-аккаунт должен уже принадлежать пользователю с
+`role=ADMIN`, иначе запрос отклоняется с 403 (одинаковое сообщение для «пользователь не найден»
+и «пользователь найден, но не ADMIN» — ответ не даёт понять, какой из двух случаев произошёл).
+
+**Тело запроса:**
+
+```json
+{
+  "id": 123456789,
+  "first_name": "John",
+  "last_name": "Doe",
+  "username": "johndoe",
+  "photo_url": "https://t.me/i/userpic/320/john.jpg",
+  "auth_date": 1700000000,
+  "hash": "abc123..."
+}
+```
+
+`last_name`, `username` и `photo_url` присутствуют только если пользователь их указал в Telegram —
+Telegram не включает их в колбэк, если они не заданы, и их отсутствие учитывается при проверке
+подписи (это не пустые строки, а именно отсутствующие поля).
+
+**Ответ 200:**
+
+```json
+{ "accessToken": "eyJhbGciOiJIUzI1NiJ9...", "expiresIn": 3600 }
+```
+
+**Ошибки:**
+
+| Код | Описание |
+|-----|----------|
+| 400 | Обязательное поле (`id`, `first_name`, `auth_date`, `hash`) пустое или отсутствует |
+| 401 | Подпись payload невалидна или `auth_date` просрочен |
+| 403 | Telegram-аккаунт не найден среди пользователей платформы, либо найден, но не `ADMIN` |
+| 429 | Превышен лимит запросов с этого IP (см. «Rate limiting» ниже) |
+
+---
+
 ## Listings
 
 ### GET /api/v1/listings
