@@ -1,15 +1,18 @@
 const TOKEN_KEY = "flatio_admin_token";
 
+// sessionStorage, not localStorage: the token is cleared when the tab closes instead of
+// persisting indefinitely, which shrinks the window an XSS payload could exfiltrate a live
+// token in (issue #321).
 export function getToken(): string | null {
-  return window.localStorage.getItem(TOKEN_KEY);
+  return window.sessionStorage.getItem(TOKEN_KEY);
 }
 
 export function setToken(token: string): void {
-  window.localStorage.setItem(TOKEN_KEY, token);
+  window.sessionStorage.setItem(TOKEN_KEY, token);
 }
 
 export function clearToken(): void {
-  window.localStorage.removeItem(TOKEN_KEY);
+  window.sessionStorage.removeItem(TOKEN_KEY);
 }
 
 export function isAuthenticated(): boolean {

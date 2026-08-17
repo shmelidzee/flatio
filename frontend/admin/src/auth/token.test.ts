@@ -3,7 +3,7 @@ import { clearToken, getToken, isAuthenticated, setToken } from "./token";
 
 describe("token", () => {
   beforeEach(() => {
-    window.localStorage.clear();
+    window.sessionStorage.clear();
   });
 
   it("should_return_null_when_no_token_stored", () => {

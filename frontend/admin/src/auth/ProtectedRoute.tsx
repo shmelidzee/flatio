@@ -3,9 +3,11 @@ import { Navigate, Outlet } from "react-router-dom";
 import { isAuthenticated } from "./token";
 
 /**
- * Guards nested routes behind a valid token in localStorage.
- * Real Telegram Login Widget auth flow ships in a follow-up issue (#321) — until then this
- * only checks token presence, not validity/expiry.
+ * Guards nested routes behind a token being present in sessionStorage.
+ * Only checks presence, not validity/expiry — decoding/verifying a JWT client-side would just
+ * duplicate the server's own check. An expired or otherwise invalid token is instead caught by
+ * apiFetch (see api/client.ts): any admin API call that comes back 401 clears the token and
+ * hard-redirects to /login.
  */
 export function ProtectedRoute(): ReactElement {
   if (!isAuthenticated()) {
