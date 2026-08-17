@@ -64,7 +64,7 @@ class ListingIngestionServiceImplTest {
     source = buildSource(1L, "ONLINER");
     // @Lazy @Autowired field is not injectable by Mockito constructor injection; set explicitly
     ReflectionTestUtils.setField(ingestionService, "self", self);
-    ReflectionTestUtils.setField(ingestionService, "inactiveThreshold", 3);
+    ReflectionTestUtils.setField(ingestionService, "inactiveThreshold", 1);
   }
 
   // -------------------------------------------------------------------------
@@ -849,14 +849,14 @@ class ListingIngestionServiceImplTest {
     // Given
     var activeIds = Set.of("ext-1", "ext-2");
     when(listingRepository.incrementMissedSyncsForAbsent(source, activeIds)).thenReturn(5);
-    when(listingRepository.deactivateByMissedSyncsThreshold(source, 3)).thenReturn(2);
+    when(listingRepository.deactivateByMissedSyncsThreshold(source, 1)).thenReturn(2);
 
     // When
     ingestionService.applyMissedSyncPenalty(source, activeIds);
 
     // Then — both repository calls issued in order
     verify(listingRepository).incrementMissedSyncsForAbsent(source, activeIds);
-    verify(listingRepository).deactivateByMissedSyncsThreshold(source, 3);
+    verify(listingRepository).deactivateByMissedSyncsThreshold(source, 1);
   }
 
   @Test
@@ -864,7 +864,7 @@ class ListingIngestionServiceImplTest {
     // Given — incremented=5, deactivated=2; method must return deactivated
     var activeIds = Set.of("ext-1");
     when(listingRepository.incrementMissedSyncsForAbsent(source, activeIds)).thenReturn(5);
-    when(listingRepository.deactivateByMissedSyncsThreshold(source, 3)).thenReturn(2);
+    when(listingRepository.deactivateByMissedSyncsThreshold(source, 1)).thenReturn(2);
 
     // When
     int result = ingestionService.applyMissedSyncPenalty(source, activeIds);
@@ -878,7 +878,7 @@ class ListingIngestionServiceImplTest {
     // Given — counters incremented but none hit threshold yet
     var activeIds = Set.of("ext-1", "ext-2");
     when(listingRepository.incrementMissedSyncsForAbsent(source, activeIds)).thenReturn(3);
-    when(listingRepository.deactivateByMissedSyncsThreshold(source, 3)).thenReturn(0);
+    when(listingRepository.deactivateByMissedSyncsThreshold(source, 1)).thenReturn(0);
 
     // When
     int result = ingestionService.applyMissedSyncPenalty(source, activeIds);

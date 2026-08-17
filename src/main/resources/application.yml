@@ -155,7 +155,12 @@ nominatim:
 flatio:
   sync:
     interval-ms: ${FLATIO_SYNC_INTERVAL_MS:1800000}
-    inactive-threshold: ${FLATIO_SYNC_INACTIVE_THRESHOLD:3}
+    # Number of consecutive full syncs a listing must be absent from before it is deactivated
+    # (ListingIngestionServiceImpl#applyMissedSyncPenalty, only incremented by *FullSyncJob, which
+    # runs once a day per source). threshold=1 means deactivation after the first missed full sync,
+    # i.e. a maximum deactivation delay of ~1 day. No margin is kept for a single transient fetch
+    # failure — see issue #335 for the reasoning behind removing that margin.
+    inactive-threshold: ${FLATIO_SYNC_INACTIVE_THRESHOLD:1}
     cleanup:
       cron: ${FLATIO_SYNC_CLEANUP_CRON:0 30 1 * * *}
       keep-per-source: ${FLATIO_SYNC_CLEANUP_KEEP_PER_SOURCE:100}

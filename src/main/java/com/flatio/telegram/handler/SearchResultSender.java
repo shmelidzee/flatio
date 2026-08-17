@@ -56,10 +56,11 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
  * Per-user {@link SearchSession} objects track the active criteria and current page.
  * Sessions expire after {@value #SESSION_TTL_MINUTES} minutes of inactivity.
  *
- * <p>Photo cards are sent via {@code sendPhoto}. When the listing has no photo URL a
- * configurable placeholder image ({@code telegram.bot.no-photo-url}) is used instead.
- * If the Telegram API rejects both the real URL and the placeholder, the card falls back
- * to a plain text message so the user always receives the listing details.
+ * <p>Photo cards are sent via {@code sendPhoto}. A configurable placeholder image
+ * ({@code telegram.bot.no-photo-url}) is used whenever the listing has no photo URL, or the
+ * real photo could not be downloaded, or Telegram rejects the real photo with
+ * {@code PHOTO_INVALID_DIMENSIONS}. If the placeholder itself also fails to send, the card falls
+ * back to a plain text message so the user always receives the listing details.
  */
 @Component
 @Slf4j
@@ -227,7 +228,9 @@ public class SearchResultSender {
     Instant start = Instant.now();
     Optional<byte[]> photoBytes = photoProxyClient.download(photoUrl, listing.id());
     if (photoBytes.isEmpty()) {
-      sendTextCard(chatId, caption, keyboard);
+      log.warn("Photo download failed, falling back to placeholder: listingId={}, url={}",
+          listing.id(), photoUrl);
+      sendPlaceholderPhoto(chatId, caption, keyboard, listing.id());
       return;
     }
 

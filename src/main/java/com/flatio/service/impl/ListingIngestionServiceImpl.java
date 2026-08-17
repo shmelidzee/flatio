@@ -51,7 +51,7 @@ public class ListingIngestionServiceImpl implements ListingIngestionService {
   @Autowired
   private ListingIngestionService self;
 
-  @Value("${flatio.sync.inactive-threshold:3}")
+  @Value("${flatio.sync.inactive-threshold:1}")
   private int inactiveThreshold;
 
   @Override

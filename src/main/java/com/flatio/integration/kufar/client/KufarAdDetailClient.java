@@ -29,7 +29,11 @@ import java.net.URISyntaxException;
  * and may change shape without notice on any Kufar frontend deploy.
  *
  * <p>Any failure (network, timeout, missing field, unexpected shape) results in {@code null},
- * never an exception — callers fall back to the coarser region/area address.
+ * never an exception — callers fall back to the coarser region/area address. Every code path
+ * that returns {@code null} logs a {@code reason=} tag (e.g. {@code not-provided-by-source},
+ * {@code next-data-marker-missing}, {@code request-failed}) so the frequency of each distinct
+ * cause of the fallback can be measured from logs instead of only ever seeing the fallback
+ * itself (issue #334).
  *
  * <p>{@code adLink} originates from the Kufar search API response, not from our own users,
  * but it is still external, untrusted input used to build the request URI. Before every
@@ -71,11 +75,12 @@ public class KufarAdDetailClient {
       return null;
     }
     String html = restClient.get().uri(adLink).retrieve().body(String.class);
-    return extractAddress(html);
+    return extractAddress(html, adLink);
   }
 
   String fetchPreciseAddressFallback(String adLink, Exception e) {
-    log.warn("Falling back to coarse address: adLink={}, error={}", adLink, e.getMessage());
+    log.warn("Precise address unavailable: reason=request-failed ({}), adLink={}, error={}",
+        e.getClass().getSimpleName(), adLink, e.getMessage());
     return null;
   }
 
@@ -107,8 +112,19 @@ public class KufarAdDetailClient {
     }
   }
 
-  private String extractAddress(String html) {
-    String json = extractNextDataJson(html);
+  /**
+   * Extracts the address from the ad detail page's {@code __NEXT_DATA__} blob.
+   *
+   * <p>Every {@code return null} path logs a distinct {@code reason=} tag so that fallback
+   * frequency by cause (source genuinely has no street address vs. page structure changed vs.
+   * a parse error) can be measured from logs — see issue #334.
+   *
+   * @param html   the ad detail page body, or null if the response had no body
+   * @param adLink used only to correlate log lines with the originating ad
+   * @return the precise address, or null if unavailable for any reason
+   */
+  private String extractAddress(String html, String adLink) {
+    String json = extractNextDataJson(html, adLink);
     if (json == null) {
       return null;
     }
@@ -118,27 +134,37 @@ public class KufarAdDetailClient {
         node = node.path(key);
       }
       String address = node.isMissingNode() ? null : node.asText(null);
-      return (address != null && !address.isBlank()) ? address : null;
+      if (address == null || address.isBlank()) {
+        log.debug("Precise address unavailable: reason=not-provided-by-source, adLink={}", adLink);
+        return null;
+      }
+      return address;
     } catch (Exception e) {
-      log.warn("Failed to parse __NEXT_DATA__ address: error={}", e.getMessage());
+      log.warn("Precise address unavailable: reason=address-parse-error, adLink={}, error={}",
+          adLink, e.getMessage());
       return null;
     }
   }
 
-  private String extractNextDataJson(String html) {
+  private String extractNextDataJson(String html, String adLink) {
     if (html == null) {
+      log.debug("Precise address unavailable: reason=empty-response-body, adLink={}", adLink);
       return null;
     }
     int markerIndex = html.indexOf(NEXT_DATA_MARKER);
     if (markerIndex < 0) {
+      log.warn("Precise address unavailable: reason=next-data-marker-missing, adLink={} "
+          + "(ad detail page structure may have changed)", adLink);
       return null;
     }
     int scriptStart = html.indexOf('>', markerIndex) + 1;
     if (scriptStart <= 0) {
+      log.warn("Precise address unavailable: reason=next-data-script-tag-malformed, adLink={}", adLink);
       return null;
     }
     int scriptEnd = html.indexOf(SCRIPT_END_TAG, scriptStart);
     if (scriptEnd < 0) {
+      log.warn("Precise address unavailable: reason=next-data-script-truncated, adLink={}", adLink);
       return null;
     }
     return html.substring(scriptStart, scriptEnd);

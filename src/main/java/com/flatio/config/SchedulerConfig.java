@@ -20,6 +20,20 @@ import org.springframework.scheduling.config.ScheduledTaskRegistrar;
 @EnableAsync
 public class SchedulerConfig implements SchedulingConfigurer {
 
+    /**
+     * Grace period given to {@link #startupSyncExecutor} and {@link #kufarSyncExecutor} to finish
+     * in-flight tasks on shutdown, before Spring interrupts remaining threads and continues the
+     * shutdown regardless. Sized above the {@code connector-kufar-detail} RateLimiter's 15s
+     * {@code timeout-duration} (see {@code application.yml}) so a single ad's precise-address
+     * fetch that is mid-wait when shutdown starts gets a realistic chance to complete, without
+     * holding up application shutdown for the entire remaining backlog of an interrupted job —
+     * each listing in {@code ListingIngestionServiceImpl} is ingested in its own
+     * {@code @Transactional}, so any task still running once this window elapses is interrupted
+     * and its unprocessed listings are simply picked up by the next sync cycle via dedup on
+     * {@code sourceId + externalId}.
+     */
+    private static final int SHUTDOWN_AWAIT_TERMINATION_SECONDS = 20;
+
     @Value("${flatio.scheduler.pool-size}")
     private int poolSize;
 
@@ -39,6 +53,10 @@ public class SchedulerConfig implements SchedulingConfigurer {
      * <p>Each connector runs its startup sync in its own thread so they proceed in parallel
      * and do not block the main application thread — allowing the healthcheck to pass immediately.
      *
+     * <p>On graceful shutdown, waits for in-flight startup syncs to finish (up to
+     * {@link #SHUTDOWN_AWAIT_TERMINATION_SECONDS}) instead of interrupting them immediately —
+     * see {@link #kufarSyncExecutor} for why this matters and what happens if the wait expires.
+     *
      * @return executor used by {@code @Async("startupSyncExecutor")} in FullSyncJob classes
      */
     @Bean(name = "startupSyncExecutor")
@@ -47,6 +65,8 @@ public class SchedulerConfig implements SchedulingConfigurer {
         executor.setCorePoolSize(3);
         executor.setMaxPoolSize(3);
         executor.setThreadNamePrefix("flatio-startup-sync-");
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(SHUTDOWN_AWAIT_TERMINATION_SECONDS);
         executor.initialize();
         return executor;
     }
@@ -85,6 +105,11 @@ public class SchedulerConfig implements SchedulingConfigurer {
      * than usual). {@code queueCapacity} bounds how many pending submissions are held before that
      * ceiling is tested, so a burst is queued rather than rejected outright.
      *
+     * <p>On graceful shutdown (e.g. a Railway deploy/restart), waits up to
+     * {@link #SHUTDOWN_AWAIT_TERMINATION_SECONDS} for in-flight Kufar jobs to finish their current
+     * listing rather than interrupting them mid-request — see the constant's Javadoc for the
+     * timeout rationale and what happens to unprocessed listings once it elapses (issue #337).
+     *
      * @return executor used by {@code @Async("kufarSyncExecutor")} on every Kufar sync job's
      *     {@code @Scheduled} method
      */
@@ -95,6 +120,8 @@ public class SchedulerConfig implements SchedulingConfigurer {
         executor.setMaxPoolSize(12);
         executor.setQueueCapacity(20);
         executor.setThreadNamePrefix("flatio-kufar-sync-");
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(SHUTDOWN_AWAIT_TERMINATION_SECONDS);
         executor.initialize();
         return executor;
     }
