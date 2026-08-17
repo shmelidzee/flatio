@@ -10,6 +10,7 @@ import com.flatio.security.TelegramInitDataValidator;
 import com.flatio.security.TelegramLoginWidgetValidator;
 import com.flatio.security.TelegramWebAppUser;
 import com.flatio.service.UserService;
+import com.flatio.telegram.config.BotConfig;
 import com.flatio.web.dto.TelegramLoginWidgetRequest;
 import java.util.List;
 import java.util.Optional;
@@ -45,6 +46,9 @@ class AuthServiceImplTest {
 
   @Mock
   private JwtProperties jwtProperties;
+
+  @Mock
+  private BotConfig botConfig;
 
   @InjectMocks
   private AuthServiceImpl authService;
@@ -155,6 +159,22 @@ class AuthServiceImplTest {
         .isInstanceOf(InvalidTelegramAuthException.class)
         .hasMessageContaining("signature");
     verify(userService, never()).findByTelegramId(any());
+  }
+
+  // -------------------------------------------------------------------------
+  // getTelegramBotUsername
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_return_configured_bot_username() {
+    // Given
+    when(botConfig.username()).thenReturn("flatio_bot");
+
+    // When
+    var result = authService.getTelegramBotUsername();
+
+    // Then
+    assertThat(result).isEqualTo("flatio_bot");
   }
 
   private static TelegramLoginWidgetRequest buildWidgetRequest(Long telegramId) {

@@ -16,6 +16,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -149,5 +150,20 @@ class AuthControllerTest {
             .contentType("application/json")
             .content("{}"))
         .andExpect(status().isBadRequest());
+  }
+
+  // -------------------------------------------------------------------------
+  // GET /api/v1/auth/telegram-bot-username
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_return_200_with_bot_username() throws Exception {
+    // Given
+    when(authService.getTelegramBotUsername()).thenReturn("flatio_bot");
+
+    // When / Then
+    mockMvc.perform(get("/api/v1/auth/telegram-bot-username"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.botUsername").value("flatio_bot"));
   }
 }

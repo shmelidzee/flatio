@@ -3,12 +3,14 @@ package com.flatio.web.controller;
 import com.flatio.service.AuthService;
 import com.flatio.web.dto.AuthResponse;
 import com.flatio.web.dto.TelegramAuthRequest;
+import com.flatio.web.dto.TelegramBotConfigResponse;
 import com.flatio.web.dto.TelegramLoginWidgetRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -69,5 +71,22 @@ public class AuthController {
   @PostMapping("/telegram-login-widget")
   public AuthResponse telegramLoginWidget(@Valid @RequestBody TelegramLoginWidgetRequest request) {
     return authService.authenticateWithTelegramLoginWidget(request);
+  }
+
+  /**
+   * Returns the public Telegram bot username needed to render the Telegram Login Widget on
+   * the admin login page.
+   *
+   * @return the configured bot username
+   */
+  @Operation(
+      summary = "Get the public Telegram bot username",
+      description = "Returns the bot username the admin SPA needs to render the Telegram Login "
+          + "Widget. Not a secret — the same value is public on the bot's own Telegram profile."
+  )
+  @ApiResponse(responseCode = "200", description = "Bot username returned")
+  @GetMapping("/telegram-bot-username")
+  public TelegramBotConfigResponse telegramBotUsername() {
+    return new TelegramBotConfigResponse(authService.getTelegramBotUsername());
   }
 }

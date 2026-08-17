@@ -8,6 +8,7 @@ import com.flatio.security.TelegramInitDataValidator;
 import com.flatio.security.TelegramLoginWidgetValidator;
 import com.flatio.service.AuthService;
 import com.flatio.service.UserService;
+import com.flatio.telegram.config.BotConfig;
 import com.flatio.web.dto.AuthResponse;
 import com.flatio.web.dto.TelegramLoginWidgetRequest;
 import java.util.List;
@@ -28,6 +29,7 @@ public class AuthServiceImpl implements AuthService {
   private final UserService userService;
   private final JwtService jwtService;
   private final JwtProperties jwtProperties;
+  private final BotConfig botConfig;
 
   @Override
   @Transactional
@@ -45,6 +47,11 @@ public class AuthServiceImpl implements AuthService {
         .orElseThrow(() -> new AdminAccessDeniedException(
             "This Telegram account does not have admin-panel access"));
     return issueToken(user.getId(), user.getRole());
+  }
+
+  @Override
+  public String getTelegramBotUsername() {
+    return botConfig.username();
   }
 
   private AuthResponse issueToken(Long userId, UserRole role) {
