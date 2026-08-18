@@ -3,9 +3,11 @@ package com.flatio.web.controller;
 import com.flatio.common.exception.AdminAccessDeniedException;
 import com.flatio.common.exception.InvalidTelegramAuthException;
 import com.flatio.common.exception.ListingNotFoundException;
+import com.flatio.common.exception.SelfRoleChangeForbiddenException;
 import com.flatio.common.exception.SourceNotFoundException;
 import com.flatio.common.exception.SubscriptionLimitExceededException;
 import com.flatio.common.exception.SubscriptionNotFoundException;
+import com.flatio.common.exception.UserNotFoundException;
 import com.flatio.web.dto.ErrorResponse;
 import com.flatio.web.dto.ValidationError;
 import jakarta.servlet.http.HttpServletRequest;
@@ -70,6 +72,20 @@ public class GlobalExceptionHandler {
   @ResponseStatus(HttpStatus.FORBIDDEN)
   public ErrorResponse handleAdminAccessDenied(AdminAccessDeniedException ex, HttpServletRequest request) {
     log.warn("Admin access denied on {}: {}", request.getRequestURI(), ex.getMessage());
+    return buildError(HttpStatus.FORBIDDEN, ex.getMessage(), request.getRequestURI(), List.of());
+  }
+
+  @ExceptionHandler(UserNotFoundException.class)
+  @ResponseStatus(HttpStatus.NOT_FOUND)
+  public ErrorResponse handleUserNotFound(UserNotFoundException ex, HttpServletRequest request) {
+    log.warn("Resource not found on {}: {}", request.getRequestURI(), ex.getMessage());
+    return buildError(HttpStatus.NOT_FOUND, ex.getMessage(), request.getRequestURI(), List.of());
+  }
+
+  @ExceptionHandler(SelfRoleChangeForbiddenException.class)
+  @ResponseStatus(HttpStatus.FORBIDDEN)
+  public ErrorResponse handleSelfRoleChangeForbidden(SelfRoleChangeForbiddenException ex, HttpServletRequest request) {
+    log.warn("Self role change denied on {}: {}", request.getRequestURI(), ex.getMessage());
     return buildError(HttpStatus.FORBIDDEN, ex.getMessage(), request.getRequestURI(), List.of());
   }
 
