@@ -1,9 +1,11 @@
 package com.flatio.service.impl;
 
 import com.flatio.common.exception.ListingNotFoundException;
+import com.flatio.domain.audit.AdminAuditObjectType;
 import com.flatio.domain.listing.Listing;
 import com.flatio.domain.listing.ListingStatus;
 import com.flatio.repository.ListingRepository;
+import com.flatio.service.AdminAuditLogService;
 import com.flatio.web.dto.AdminListingSearchCriteria;
 import com.flatio.web.dto.ListingSummaryResponse;
 import com.flatio.web.mapper.ListingMapper;
@@ -36,6 +38,9 @@ class AdminListingServiceImplTest {
 
   @Mock
   private ListingMapper listingMapper;
+
+  @Mock
+  private AdminAuditLogService adminAuditLogService;
 
   @InjectMocks
   private AdminListingServiceImpl adminListingService;
@@ -102,6 +107,7 @@ class AdminListingServiceImplTest {
     assertThat(listing.getStatus()).isEqualTo(ListingStatus.INACTIVE);
     assertThat(result).isSameAs(summary);
     verify(listingRepository).save(listing);
+    verify(adminAuditLogService).record("updateListingStatus", AdminAuditObjectType.LISTING, "42", 7L);
   }
 
   @Test
@@ -135,6 +141,7 @@ class AdminListingServiceImplTest {
     ArgumentCaptor<Listing> captor = ArgumentCaptor.forClass(Listing.class);
     verify(listingRepository).save(captor.capture());
     assertThat(captor.getValue().getDedupHash()).isNull();
+    verify(adminAuditLogService).record("unlinkDuplicateGroup", AdminAuditObjectType.LISTING, "5", 7L);
   }
 
   @Test

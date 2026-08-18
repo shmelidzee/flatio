@@ -1,9 +1,11 @@
 package com.flatio.service.impl;
 
 import com.flatio.common.exception.ListingNotFoundException;
+import com.flatio.domain.audit.AdminAuditObjectType;
 import com.flatio.domain.listing.Listing;
 import com.flatio.domain.listing.ListingStatus;
 import com.flatio.repository.ListingRepository;
+import com.flatio.service.AdminAuditLogService;
 import com.flatio.service.AdminListingService;
 import com.flatio.web.dto.AdminListingSearchCriteria;
 import com.flatio.web.dto.ListingSummaryResponse;
@@ -32,6 +34,7 @@ public class AdminListingServiceImpl implements AdminListingService {
 
   private final ListingRepository listingRepository;
   private final ListingMapper listingMapper;
+  private final AdminAuditLogService adminAuditLogService;
 
   @Override
   public Page<ListingSummaryResponse> search(AdminListingSearchCriteria criteria, Pageable pageable) {
@@ -49,6 +52,8 @@ public class AdminListingServiceImpl implements AdminListingService {
     listingRepository.save(listing);
     log.info("Admin action: action=updateListingStatus, listingId={}, status={}, adminId={}",
         id, status, adminId);
+    adminAuditLogService.record(
+        "updateListingStatus", AdminAuditObjectType.LISTING, String.valueOf(id), Long.parseLong(adminId));
     return listingMapper.toSummaryResponse(listing);
   }
 
@@ -60,6 +65,8 @@ public class AdminListingServiceImpl implements AdminListingService {
     listing.setDedupHash(null);
     listingRepository.save(listing);
     log.info("Admin action: action=unlinkDuplicateGroup, listingId={}, adminId={}", id, adminId);
+    adminAuditLogService.record(
+        "unlinkDuplicateGroup", AdminAuditObjectType.LISTING, String.valueOf(id), Long.parseLong(adminId));
   }
 
   private Specification<Listing> buildSearchSpec(AdminListingSearchCriteria criteria) {

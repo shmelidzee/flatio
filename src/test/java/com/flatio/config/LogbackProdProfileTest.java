@@ -3,6 +3,7 @@ package com.flatio.config;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.core.ConsoleAppender;
+import com.flatio.repository.AdminAuditLogRepository;
 import com.flatio.repository.CityRepository;
 import com.flatio.repository.ListingRepository;
 import com.flatio.repository.PriceHistoryRepository;
@@ -86,6 +87,9 @@ class LogbackProdProfileTest {
 
   @MockBean
   SubscriptionRepository subscriptionRepository;
+
+  @MockBean
+  AdminAuditLogRepository adminAuditLogRepository;
 
   @Autowired
   private ApplicationContext applicationContext;

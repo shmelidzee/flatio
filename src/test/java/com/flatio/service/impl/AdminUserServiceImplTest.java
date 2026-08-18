@@ -2,9 +2,11 @@ package com.flatio.service.impl;
 
 import com.flatio.common.exception.SelfRoleChangeForbiddenException;
 import com.flatio.common.exception.UserNotFoundException;
+import com.flatio.domain.audit.AdminAuditObjectType;
 import com.flatio.domain.user.User;
 import com.flatio.domain.user.UserRole;
 import com.flatio.repository.UserRepository;
+import com.flatio.service.AdminAuditLogService;
 import com.flatio.web.dto.AdminUserResponse;
 import com.flatio.web.dto.AdminUserSearchCriteria;
 import com.flatio.web.dto.AdminUserUpdateRequest;
@@ -26,6 +28,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -37,6 +40,9 @@ class AdminUserServiceImplTest {
 
   @Mock
   private AdminUserMapper adminUserMapper;
+
+  @Mock
+  private AdminAuditLogService adminAuditLogService;
 
   @InjectMocks
   private AdminUserServiceImpl adminUserService;
@@ -100,6 +106,7 @@ class AdminUserServiceImplTest {
     assertThat(user.getRole()).isEqualTo(UserRole.USER);
     assertThat(result).isSameAs(response);
     verify(userRepository).save(user);
+    verify(adminAuditLogService).record("updateUser", AdminAuditObjectType.USER, "10", 1L);
   }
 
   @Test
@@ -165,6 +172,7 @@ class AdminUserServiceImplTest {
         .isInstanceOf(SelfRoleChangeForbiddenException.class)
         .hasMessageContaining("1");
     assertThat(user.getRole()).isEqualTo(UserRole.ADMIN);
+    verify(adminAuditLogService, never()).record(any(), any(), any(), any());
   }
 
   @Test

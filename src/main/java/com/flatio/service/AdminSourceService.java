@@ -23,8 +23,9 @@ public interface AdminSourceService {
    *
    * @param sourceId the source code to update
    * @param request  fields to change; null fields are left unchanged
+   * @param adminId  id of the authenticated admin performing the change, used for audit logging
    * @return the updated source
    * @throws com.flatio.common.exception.SourceNotFoundException if no source with the given code exists
    */
-  AdminSourceResponse update(String sourceId, AdminSourceUpdateRequest request);
+  AdminSourceResponse update(String sourceId, AdminSourceUpdateRequest request, Long adminId);
 }

@@ -1,9 +1,11 @@
 package com.flatio.service.impl;
 
 import com.flatio.common.exception.SourceNotFoundException;
+import com.flatio.domain.audit.AdminAuditObjectType;
 import com.flatio.domain.source.Source;
 import com.flatio.repository.SourceRepository;
 import com.flatio.repository.SyncRunRepository;
+import com.flatio.service.AdminAuditLogService;
 import com.flatio.service.AdminSourceService;
 import com.flatio.service.SyncRunService;
 import com.flatio.web.dto.AdminSourceResponse;
@@ -29,6 +31,7 @@ public class AdminSourceServiceImpl implements AdminSourceService {
   private final SyncRunRepository syncRunRepository;
   private final SyncRunService syncRunService;
   private final AdminSourceMapper adminSourceMapper;
+  private final AdminAuditLogService adminAuditLogService;
 
   @Override
   public List<AdminSourceResponse> findAll() {
@@ -40,7 +43,7 @@ public class AdminSourceServiceImpl implements AdminSourceService {
 
   @Override
   @Transactional
-  public AdminSourceResponse update(String sourceId, AdminSourceUpdateRequest request) {
+  public AdminSourceResponse update(String sourceId, AdminSourceUpdateRequest request, Long adminId) {
     Source source = sourceRepository.findByCode(sourceId)
         .orElseThrow(() -> new SourceNotFoundException(sourceId));
 
@@ -51,8 +54,9 @@ public class AdminSourceServiceImpl implements AdminSourceService {
       source.setSyncIntervalMinutes(request.syncIntervalMinutes());
     }
     sourceRepository.save(source);
-    log.info("Admin action: action=updateSource, sourceId={}, enabled={}, syncIntervalMinutes={}",
-        sourceId, source.isActive(), source.getSyncIntervalMinutes());
+    log.info("Admin action: action=updateSource, sourceId={}, enabled={}, syncIntervalMinutes={}, adminId={}",
+        sourceId, source.isActive(), source.getSyncIntervalMinutes(), adminId);
+    adminAuditLogService.record("updateSource", AdminAuditObjectType.SOURCE, sourceId, adminId);
 
     return adminSourceMapper.toResponse(
         source, syncRunService.findLastSuccessfulRunAt(sourceId).orElse(null));

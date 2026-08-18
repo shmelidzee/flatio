@@ -1,5 +1,6 @@
 package com.flatio.integration.kufar.client;
 
+import com.flatio.repository.AdminAuditLogRepository;
 import com.flatio.repository.CityRepository;
 import com.flatio.repository.ListingRepository;
 import com.flatio.repository.PriceHistoryRepository;
@@ -111,6 +112,9 @@ class KufarAdDetailClientResilienceTest {
 
   @MockBean
   private SubscriptionRepository subscriptionRepository;
+
+  @MockBean
+  private AdminAuditLogRepository adminAuditLogRepository;
 
   @MockBean(name = "kufarAdDetailRestClient")
   private RestClient restClient;
