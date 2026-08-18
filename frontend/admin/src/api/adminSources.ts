@@ -40,3 +40,28 @@ export async function fetchSyncRuns(sourceId: string, page: number): Promise<Pag
   }
   return (await response.json()) as PageAdminSyncRun;
 }
+
+export async function fetchLatestSyncRuns(): Promise<AdminSyncRun[]> {
+  const response = await apiFetch("/api/v1/admin/sync-runs/latest");
+  if (!response.ok) {
+    throw new Error(`Failed to fetch latest sync runs: HTTP ${response.status}`);
+  }
+  return (await response.json()) as AdminSyncRun[];
+}
+
+/**
+ * Fetches the most recent {@code size} sync runs, optionally filtered to a single source.
+ * Used by the dashboard's "recent runs" list (no sourceId) and source health strip (with sourceId)
+ * — both need a small, differently-sized page than SourcesPage's own paginated history view.
+ */
+export async function fetchRecentSyncRuns(size: number, sourceId?: string): Promise<PageAdminSyncRun> {
+  const params = new URLSearchParams({ page: "0", size: String(size) });
+  if (sourceId) {
+    params.set("sourceId", sourceId);
+  }
+  const response = await apiFetch(`/api/v1/admin/sync-runs?${params.toString()}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch recent sync runs: HTTP ${response.status}`);
+  }
+  return (await response.json()) as PageAdminSyncRun;
+}

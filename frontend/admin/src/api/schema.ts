@@ -1153,6 +1153,94 @@ export interface components {
              */
             duplicatesOnly?: boolean;
         };
+        /** @description User summary for the admin users list */
+        AdminUserResponse: {
+            /**
+             * Format: int64
+             * @description Internal user identifier
+             * @example 42
+             */
+            id?: number;
+            /**
+             * @description User's display name
+             * @example Иван Петров
+             */
+            displayName?: string;
+            /**
+             * @description User's email, null if not provided
+             * @example ivan@example.com
+             */
+            email?: string;
+            /**
+             * @description Assigned role
+             * @example USER
+             * @enum {string}
+             */
+            role?: "USER" | "PRO" | "ADMIN";
+            /**
+             * @description Whether the account is active
+             * @example true
+             */
+            active?: boolean;
+            /**
+             * Format: date-time
+             * @description When the account was created
+             * @example 2026-01-10T12:00:00Z
+             */
+            createdAt?: string;
+            /**
+             * Format: date-time
+             * @description Last time the user was seen, null if never recorded
+             * @example 2026-08-14T09:00:00Z
+             */
+            lastSeen?: string;
+        };
+        /** @description Partial update for a user's active state and/or role; omitted fields are left unchanged */
+        AdminUserUpdateRequest: {
+            /**
+             * @description When false, deactivates the user
+             * @example false
+             */
+            active?: boolean;
+            /**
+             * @description New role to assign
+             * @example PRO
+             * @enum {string}
+             */
+            role?: "USER" | "PRO" | "ADMIN";
+        };
+        PageAdminUserResponse: {
+            /** Format: int32 */
+            totalPages?: number;
+            /** Format: int64 */
+            totalElements?: number;
+            /** Format: int32 */
+            size?: number;
+            content?: components["schemas"]["AdminUserResponse"][];
+            /** Format: int32 */
+            number?: number;
+            sort?: components["schemas"]["SortObject"][];
+            pageable?: components["schemas"]["PageableObject"];
+            first?: boolean;
+            last?: boolean;
+            /** Format: int32 */
+            numberOfElements?: number;
+            empty?: boolean;
+        };
+        /** @description Filter parameters for the admin user search */
+        AdminUserSearchCriteria: {
+            /**
+             * @description Role filter
+             * @example ADMIN
+             * @enum {string}
+             */
+            role?: "USER" | "PRO" | "ADMIN";
+            /**
+             * @description Active status filter
+             * @example true
+             */
+            active?: boolean;
+        };
     };
     responses: never;
     parameters: never;
