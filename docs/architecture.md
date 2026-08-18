@@ -369,10 +369,23 @@ UI (`/swagger-ui.html`) remains available as an interim way to exercise them.
 | `DELETE /api/v1/admin/listings/{id}/duplicate-group` | Unlink a listing from its duplicate group |
 | `GET /api/v1/admin/users` | Search users, paginated, filter by `role`/`active` |
 | `PATCH /api/v1/admin/users/{id}` | Deactivate/reactivate a user and/or change their role |
+| `GET /api/v1/admin/audit-log` | Paginated feed of recent admin actions (actor, action, object, time) |
 
 All admin endpoints require the `ADMIN` role (see [Security](#security)) and are implemented by
-`AdminSourceController`, `AdminListingController`, and `AdminUserController` in
-`com.flatio.web.controller`.
+`AdminSourceController`, `AdminListingController`, `AdminUserController`, and
+`AdminAuditLogController` in `com.flatio.web.controller`.
+
+**Audit log (#326).** Admin actions were already logged to SLF4J (`Admin action: action=..., ...`)
+but that wasn't queryable from the SPA. Issue #326 asked the PO to choose between an API built on
+log aggregation (ELK/Loki — no such infra exists in this project yet) or a dedicated DB table; the
+PO chose the DB table (issue comment, 2026-08-18). `admin_audit_log` (`V50`/`V51`) is written
+manually at each of the 4 existing admin-mutation call sites (`AdminListingServiceImpl#updateStatus`
+/`#unlinkDuplicateGroup`, `AdminSourceServiceImpl#update`, `AdminUserServiceImpl#update`) via
+`AdminAuditLogService#record`, in the same transaction as the mutation itself — not through an AOP
+aspect, to avoid a new `spring-boot-starter-aop` dependency and to mirror the already-established
+manual `log.info("Admin action: ...")` pattern at those same sites. `AdminSourceService#update` and
+`AdminSourceController#updateSource` gained an `adminId`/`Authentication` parameter they didn't
+previously have — source updates had no recorded actor at all before this issue.
 
 An admin cannot change their own role away from `ADMIN` via `PATCH /api/v1/admin/users/{id}`
 (`AdminUserServiceImpl#validateNotSelfDowngrade` → `SelfRoleChangeForbiddenException`, HTTP 403) —
@@ -435,15 +448,15 @@ client-side routes instead of 404ing. `/admin/**` is `permitAll()` in `SecurityC
 only the static shell, not the API; the SPA itself calls the JWT-protected
 `/api/v1/admin/**` endpoints once loaded.
 
-**Screens (#318, sub-issues #322–#325 — all landed):** all four sidebar screens are wired to real
+**Screens (#318, sub-issues #322–#326 — all landed):** all four sidebar screens are wired to real
 data — Источники (#322, `SourcesPage.tsx`: table + enable/disable toggle + sync interval +
 per-source sync-run history), Объявления (#323, `ListingsPage.tsx` + `ListingDetailModal.tsx`:
 filtered search, moderation actions), Дашборд (#324, `DashboardPage.tsx`: aggregate stat cards,
-source health strip, recent sync runs, a "new users" block hidden gracefully on 404 rather than
-depending on deploy order relative to #325), Пользователи (#325, `UsersPage.tsx`: paginated
-table, role/active filters, inline role change and activation toggle). `PlaceholderPage.tsx` was
-removed once the last two screens landed. #326 (admin action audit log feed on the dashboard) is
-intentionally out of scope — separate low-priority issue pending a PO decision on approach.
+source health strip, recent sync runs, a "new users" block and an admin action audit log feed
+(#326) both hidden gracefully on HTTP 404 rather than depending on deploy order), Пользователи
+(#325, `UsersPage.tsx`: paginated table, role/active filters, inline role change and activation
+toggle). `PlaceholderPage.tsx` was removed once the last two screens landed. #318 itself has no
+remaining open sub-issues.
 
 **Authentication (#321).** `/admin/login` renders Telegram's official Login Widget (a script tag
 pointing at `telegram.org/js/telegram-widget.js`, wired up by `auth/TelegramLoginWidget.tsx`).
