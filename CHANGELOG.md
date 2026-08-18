@@ -110,6 +110,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - `docs/architecture.md` — раздел «Admin SPA frontend (#320)» с полным описанием пайплайна сборки
 
 ### Fixed
+- **PR #347 — Kufar-адрес: читать `account_parameters` вместо хрупкого скрейпа detail-страницы (issue #334)**
+  - Найдена настоящая причина fallback-адреса "область, город": `re.kufar.by/vi/{adId}` теперь
+    отдаёт `301` на новый SEO-путь, а `KufarAdDetailClient` намеренно не следует редиректам
+    (SSRF-защита, #315) — каждый запрос точного адреса молча падал независимо от rate
+    limiter/circuit breaker (#328/#332)
+  - Обнаружено (живая выборка 60 объявлений, 4 категории, 2026-08-18): точный адрес уже приходит
+    в самом ответе search API, в `account_parameters[p="address"]` — поле ошибочно
+    документировалось как «только данные продавца» (issue #311) и никогда не читалось
+  - `KufarApiClient.resolveAddress` — новый порядок приоритета: `account_parameters` →
+    `KufarAdDetailClient` (оставлен как fallback, не удалён) → `region`/`area`
+  - Расследование проведено без обхода гео-ограничений источника — явный отказ от VPN/подмены
+    геолокации, запрошенных в исходной постановке задачи (см. комментарий в issue #334)
 - **PR #338 — Порог деактивации, graceful shutdown executor'ов, фоллбэк фото в Telegram, диагностика Kufar-адреса (issues #335, #337, #333, #334)**
   - `flatio.sync.inactive-threshold` снижен с `3` до `1` — максимальная задержка деактивации
     пропавшего объявления теперь ~1 сутки вместо ~3 (#335)

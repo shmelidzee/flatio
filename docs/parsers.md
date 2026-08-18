@@ -500,7 +500,7 @@ Shared `connector-kufar` instance:
 | `floorNumber` | `ad_parameters[p="floor"]` | Integer; nullable |
 | `floorsTotal` | `ad_parameters[p="re_number_floors"]` | Integer; nullable |
 | `areaTotalM2` | `ad_parameters[p="size"]` | BigDecimal; nullable |
-| `address` | `ad_parameters[p="address"].vl` | Prefers `vl` (human-readable), falls back to `v`; nullable |
+| `address` | see below (`account_parameters` → detail page → `region`/`area`) | Three-tier resolution, issue #334; nullable |
 | `latitude` | — | Always `null` (not in API response; Nominatim fills later) |
 | `longitude` | — | Always `null` |
 | `city` | — | Always `null` (city is part of address string) |
@@ -510,6 +510,25 @@ Shared `connector-kufar` instance:
 | `isOwner` | `account.type="private"` / `company_ad` | `true` when private account; `false` when agency; `null` when both absent |
 | `priceUnit` | — | Always `null` |
 | `isNegotiable` | — | `true` when `price_byn == null || price_byn == 0`; `false` otherwise |
+
+### Address resolution (issue #334)
+
+`address` is resolved in priority order, each step attempted only if the previous one found nothing:
+
+1. **`account_parameters[p="address"]`** (`KufarApiClient#resolveAddress`) — the street-level
+   address, when the seller provided one, is present directly in the search API response
+   despite `account_parameters` otherwise carrying seller-profile fields (name, etc.). A live
+   sample (60 listings, 4 categories, 2026-08-18) had it populated 60/60. Free — no extra request.
+2. **Ad detail page** (`KufarAdDetailClient#fetchPreciseAddress`, issue #313) — one extra HTTP
+   request per ad (`connector-kufar-detail` rate limiter/circuit breaker/retry, see below),
+   scraping the same address out of the detail page's `__NEXT_DATA__` JSON blob at
+   `props.initialState.adView.data.address`. Kept only as a fallback for the rare case step 1
+   has nothing — as of #334 it is largely redundant, and was additionally found broken as a
+   *primary* source: Kufar serves ad detail URLs as a `301` redirect to a SEO-friendly path, and
+   the client does not follow redirects by design (SSRF hardening, issue #315), so this step was
+   silently failing on effectively every call before #334 landed.
+3. **`region` + `area` from `ad_parameters`** — coarsest fallback, always attempted last if
+   neither of the above produced anything.
 
 ### Error handling
 
