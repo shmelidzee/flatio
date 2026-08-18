@@ -1,5 +1,6 @@
 package com.flatio.security;
 
+import com.flatio.repository.AdminAuditLogRepository;
 import com.flatio.repository.CityRepository;
 import com.flatio.repository.ListingRepository;
 import com.flatio.repository.PriceHistoryRepository;
@@ -75,6 +76,9 @@ class SecurityConfigTest {
 
   @MockBean
   SubscriptionRepository subscriptionRepository;
+
+  @MockBean
+  AdminAuditLogRepository adminAuditLogRepository;
 
   @Autowired
   private MockMvc mockMvc;
