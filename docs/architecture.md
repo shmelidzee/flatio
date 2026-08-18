@@ -367,9 +367,17 @@ UI (`/swagger-ui.html`) remains available as an interim way to exercise them.
 | `GET /api/v1/admin/listings` | Search listings across all statuses (moderation view) |
 | `PATCH /api/v1/admin/listings/{id}` | Manually change a listing's status |
 | `DELETE /api/v1/admin/listings/{id}/duplicate-group` | Unlink a listing from its duplicate group |
+| `GET /api/v1/admin/users` | Search users, paginated, filter by `role`/`active` |
+| `PATCH /api/v1/admin/users/{id}` | Deactivate/reactivate a user and/or change their role |
 
 All admin endpoints require the `ADMIN` role (see [Security](#security)) and are implemented by
-`AdminSourceController` and `AdminListingController` in `com.flatio.web.controller`.
+`AdminSourceController`, `AdminListingController`, and `AdminUserController` in
+`com.flatio.web.controller`.
+
+An admin cannot change their own role away from `ADMIN` via `PATCH /api/v1/admin/users/{id}`
+(`AdminUserServiceImpl#validateNotSelfDowngrade` → `SelfRoleChangeForbiddenException`, HTTP 403) —
+guards against the last admin accidentally locking themselves out. Deactivating one's own account
+is not guarded the same way — issue #325's AC scoped the check to role changes only.
 
 Implementation notes and known gaps between the design and the M1.6 backend are recorded in the
 pull request that introduced these endpoints (issues #33, #35), for the product owner to
@@ -427,9 +435,15 @@ client-side routes instead of 404ing. `/admin/**` is `permitAll()` in `SecurityC
 only the static shell, not the API; the SPA itself calls the JWT-protected
 `/api/v1/admin/**` endpoints once loaded.
 
-**What's scaffolded vs. what's still a stub:** sidebar navigation (Дашборд/Объявления/
-Источники/Пользователи) and route structure are in place; each page is currently a placeholder
-with no real data wired up (screens tracked under #318, sub-issues #322–#326).
+**Screens (#318, sub-issues #322–#325 — all landed):** all four sidebar screens are wired to real
+data — Источники (#322, `SourcesPage.tsx`: table + enable/disable toggle + sync interval +
+per-source sync-run history), Объявления (#323, `ListingsPage.tsx` + `ListingDetailModal.tsx`:
+filtered search, moderation actions), Дашборд (#324, `DashboardPage.tsx`: aggregate stat cards,
+source health strip, recent sync runs, a "new users" block hidden gracefully on 404 rather than
+depending on deploy order relative to #325), Пользователи (#325, `UsersPage.tsx`: paginated
+table, role/active filters, inline role change and activation toggle). `PlaceholderPage.tsx` was
+removed once the last two screens landed. #326 (admin action audit log feed on the dashboard) is
+intentionally out of scope — separate low-priority issue pending a PO decision on approach.
 
 **Authentication (#321).** `/admin/login` renders Telegram's official Login Widget (a script tag
 pointing at `telegram.org/js/telegram-widget.js`, wired up by `auth/TelegramLoginWidget.tsx`).
