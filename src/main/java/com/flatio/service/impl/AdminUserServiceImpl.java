@@ -2,9 +2,11 @@ package com.flatio.service.impl;
 
 import com.flatio.common.exception.SelfRoleChangeForbiddenException;
 import com.flatio.common.exception.UserNotFoundException;
+import com.flatio.domain.audit.AdminAuditObjectType;
 import com.flatio.domain.user.User;
 import com.flatio.domain.user.UserRole;
 import com.flatio.repository.UserRepository;
+import com.flatio.service.AdminAuditLogService;
 import com.flatio.service.AdminUserService;
 import com.flatio.web.dto.AdminUserResponse;
 import com.flatio.web.dto.AdminUserSearchCriteria;
@@ -29,6 +31,7 @@ public class AdminUserServiceImpl implements AdminUserService {
 
   private final UserRepository userRepository;
   private final AdminUserMapper adminUserMapper;
+  private final AdminAuditLogService adminAuditLogService;
 
   @Override
   public Page<AdminUserResponse> search(AdminUserSearchCriteria criteria, Pageable pageable) {
@@ -53,6 +56,7 @@ public class AdminUserServiceImpl implements AdminUserService {
     userRepository.save(user);
     log.info("Admin action: action=updateUser, userId={}, active={}, role={}, adminId={}",
         id, user.isActive(), user.getRole(), currentAdminId);
+    adminAuditLogService.record("updateUser", AdminAuditObjectType.USER, String.valueOf(id), currentAdminId);
 
     return adminUserMapper.toResponse(user);
   }

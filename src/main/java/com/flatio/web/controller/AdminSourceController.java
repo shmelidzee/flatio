@@ -16,6 +16,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -56,8 +57,9 @@ public class AdminSourceController {
   /**
    * Enables, disables, or reconfigures the sync interval of a source.
    *
-   * @param sourceId the source code to update
-   * @param request  fields to change; null fields are left unchanged
+   * @param sourceId       the source code to update
+   * @param request        fields to change; null fields are left unchanged
+   * @param authentication the authenticated admin, used for audit logging
    * @return the updated source
    */
   @Operation(
@@ -73,9 +75,10 @@ public class AdminSourceController {
   @PatchMapping("/sources/{sourceId}")
   public AdminSourceResponse updateSource(
       @PathVariable String sourceId,
-      @Valid @RequestBody AdminSourceUpdateRequest request
+      @Valid @RequestBody AdminSourceUpdateRequest request,
+      Authentication authentication
   ) {
-    return adminSourceService.update(sourceId, request);
+    return adminSourceService.update(sourceId, request, Long.parseLong(authentication.getName()));
   }
 
   /**
