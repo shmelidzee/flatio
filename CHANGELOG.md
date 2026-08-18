@@ -8,6 +8,46 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **PR #343 — Admin SPA: экраны «Дашборд» и «Пользователи» (issues #324, #325)**
+  - `GET /api/v1/admin/users` — поиск пользователей с пагинацией, фильтры `role`/`active`;
+    `PATCH /api/v1/admin/users/{id}` — деактивация и/или смена роли, с audit-логом
+    (`Admin action: action=updateUser, ...`, тот же формат что и у `AdminListingService`/
+    `AdminSourceService`)
+  - Админ не может понизить собственную роль с `ADMIN` (`SelfRoleChangeForbiddenException` → 403)
+    — защита от случайной потери доступа последним админом; self-деактивация не блокируется, это
+    сознательно вне AC issue #325
+  - `AdminUserService`/`AdminUserServiceImpl`, `AdminUserController`, `AdminUserMapper`
+    (MapStruct), DTO (`AdminUserResponse`/`AdminUserSearchCriteria`/`AdminUserUpdateRequest`),
+    `UserNotFoundException`; `UserRepository` расширен `JpaSpecificationExecutor`
+  - Frontend: `DashboardPage.tsx` — карточки агрегатов (активные объявления, источники
+    активны/всего, ошибки синков за 24ч по `sync-runs/latest`), health-стрип источников,
+    последние 5 запусков синка, блок «новые пользователи» (скрывается на HTTP 404 вместо ошибки,
+    чтобы не зависеть от порядка деплоя относительно #325); кнопка «Обновить» инвалидирует все
+    TanStack Query с ключом `["admin", ...]`
+  - Frontend: `UsersPage.tsx` — таблица с фильтрами по роли/статусу, инлайн-смена роли и
+    активация/деактивация
+  - `PlaceholderPage.tsx` удалён — экраны, для которых он был последней заглушкой, реализованы
+  - `frontend/admin/src/api/schema.ts` дополнен вручную (не через `generate:api-types`) —
+    `TelegramStartupValidator` не даёт локально поднять бэкенд без настоящего Telegram-токена;
+    типы приведены в соответствие `@Schema`-аннотациям DTO, перегенерировать при следующем запуске
+    с реальным ботом
+- **PR #342 — Admin SPA: экран «Объявления» (issue #323)**
+  - `ListingsPage.tsx` — таблица + фильтры (источник/город/сделка/статус/цена/площадь/комнаты/
+    поиск/только дубли) по `GET /api/v1/admin/listings`; `ListingDetailModal.tsx` — фото/описание/
+    адрес/история цены, действия «Деактивировать» (`PATCH /api/v1/admin/listings/{id}`) и
+    «Отвязать дубликат» (`DELETE /api/v1/admin/listings/{id}/duplicate-group`)
+  - `AdminListingSearchCriteria` расширен фильтрами по площади (`areaMin`/`areaMax`) и ключевому
+    слову (`query`, обычный `LIKE` по title/description/address — не full-text поиск публичного
+    эндпоинта); `ListingResponse` получил `hasDuplicates` (отдельный запрос на объявление, не
+    вычисляется для списков — избегает N+1)
+- **PR #341 — Admin SPA: экран «Источники» (issue #322)**
+  - `SourcesPage.tsx` — таблица источников (`GET /api/v1/admin/sources`) с toggle
+    enable/disable и полем `syncIntervalMinutes` (`PATCH /api/v1/admin/sources/{sourceId}`);
+    клик по строке разворачивает историю запусков синка (`GET /api/v1/admin/sync-runs?sourceId=...`,
+    пагинация по 20) с индикатором «здоровья» источника (устарел, если пропущено ≥2 интервалов
+    синка)
+  - `formatRelativeTime` (`frontend/admin/src/lib`) — переиспользуемое форматирование
+    относительного времени на русском («12 мин назад», «никогда»)
 - **PR #339 — Вход в admin-панель через Telegram Login Widget (issue #321)**
   - `POST /api/v1/auth/telegram-login-widget` — валидирует HMAC-SHA256 подпись Telegram Login
     Widget (`secret_key = SHA-256(bot_token)` — отдельный алгоритм от WebApp `initData`, который
