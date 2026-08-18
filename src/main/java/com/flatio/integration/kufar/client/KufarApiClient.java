@@ -36,12 +36,21 @@ import java.util.Objects;
  * {@code ad_parameters} keyed by the machine {@code p} field. Geocoordinates are intentionally
  * not parsed here — the Nominatim geocoding pipeline fills them in from the address.
  *
- * <p>The Kufar search API does not expose a street-level address field in {@code ad_parameters}
- * (confirmed against a live response — see issue #311). The most precise location data always
- * present is {@code region} (oblast or Minsk) and {@code area} (city or district), which are
- * combined as a fallback. The precise street-level address, when available, is fetched
- * separately per ad from the detail page via {@link KufarAdDetailClient} (see issue #313)
- * and takes priority over the region/area fallback in {@link RawListing#address()}.
+ * <p><b>Address resolution (issue #334):</b> {@code ad_parameters} does not carry a
+ * street-level address (confirmed against a live response — see issue #311), only
+ * {@code region} (oblast or Minsk) and {@code area} (city or district). The street-level
+ * address, when present, is instead a {@code p="address"} entry inside {@code account_parameters}
+ * — that array was originally assumed to carry seller-profile fields only, so this entry was
+ * never read; a sample of 60 live listings across 4 categories (2026-08-18) had it populated
+ * 60/60. {@link KufarAdDetailClient#fetchPreciseAddress} (issue #313) — an extra per-ad HTTP
+ * request that scrapes the same address out of the ad detail page's {@code __NEXT_DATA__} blob —
+ * is kept only as a fallback for the rare case {@code account_parameters} lacks it; it is no
+ * longer the primary source. It was additionally confirmed broken as a primary source: Kufar
+ * now serves ad detail URLs as a 301 redirect to a SEO-friendly path, and the client backing it
+ * does not follow redirects by design (SSRF hardening, issue #315), so every detail-page fetch
+ * was silently falling back to the coarse region/area address regardless of rate limiting.
+ * Priority order in {@link RawListing#address()}: {@code account_parameters} address →
+ * detail-page address → region/area.
  */
 @Service
 @Slf4j
@@ -58,6 +67,7 @@ public class KufarApiClient {
   private static final String PARAM_SIZE = "size";
   private static final String PARAM_REGION = "region";
   private static final String PARAM_AREA = "area";
+  private static final String PARAM_ADDRESS = "address";
   private static final String ADDRESS_PART_SEPARATOR = ", ";
 
   private final RestClient restClient;
@@ -195,7 +205,8 @@ public class KufarApiClient {
     Integer floor = parseIntParam(adParams, PARAM_FLOOR);
     Integer floorsTotal = parseIntParam(adParams, PARAM_FLOORS_TOTAL);
     BigDecimal area = parseBigDecimalParam(adParams, PARAM_SIZE);
-    String address = resolvePreciseOrFallbackAddress(adParams, ad.adLink());
+    List<KufarAdParameter> accountParams = ad.accountParameters() != null ? ad.accountParameters() : List.of();
+    String address = resolveAddress(accountParams, adParams, ad.adLink());
     List<String> photoUrls = extractPhotoUrls(ad);
     Instant publishedAt = parseListTime(ad.listTime());
     Boolean isOwner = resolveIsOwner(ad);
@@ -233,14 +244,24 @@ public class KufarApiClient {
   }
 
   /**
-   * Resolves the ad's address, preferring the precise street-level address from the ad
-   * detail page over the coarser {@code region}/{@code area} fallback.
+   * Resolves the ad's most precise available address.
    *
-   * @param adParams ad parameters to search for the region/area fallback
-   * @param adLink   absolute URL of the ad detail page
-   * @return precise address if available, otherwise the region/area fallback, or null if neither exists
+   * <p>Priority order (issue #334): the {@code address} entry in {@code account_parameters}
+   * (already present in the search response, no extra request) → the ad detail page's precise
+   * address via {@link KufarAdDetailClient} (an extra per-ad HTTP request, only attempted when
+   * the first source has nothing) → the coarser {@code region}/{@code area} fallback.
+   *
+   * @param accountParams account parameters to search for the primary address source
+   * @param adParams      ad parameters to search for the region/area fallback
+   * @param adLink        absolute URL of the ad detail page
+   * @return the most precise address available, or null if none of the three sources has one
    */
-  private String resolvePreciseOrFallbackAddress(List<KufarAdParameter> adParams, String adLink) {
+  private String resolveAddress(List<KufarAdParameter> accountParams, List<KufarAdParameter> adParams,
+      String adLink) {
+    String accountAddress = parseStringParam(accountParams, PARAM_ADDRESS);
+    if (accountAddress != null) {
+      return accountAddress;
+    }
     String preciseAddress = adDetailClient.fetchPreciseAddress(adLink);
     return preciseAddress != null ? preciseAddress : resolveFallbackAddress(adParams);
   }

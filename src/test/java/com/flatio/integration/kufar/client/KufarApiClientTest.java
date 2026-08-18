@@ -826,6 +826,102 @@ class KufarApiClientTest {
   }
 
   // -------------------------------------------------------------------------
+  // Address resolution — account_parameters address takes priority (issue #334)
+  // -------------------------------------------------------------------------
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_prefer_account_parameters_address_over_detail_client_and_region_area() {
+    // Given — account_parameters has a street-level address; region/area also present, and the
+    // detail client would return something too, but neither should be reached
+    var accountParams = List.of(
+        new KufarAdParameter("Адрес", "address", "", "Игоря Лученка ул, 16, Минск")
+    );
+    var adParams = List.of(
+        new KufarAdParameter("Область", "region", "Минск", "minsk"),
+        new KufarAdParameter("Город", "area", "Минск", "minsk-city")
+    );
+    var ad = buildAdWithAccountAndAdParams(1401L, "Квартира", 10000000L, accountParams, adParams);
+    mockRestClientReturning(buildResponseWithAds(List.of(ad)));
+
+    // When
+    List<RawListing> result = apiClient.fetchAll(config, "SELL", "APARTMENT", "Fallback");
+
+    // Then
+    assertThat(result.get(0).address()).isEqualTo("Игоря Лученка ул, 16, Минск");
+    verify(adDetailClient, never()).fetchPreciseAddress(any());
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_fall_back_to_detail_client_when_account_parameters_has_no_address_param() {
+    // Given — account_parameters present but without an "address" entry (e.g. only seller name)
+    var accountParams = List.of(
+        new KufarAdParameter("Имя", "name", "", "Елена")
+    );
+    var ad = buildAdWithAccountAndAdParams(1402L, "Квартира", 10000000L, accountParams, List.of());
+    mockRestClientReturning(buildResponseWithAds(List.of(ad)));
+    when(adDetailClient.fetchPreciseAddress("https://re.kufar.by/vi/1402"))
+        .thenReturn("Партизанский пр, 89Б, Минск");
+
+    // When
+    List<RawListing> result = apiClient.fetchAll(config, "SELL", "APARTMENT", "Fallback");
+
+    // Then
+    assertThat(result.get(0).address()).isEqualTo("Партизанский пр, 89Б, Минск");
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_fall_back_to_detail_client_when_account_parameters_address_is_blank() {
+    // Given — "address" param present but its value is blank
+    var accountParams = List.of(
+        new KufarAdParameter("Адрес", "address", "", "")
+    );
+    var ad = buildAdWithAccountAndAdParams(1403L, "Квартира", 10000000L, accountParams, List.of());
+    mockRestClientReturning(buildResponseWithAds(List.of(ad)));
+    when(adDetailClient.fetchPreciseAddress("https://re.kufar.by/vi/1403")).thenReturn(null);
+
+    // Then — falls through detail client (returns null) to null address, no exception
+    List<RawListing> result = apiClient.fetchAll(config, "SELL", "APARTMENT", "Fallback");
+    assertThat(result.get(0).address()).isNull();
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_use_account_parameters_address_from_real_response_fixture() throws Exception {
+    // Given — real Kufar search API response shape (2026-08-18 live sample) where
+    // account_parameters carries the street-level address alongside the seller name
+    var response = loadFixture("fixtures/kufar/response-with-account-address.json");
+    mockRestClientReturning(response);
+
+    // When
+    List<RawListing> result = apiClient.fetchAll(config, "SELL", "APARTMENT", "Fallback");
+
+    // Then — precise address from account_parameters used, no detail-page fetch needed
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).address()).isEqualTo("Игоря Лученка ул, 16, Минск");
+    verify(adDetailClient, never()).fetchPreciseAddress(any());
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_treat_null_account_parameters_the_same_as_absent() {
+    // Given — account_parameters itself is null (as when the JSON field is entirely absent)
+    var ad = new KufarAd(1404L, "Квартира", null, 10000000L, "BYR",
+        "https://re.kufar.by/vi/1404", null, null, List.of(), null, List.of(), "2024-01-15T10:00:00+03:00");
+    mockRestClientReturning(buildResponseWithAds(List.of(ad)));
+    when(adDetailClient.fetchPreciseAddress("https://re.kufar.by/vi/1404"))
+        .thenReturn("Московская ул, 320, Брест");
+
+    // When
+    List<RawListing> result = apiClient.fetchAll(config, "SELL", "APARTMENT", "Fallback");
+
+    // Then — no NPE, falls through to detail client normally
+    assertThat(result.get(0).address()).isEqualTo("Московская ул, 320, Брест");
+  }
+
+  // -------------------------------------------------------------------------
   // Fixture-based deserialization (continued)
   // -------------------------------------------------------------------------
 
@@ -929,6 +1025,24 @@ class KufarApiClientTest {
         "https://re.kufar.by/vi/" + adId,
         new KufarAccount(1L, "private"),
         List.of(),
+        adParams,
+        null,
+        List.of(),
+        "2024-01-15T10:00:00+03:00"
+    );
+  }
+
+  /**
+   * Builds a valid KufarAd with both account_parameters and ad_parameters set (used for
+   * account_parameters-address-priority tests, issue #334).
+   */
+  private KufarAd buildAdWithAccountAndAdParams(Long adId, String subject, Long priceByn,
+      List<KufarAdParameter> accountParams, List<KufarAdParameter> adParams) {
+    return new KufarAd(
+        adId, subject, null, priceByn, "BYR",
+        "https://re.kufar.by/vi/" + adId,
+        new KufarAccount(1L, "private"),
+        accountParams,
         adParams,
         null,
         List.of(),
