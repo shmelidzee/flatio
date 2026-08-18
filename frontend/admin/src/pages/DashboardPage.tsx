@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import type { ReactElement } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { fetchRecentAuditLog } from "../api/adminAuditLog";
 import { fetchActiveListingsCount } from "../api/adminListings";
 import { fetchLatestSyncRuns, fetchRecentSyncRuns, fetchSources } from "../api/adminSources";
 import type { AdminSource } from "../api/adminSources";
@@ -11,6 +12,20 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const HEALTH_STRIP_SIZE = 10;
 const RECENT_RUNS_SIZE = 5;
 const NEW_USERS_SIZE = 5;
+const AUDIT_LOG_SIZE = 10;
+
+const AUDIT_ACTION_LABEL: Record<string, string> = {
+  updateListingStatus: "Изменение статуса объявления",
+  unlinkDuplicateGroup: "Отвязка дубликата",
+  updateSource: "Изменение источника",
+  updateUser: "Изменение пользователя",
+};
+
+const AUDIT_OBJECT_TYPE_LABEL: Record<string, string> = {
+  LISTING: "Объявление",
+  SOURCE: "Источник",
+  USER: "Пользователь",
+};
 
 const SYNC_STATUS_LABEL: Record<string, string> = {
   SUCCESS: "SUCCESS",
@@ -45,6 +60,13 @@ export function DashboardPage(): ReactElement {
     queryFn: () => fetchUsers({}, 0, NEW_USERS_SIZE),
     retry: false,
   });
+  // retry: false — same hide-on-404 treatment as newUsersQuery, in case the audit log endpoint
+  // (issue #326) is ever rolled back independently of this page.
+  const auditLogQuery = useQuery({
+    queryKey: ["admin", "audit-log", "dashboard-recent"],
+    queryFn: () => fetchRecentAuditLog(AUDIT_LOG_SIZE),
+    retry: false,
+  });
 
   const sources = sourcesQuery.data ?? [];
   const activeSources = sources.filter((s) => s.enabled).length;
@@ -58,8 +80,11 @@ export function DashboardPage(): ReactElement {
 
   const newUsersNotDeployed =
     newUsersQuery.isError && newUsersQuery.error instanceof Error && newUsersQuery.error.message.includes("404");
+  const auditLogNotDeployed =
+    auditLogQuery.isError && auditLogQuery.error instanceof Error && auditLogQuery.error.message.includes("404");
   const recentRuns = recentRunsQuery.data?.content ?? [];
   const newUsers = newUsersQuery.data?.content ?? [];
+  const auditLogEntries = auditLogQuery.data?.content ?? [];
 
   function refresh(): void {
     void queryClient.invalidateQueries({ queryKey: ["admin"] });
@@ -148,6 +173,50 @@ export function DashboardPage(): ReactElement {
           </div>
         )}
       </section>
+
+      {!auditLogNotDeployed && (
+        <section className="mt-6">
+          <h2 className="text-sm font-medium text-gray-400">Лента админ-действий</h2>
+          {auditLogQuery.isLoading && <p className="mt-2 text-sm text-gray-400">Загрузка…</p>}
+          {auditLogQuery.isError && !auditLogNotDeployed && (
+            <p className="mt-2 text-sm text-red-400">Не удалось загрузить ленту действий.</p>
+          )}
+          {auditLogEntries.length === 0 && !auditLogQuery.isLoading && !auditLogQuery.isError && (
+            <p className="mt-2 text-sm text-gray-400">Admin-действий ещё не было.</p>
+          )}
+          {auditLogEntries.length > 0 && (
+            <div className="mt-2 overflow-x-auto rounded-lg border border-surface-border">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-surface-raised text-xs uppercase tracking-wide text-gray-500">
+                  <tr>
+                    <th className="px-4 py-2 font-medium">Актор</th>
+                    <th className="px-4 py-2 font-medium">Действие</th>
+                    <th className="px-4 py-2 font-medium">Объект</th>
+                    <th className="px-4 py-2 font-medium">Когда</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {auditLogEntries.map((entry) => (
+                    <tr key={entry.id} className="border-t border-surface-border">
+                      <td className="px-4 py-2 text-gray-200">
+                        {entry.adminDisplayName ?? `#${entry.adminId}`}
+                      </td>
+                      <td className="px-4 py-2 text-gray-300">
+                        {AUDIT_ACTION_LABEL[entry.action ?? ""] ?? entry.action}
+                      </td>
+                      <td className="px-4 py-2 text-gray-400">
+                        {AUDIT_OBJECT_TYPE_LABEL[entry.objectType ?? ""] ?? entry.objectType}
+                        {entry.objectId ? ` #${entry.objectId}` : ""}
+                      </td>
+                      <td className="px-4 py-2 text-gray-400">{formatRelativeTime(entry.createdAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
 
       {!newUsersNotDeployed && (
         <section className="mt-6">

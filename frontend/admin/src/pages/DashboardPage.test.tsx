@@ -18,11 +18,29 @@ function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status });
 }
 
-function mockFetch(options: { usersStatus?: number } = {}) {
+function mockFetch(options: { usersStatus?: number; auditLogStatus?: number } = {}) {
   vi.mocked(fetch).mockImplementation(async (input) => {
     const url = String(input);
     if (url.includes("/api/v1/admin/listings")) {
       return jsonResponse({ content: [], totalElements: 120 });
+    }
+    if (url.includes("/api/v1/admin/audit-log")) {
+      if (options.auditLogStatus) {
+        return new Response(null, { status: options.auditLogStatus });
+      }
+      return jsonResponse({
+        content: [
+          {
+            id: 1,
+            adminId: 1,
+            adminDisplayName: "Иван Петров",
+            action: "updateListingStatus",
+            objectType: "LISTING",
+            objectId: "42",
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      });
     }
     if (url.includes("/api/v1/admin/sync-runs/latest")) {
       return jsonResponse([
@@ -100,6 +118,25 @@ describe("DashboardPage", () => {
 
     await waitFor(() => expect(screen.getByText("SUCCESS")).toBeInTheDocument());
     expect(screen.queryByText("Новые пользователи")).not.toBeInTheDocument();
+  });
+
+  it("should_render_audit_log_entries_when_endpoint_available", async () => {
+    mockFetch();
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText("Иван Петров")).toBeInTheDocument());
+    expect(screen.getByText("Изменение статуса объявления")).toBeInTheDocument();
+    expect(screen.getByText("Объявление #42")).toBeInTheDocument();
+  });
+
+  it("should_hide_audit_log_block_when_endpoint_returns_404", async () => {
+    mockFetch({ auditLogStatus: 404 });
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText("SUCCESS")).toBeInTheDocument());
+    expect(screen.queryByText("Лента админ-действий")).not.toBeInTheDocument();
   });
 
   it("should_refetch_all_queries_when_refresh_clicked", async () => {

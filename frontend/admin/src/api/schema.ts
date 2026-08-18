@@ -1241,6 +1241,66 @@ export interface components {
              */
             active?: boolean;
         };
+        /** @description A single recorded admin action for the audit log feed */
+        AdminAuditLogResponse: {
+            /**
+             * Format: int64
+             * @description Internal audit log entry identifier
+             * @example 512
+             */
+            id?: number;
+            /**
+             * Format: int64
+             * @description Id of the admin who performed the action
+             * @example 1
+             */
+            adminId?: number;
+            /**
+             * @description Display name of the admin who performed the action, null if the user no longer exists
+             * @example Иван Петров
+             */
+            adminDisplayName?: string;
+            /**
+             * @description Action performed, matches the action= tag in the SLF4J admin audit log line
+             * @example updateListingStatus
+             */
+            action?: string;
+            /**
+             * @description Type of resource the action was performed on
+             * @example LISTING
+             * @enum {string}
+             */
+            objectType?: "LISTING" | "SOURCE" | "USER";
+            /**
+             * @description Id of the affected resource — numeric for listings/users, the source code for sources
+             * @example 42
+             */
+            objectId?: string;
+            /**
+             * Format: date-time
+             * @description When the action was performed
+             * @example 2026-08-18T14:20:00Z
+             */
+            createdAt?: string;
+        };
+        PageAdminAuditLogResponse: {
+            /** Format: int32 */
+            totalPages?: number;
+            /** Format: int64 */
+            totalElements?: number;
+            /** Format: int32 */
+            size?: number;
+            content?: components["schemas"]["AdminAuditLogResponse"][];
+            /** Format: int32 */
+            number?: number;
+            sort?: components["schemas"]["SortObject"][];
+            pageable?: components["schemas"]["PageableObject"];
+            first?: boolean;
+            last?: boolean;
+            /** Format: int32 */
+            numberOfElements?: number;
+            empty?: boolean;
+        };
     };
     responses: never;
     parameters: never;
