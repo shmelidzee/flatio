@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchSources, fetchSyncRuns, updateSource } from "./adminSources";
+import { fetchLatestSyncRuns, fetchRecentSyncRuns, fetchSources, fetchSyncRuns, updateSource } from "./adminSources";
 
 describe("adminSources", () => {
   beforeEach(() => {
@@ -62,5 +62,46 @@ describe("adminSources", () => {
     vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 500 }));
 
     await expect(fetchSyncRuns("onliner", 0)).rejects.toThrow("HTTP 500");
+  });
+
+  it("should_return_latest_sync_runs_per_source", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify([{ sourceId: "onliner", status: "SUCCESS" }]), { status: 200 }),
+    );
+
+    const result = await fetchLatestSyncRuns();
+
+    expect(result).toEqual([{ sourceId: "onliner", status: "SUCCESS" }]);
+    expect(fetch).toHaveBeenCalledWith("/api/v1/admin/sync-runs/latest", expect.anything());
+  });
+
+  it("should_throw_when_fetch_latest_sync_runs_fails", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 500 }));
+
+    await expect(fetchLatestSyncRuns()).rejects.toThrow("HTTP 500");
+  });
+
+  it("should_request_recent_sync_runs_without_source_filter", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ content: [] }), { status: 200 }));
+
+    await fetchRecentSyncRuns(5);
+
+    const [url] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toBe("/api/v1/admin/sync-runs?page=0&size=5");
+  });
+
+  it("should_request_recent_sync_runs_filtered_by_source", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ content: [] }), { status: 200 }));
+
+    await fetchRecentSyncRuns(10, "onliner");
+
+    const [url] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toBe("/api/v1/admin/sync-runs?page=0&size=10&sourceId=onliner");
+  });
+
+  it("should_throw_when_fetch_recent_sync_runs_fails", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 500 }));
+
+    await expect(fetchRecentSyncRuns(5)).rejects.toThrow("HTTP 500");
   });
 });

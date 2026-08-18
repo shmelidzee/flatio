@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  fetchActiveListingsCount,
   fetchListingDetail,
   fetchListings,
   unlinkDuplicateGroup,
@@ -93,5 +94,26 @@ describe("adminListings", () => {
     vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 500 }));
 
     await expect(unlinkDuplicateGroup(7)).rejects.toThrow("HTTP 500");
+  });
+
+  it("should_return_total_elements_when_fetching_active_listings_count", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify({ content: [], totalElements: 42 }), { status: 200 }),
+    );
+
+    const result = await fetchActiveListingsCount();
+
+    expect(result).toBe(42);
+    const [url] = vi.mocked(fetch).mock.calls[0];
+    const parsed = new URL(String(url), "http://localhost");
+    expect(parsed.pathname).toBe("/api/v1/admin/listings");
+    expect(parsed.searchParams.get("status")).toBe("ACTIVE");
+    expect(parsed.searchParams.get("size")).toBe("1");
+  });
+
+  it("should_throw_when_fetch_active_listings_count_fails", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 500 }));
+
+    await expect(fetchActiveListingsCount()).rejects.toThrow("HTTP 500");
   });
 });

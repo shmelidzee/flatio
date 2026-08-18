@@ -72,3 +72,14 @@ export async function unlinkDuplicateGroup(id: number): Promise<void> {
     throw new Error(`Failed to unlink duplicate group: HTTP ${response.status}`);
   }
 }
+
+/** Dashboard aggregate: total count of ACTIVE listings, read off a 1-row page's totalElements. */
+export async function fetchActiveListingsCount(): Promise<number> {
+  const params = new URLSearchParams({ status: "ACTIVE", page: "0", size: "1" });
+  const response = await apiFetch(`/api/v1/admin/listings?${params.toString()}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch active listings count: HTTP ${response.status}`);
+  }
+  const page = (await response.json()) as PageListingSummary;
+  return page.totalElements ?? 0;
+}
