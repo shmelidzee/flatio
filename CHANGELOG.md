@@ -8,6 +8,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **PR #345 — Лента админ-действий (audit log) на дашборде (issue #326)**
+  - PO выбрал подход из двух предложенных в issue: отдельная таблица `admin_audit_log` в БД
+    вместо API поверх агрегации SLF4J-логов (лог-агрегация потребовала бы новой инфраструктуры —
+    ELK/Loki — которой в проекте нет)
+  - Flyway `V50`/`V51` — таблица `admin_audit_log` (`admin_id`, `action`, `object_type`,
+    `object_id`, `created_at`), индекс по `created_at DESC` отдельной миграцией
+  - `GET /api/v1/admin/audit-log` — пагинированная лента последних действий, обогащённая
+    `adminDisplayName` одним batch-запросом к `UserRepository` (без N+1)
+  - Запись подключена вручную (не через AOP) в 4 существующих admin-мутациях: обновление статуса
+    объявления и отвязка дубликата, обновление источника, обновление пользователя — в той же
+    транзакции, что и само действие
+  - Попутно исправлен пробел: `AdminSourceController`/`AdminSourceService.update` не принимали
+    `Authentication` — у изменений источника не было записанного актора вообще
+  - Frontend: блок «Лента админ-действий» на дашборде, скрывается на HTTP 404 как и блок «Новые
+    пользователи» из #324
+  - Побочный фикс: 4 существующих full-context `@SpringBootTest`
+    (`SecurityConfigTest`/`LogbackProdProfileTest`/`KufarAdDetailClientResilienceTest`/
+    `KufarSyncExecutorIsolationTest`, каждый мокает все JPA-репозитории вручную) не мокали новый
+    `AdminAuditLogRepository` — добавлено
 - **PR #343 — Admin SPA: экраны «Дашборд» и «Пользователи» (issues #324, #325)**
   - `GET /api/v1/admin/users` — поиск пользователей с пагинацией, фильтры `role`/`active`;
     `PATCH /api/v1/admin/users/{id}` — деактивация и/или смена роли, с audit-логом
