@@ -109,7 +109,7 @@ class AdminSourceControllerTest {
   void should_return_200_when_source_updated() throws Exception {
     // Given
     var request = new AdminSourceUpdateRequest(false, 90);
-    when(adminSourceService.update(eq("kufar"), any())).thenReturn(buildSourceResponse("kufar"));
+    when(adminSourceService.update(eq("kufar"), any(), eq(1L))).thenReturn(buildSourceResponse("kufar"));
 
     // When / Then
     mockMvc.perform(patch("/api/v1/admin/sources/kufar")
@@ -124,7 +124,7 @@ class AdminSourceControllerTest {
   void should_return_404_when_updating_unknown_source() throws Exception {
     // Given
     var request = new AdminSourceUpdateRequest(false, null);
-    when(adminSourceService.update(eq("unknown"), any()))
+    when(adminSourceService.update(eq("unknown"), any(), eq(1L)))
         .thenThrow(new SourceNotFoundException("unknown"));
 
     // When / Then

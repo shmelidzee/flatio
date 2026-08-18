@@ -1,9 +1,11 @@
 package com.flatio.service.impl;
 
 import com.flatio.common.exception.SourceNotFoundException;
+import com.flatio.domain.audit.AdminAuditObjectType;
 import com.flatio.domain.source.Source;
 import com.flatio.repository.SourceRepository;
 import com.flatio.repository.SyncRunRepository;
+import com.flatio.service.AdminAuditLogService;
 import com.flatio.service.SyncRunService;
 import com.flatio.web.dto.AdminSourceResponse;
 import com.flatio.web.dto.AdminSourceUpdateRequest;
@@ -40,6 +42,9 @@ class AdminSourceServiceImplTest {
 
   @Mock
   private AdminSourceMapper adminSourceMapper;
+
+  @Mock
+  private AdminAuditLogService adminAuditLogService;
 
   @InjectMocks
   private AdminSourceServiceImpl adminSourceService;
@@ -95,11 +100,12 @@ class AdminSourceServiceImplTest {
     var request = new AdminSourceUpdateRequest(false, null);
 
     // When
-    adminSourceService.update("kufar", request);
+    adminSourceService.update("kufar", request, 1L);
 
     // Then
     assertThat(source.isActive()).isFalse();
     verify(sourceRepository).save(source);
+    verify(adminAuditLogService).record("updateSource", AdminAuditObjectType.SOURCE, "kufar", 1L);
   }
 
   @Test
@@ -111,7 +117,7 @@ class AdminSourceServiceImplTest {
     var request = new AdminSourceUpdateRequest(null, 90);
 
     // When
-    adminSourceService.update("kufar", request);
+    adminSourceService.update("kufar", request, 1L);
 
     // Then
     assertThat(source.getSyncIntervalMinutes()).isEqualTo(90);
@@ -127,7 +133,7 @@ class AdminSourceServiceImplTest {
     var request = new AdminSourceUpdateRequest(null, null);
 
     // When
-    adminSourceService.update("kufar", request);
+    adminSourceService.update("kufar", request, 1L);
 
     // Then
     assertThat(source.isActive()).isTrue();
@@ -141,7 +147,7 @@ class AdminSourceServiceImplTest {
     var request = new AdminSourceUpdateRequest(true, null);
 
     // When / Then
-    assertThatThrownBy(() -> adminSourceService.update("unknown", request))
+    assertThatThrownBy(() -> adminSourceService.update("unknown", request, 1L))
         .isInstanceOf(SourceNotFoundException.class)
         .hasMessageContaining("unknown");
   }
