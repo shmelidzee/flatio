@@ -7,6 +7,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **PR #353 — Четыре багфикса admin-панели: 500 на /admin, город Onliner, тултип дашборда, баннер ошибки (issues #349, #350, #351, #352)**
+  - **#349** — `AdminSpaWebConfig.SpaFallbackResourceResolver` не обрабатывал пустой `resourcePath`,
+    возникающий при точном (non-wildcard) совпадении паттерна `/admin` — `GET /admin` без слэша
+    отдавал 500 вместо SPA-шелла; `GET /admin/` работал и раньше. Исправлено явной отдачей
+    `index.html` для пустого `resourcePath`
+  - **#350** — `OnlinerConnector`/`OnlinerSaleConnector`: добавлен `resolveCity(address)` — город
+    извлекается как сегмент `location.address` до первой запятой (Onliner API не отдаёт отдельное
+    поле города); затрагивает и admin-таблицу, и публичный `GET /api/v1/listings?city=...`
+  - **#351** — `DashboardPage.tsx` (`SourceHealthRow`) — добавлен `title` с полным `displayName`
+    на обрезанное название источника в health-стрипе
+  - **#352** — `adminUsers.ts#updateUser` теперь парсит `ErrorResponse.message` из тела ответа
+    (fallback на `HTTP {status}`); баннер ошибки на `UsersPage` сбрасывается при смене фильтров
+    и автоматически через 5 секунд
+
 ### Added
 - **PR #345 — Лента админ-действий (audit log) на дашборде (issue #326)**
   - PO выбрал подход из двух предложенных в issue: отдельная таблица `admin_audit_log` в БД
