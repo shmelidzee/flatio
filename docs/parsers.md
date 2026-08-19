@@ -125,7 +125,7 @@ resilience4j:
 | `address` | `location.address` | nullable |
 | `latitude` | `location.latitude` | nullable |
 | `longitude` | `location.longitude` | nullable |
-| `city` | — | Always `null` (no separate city field in Onliner API) |
+| `city` | `location.address` (leading comma-separated segment) | Derived — Onliner API has no dedicated city field; `null` when `address` is null/blank (issue #350) |
 | `sourceUrl` | `url` | |
 | `publishedAt` | `last_time_up` | ISO-8601 string → `Instant`; `null` when field absent |
 | `photoUrls` | `photo` | Single photo URL wrapped in `List.of()`; `List.of()` when null |

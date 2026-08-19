@@ -237,6 +237,7 @@ public class OnlinerSaleConnector implements ListingConnector {
     BigDecimal lat = apartment.location() != null ? apartment.location().latitude() : null;
     BigDecimal lon = apartment.location() != null ? apartment.location().longitude() : null;
     String address = apartment.location() != null ? apartment.location().address() : null;
+    String city = resolveCity(address);
     // Diagnostic for #327 (address arriving/persisting empty): logs the address exactly as
     // parsed from the source response, before it enters RawListing/persistence, so a future
     // recurrence can be localized to fetch-time (empty here) vs. mapping/persist-time (non-empty
@@ -265,7 +266,7 @@ public class OnlinerSaleConnector implements ListingConnector {
         address,
         lat,
         lon,
-        null,
+        city,
         apartment.url(),
         publishedAt,
         photos,
@@ -273,6 +274,26 @@ public class OnlinerSaleConnector implements ListingConnector {
         null,
         isNegotiable
     );
+  }
+
+  /**
+   * Derives the city from an Onliner {@code location.address} string.
+   *
+   * <p>The Onliner API has no dedicated city field — the city name is always the leading
+   * segment of {@code address} (e.g. {@code "Минск, улица Кедышко, 3"} → {@code "Минск"},
+   * or the whole string when no street follows, e.g. {@code "Гродно"} → {@code "Гродно"}).
+   *
+   * @param address raw address string from {@code location.address}, may be null
+   * @return the leading comma-separated segment trimmed, or null if address is null/blank
+   */
+  private static String resolveCity(String address) {
+    if (address == null || address.isBlank()) {
+      return null;
+    }
+    int commaIndex = address.indexOf(',');
+    String city = commaIndex >= 0 ? address.substring(0, commaIndex) : address;
+    city = city.trim();
+    return city.isEmpty() ? null : city;
   }
 
   /**
