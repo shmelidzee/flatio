@@ -87,7 +87,6 @@ export function SourcesPage(): ReactElement {
                 <th className="px-4 py-3 font-medium">URL</th>
                 <th className="px-4 py-3 font-medium">Страна</th>
                 <th className="px-4 py-3 font-medium">Статус</th>
-                <th className="px-4 py-3 font-medium">Интервал, мин</th>
                 <th className="px-4 py-3 font-medium">Последний успешный запуск</th>
                 <th className="px-4 py-3 font-medium">Здоровье</th>
               </tr>
@@ -102,9 +101,6 @@ export function SourcesPage(): ReactElement {
                   onToggleExpanded={() => toggleExpanded(source.sourceId ?? "")}
                   onToggleEnabled={() =>
                     updateMutation.mutate({ sourceId: source.sourceId ?? "", patch: { enabled: !source.enabled } })
-                  }
-                  onSaveInterval={(minutes) =>
-                    updateMutation.mutate({ sourceId: source.sourceId ?? "", patch: { syncIntervalMinutes: minutes } })
                   }
                 />
               ))}
@@ -122,28 +118,10 @@ interface SourceRowProps {
   saving: boolean;
   onToggleExpanded: () => void;
   onToggleEnabled: () => void;
-  onSaveInterval: (minutes: number) => void;
 }
 
-function SourceRow({
-  source,
-  expanded,
-  saving,
-  onToggleExpanded,
-  onToggleEnabled,
-  onSaveInterval,
-}: SourceRowProps): ReactElement {
+function SourceRow({ source, expanded, saving, onToggleExpanded, onToggleEnabled }: SourceRowProps): ReactElement {
   const health = sourceHealth(source);
-  const [intervalDraft, setIntervalDraft] = useState(String(source.syncIntervalMinutes ?? ""));
-
-  function commitInterval(): void {
-    const minutes = Number(intervalDraft);
-    if (Number.isInteger(minutes) && minutes > 0 && minutes !== source.syncIntervalMinutes) {
-      onSaveInterval(minutes);
-    } else {
-      setIntervalDraft(String(source.syncIntervalMinutes ?? ""));
-    }
-  }
 
   return (
     <>
@@ -184,22 +162,6 @@ function SourceRow({
             />
           </button>
         </td>
-        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-          <input
-            type="number"
-            min={1}
-            value={intervalDraft}
-            disabled={saving}
-            onChange={(e) => setIntervalDraft(e.target.value)}
-            onBlur={commitInterval}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                (e.target as HTMLInputElement).blur();
-              }
-            }}
-            className="w-16 rounded border border-surface-border bg-surface px-2 py-1 text-gray-200 disabled:opacity-50"
-          />
-        </td>
         <td className="px-4 py-3 text-gray-400">{formatRelativeTime(source.lastSyncAt)}</td>
         <td className="px-4 py-3">
           <span className="flex items-center gap-2">
@@ -210,7 +172,7 @@ function SourceRow({
       </tr>
       {expanded && (
         <tr className="border-t border-surface-border bg-surface">
-          <td colSpan={8} className="px-4 py-4">
+          <td colSpan={7} className="px-4 py-4">
             <SyncRunHistory sourceId={source.sourceId ?? ""} />
           </td>
         </tr>
