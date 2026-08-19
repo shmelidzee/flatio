@@ -44,7 +44,24 @@ export async function updateUser(id: number, patch: AdminUserUpdate): Promise<Ad
     body: JSON.stringify(patch),
   });
   if (!response.ok) {
-    throw new Error(`Failed to update user: HTTP ${response.status}`);
+    throw new Error(await resolveUpdateErrorMessage(response));
   }
   return (await response.json()) as AdminUser;
+}
+
+/**
+ * Extracts the backend's `ErrorResponse.message` from a failed update response, falling back
+ * to a status-code message when the body isn't the expected JSON shape (e.g. an upstream proxy
+ * error page).
+ */
+async function resolveUpdateErrorMessage(response: Response): Promise<string> {
+  try {
+    const body = (await response.json()) as { message?: string };
+    if (typeof body.message === "string" && body.message.trim() !== "") {
+      return body.message;
+    }
+  } catch {
+    // Body wasn't valid JSON — fall through to the status-based fallback below.
+  }
+  return `Failed to update user: HTTP ${response.status}`;
 }

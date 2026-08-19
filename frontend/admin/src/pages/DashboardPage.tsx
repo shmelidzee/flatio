@@ -267,7 +267,9 @@ function SourceHealthRow({ source }: { source: AdminSource }): ReactElement {
 
   return (
     <div className="flex items-center gap-3 rounded border border-surface-border px-3 py-2">
-      <span className="w-32 truncate text-sm text-gray-300">{source.displayName}</span>
+      <span className="w-32 truncate text-sm text-gray-300" title={source.displayName}>
+        {source.displayName}
+      </span>
       <div className="flex items-center gap-1">
         {runsQuery.isLoading && <span className="text-xs text-gray-500">Загрузка…</span>}
         {runs.map((run) => (

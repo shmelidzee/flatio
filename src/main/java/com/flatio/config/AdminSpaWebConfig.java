@@ -37,6 +37,14 @@ public class AdminSpaWebConfig implements WebMvcConfigurer {
 
     @Override
     protected Resource getResource(String resourcePath, Resource location) throws IOException {
+      // For an exact, non-wildcard pattern match (request path == mapped pattern, e.g. "/admin"
+      // matching the literal "/admin" pattern registered below), AntPathMatcher.extractPathWithinPattern
+      // yields an empty resourcePath. Resolving "" against a classpath directory resource returns the
+      // directory itself rather than a readable file, which blows up downstream with a 500 instead of
+      // ever reaching the "not found" branch below — so it is special-cased here before delegating.
+      if (resourcePath.isEmpty()) {
+        return new ClassPathResource("static/admin/index.html");
+      }
       // Delegates to the parent resolver first so its checkResource() traversal guard still
       // runs — only the "not found" case is special-cased here for the SPA fallback.
       var resource = super.getResource(resourcePath, location);

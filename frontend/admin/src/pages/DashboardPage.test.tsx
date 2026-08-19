@@ -71,7 +71,9 @@ function mockFetch(options: { usersStatus?: number; auditLogStatus?: number } = 
       });
     }
     if (url.includes("/api/v1/admin/sources")) {
-      return jsonResponse([{ sourceId: "onliner", displayName: "Onliner", enabled: true }]);
+      return jsonResponse([
+        { sourceId: "kufar-apt-rent", displayName: "Kufar.by (Apartment Rent)", enabled: true },
+      ]);
     }
     return new Response(null, { status: 404 });
   });
@@ -137,6 +139,18 @@ describe("DashboardPage", () => {
 
     await waitFor(() => expect(screen.getByText("SUCCESS")).toBeInTheDocument());
     expect(screen.queryByText("Лента админ-действий")).not.toBeInTheDocument();
+  });
+
+  it("should_set_title_attribute_to_full_display_name_on_truncated_source_health_row", async () => {
+    mockFetch();
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText("Kufar.by (Apartment Rent)")).toBeInTheDocument());
+    expect(screen.getByText("Kufar.by (Apartment Rent)")).toHaveAttribute(
+      "title",
+      "Kufar.by (Apartment Rent)",
+    );
   });
 
   it("should_refetch_all_queries_when_refresh_clicked", async () => {

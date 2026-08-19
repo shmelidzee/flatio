@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactElement } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchUsers, updateUser } from "../api/adminUsers";
@@ -7,6 +7,7 @@ import { formatRelativeTime } from "../lib/formatRelativeTime";
 
 const USERS_QUERY_KEY = ["admin", "users"];
 const ROLE_OPTIONS: UserRoleValue[] = ["USER", "PRO", "ADMIN"];
+const ERROR_BANNER_TIMEOUT_MS = 5_000;
 
 const ROLE_LABEL: Record<UserRoleValue, string> = {
   USER: "Пользователь",
@@ -31,14 +32,28 @@ export function UsersPage(): ReactElement {
     },
   });
 
+  const { isError: updateFailed, reset: resetUpdateError } = updateMutation;
+
+  // The error banner otherwise stays on screen indefinitely (issue #352) — auto-dismiss it after
+  // a timeout so a stale failure doesn't linger once the admin has moved on.
+  useEffect(() => {
+    if (!updateFailed) {
+      return;
+    }
+    const timer = window.setTimeout(() => resetUpdateError(), ERROR_BANNER_TIMEOUT_MS);
+    return () => window.clearTimeout(timer);
+  }, [updateFailed, resetUpdateError]);
+
   function applyRoleFilter(role: string): void {
     setFilters((f) => ({ ...f, role: (role || undefined) as UserRoleValue | undefined }));
     setPage(0);
+    updateMutation.reset();
   }
 
   function applyActiveFilter(active: string): void {
     setFilters((f) => ({ ...f, active: active === "" ? undefined : active === "true" }));
     setPage(0);
+    updateMutation.reset();
   }
 
   const users = usersQuery.data?.content ?? [];

@@ -1,7 +1,9 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UsersPage } from "./UsersPage";
+
+const SELF_ROLE_CHANGE_ERROR_MESSAGE = "Нельзя понизить себе роль администратора";
 
 function renderPage() {
   const queryClient = new QueryClient({
@@ -108,5 +110,62 @@ describe("UsersPage", () => {
     fireEvent.click(screen.getByRole("switch"));
 
     await waitFor(() => expect(screen.getByText(/Не удалось обновить пользователя/)).toBeInTheDocument());
+  });
+
+  it("should_show_backend_error_message_when_update_fails_with_json_error_body", async () => {
+    // issue #352 — the banner must surface ErrorResponse.message, not a bare "HTTP 403"
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ content: [IVAN], totalPages: 1, last: true }));
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ message: SELF_ROLE_CHANGE_ERROR_MESSAGE }, 403),
+    );
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Иван Петров")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("switch"));
+
+    await waitFor(() =>
+      expect(screen.getByText(new RegExp(SELF_ROLE_CHANGE_ERROR_MESSAGE))).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/HTTP 403/)).not.toBeInTheDocument();
+  });
+
+  it("should_reset_error_banner_when_role_filter_changed", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ content: [IVAN], totalPages: 1, last: true }));
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 403 }));
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ content: [IVAN], totalPages: 1, last: true }));
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Иван Петров")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("switch"));
+    await waitFor(() => expect(screen.getByText(/Не удалось обновить пользователя/)).toBeInTheDocument());
+
+    fireEvent.change(screen.getByDisplayValue("Роль: любая"), { target: { value: "ADMIN" } });
+
+    await waitFor(() =>
+      expect(screen.queryByText(/Не удалось обновить пользователя/)).not.toBeInTheDocument(),
+    );
+  });
+
+  it("should_auto_dismiss_error_banner_after_timeout", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ content: [IVAN], totalPages: 1, last: true }));
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 403 }));
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Иван Петров")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("switch"));
+    await waitFor(() => expect(screen.getByText(/Не удалось обновить пользователя/)).toBeInTheDocument());
+
+    act(() => {
+      vi.advanceTimersByTime(5_000);
+    });
+
+    await waitFor(() =>
+      expect(screen.queryByText(/Не удалось обновить пользователя/)).not.toBeInTheDocument(),
+    );
+    vi.useRealTimers();
   });
 });
