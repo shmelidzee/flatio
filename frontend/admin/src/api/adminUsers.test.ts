@@ -70,4 +70,29 @@ describe("adminUsers", () => {
 
     await expect(updateUser(1, { role: "USER" })).rejects.toThrow("HTTP 403");
   });
+
+  it("should_throw_backend_message_when_update_user_fails_with_error_response_body", async () => {
+    // issue #352 — ErrorResponse.message from the backend must be surfaced, not "HTTP 403"
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify({ message: "Нельзя понизить себе роль администратора" }), { status: 403 }),
+    );
+
+    await expect(updateUser(1, { role: "USER" })).rejects.toThrow(
+      "Нельзя понизить себе роль администратора",
+    );
+  });
+
+  it("should_fall_back_to_status_message_when_update_user_error_body_is_not_json", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response("<html>Bad Gateway</html>", { status: 502 }));
+
+    await expect(updateUser(1, { role: "USER" })).rejects.toThrow("HTTP 502");
+  });
+
+  it("should_fall_back_to_status_message_when_update_user_error_body_has_blank_message", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify({ message: "   " }), { status: 403 }),
+    );
+
+    await expect(updateUser(1, { role: "USER" })).rejects.toThrow("HTTP 403");
+  });
 });
