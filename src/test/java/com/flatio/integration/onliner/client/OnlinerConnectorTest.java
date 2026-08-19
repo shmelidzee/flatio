@@ -203,6 +203,7 @@ class OnlinerConnectorTest {
     assertThat(first.floorsTotal()).isNull();
     assertThat(first.areaTotalM2()).isNull();
     assertThat(first.address()).isEqualTo("Минск, пр-т Независимости, 72");
+    assertThat(first.city()).isEqualTo("Минск");
     assertThat(first.latitude()).isNotNull();
     assertThat(first.longitude()).isNotNull();
     assertThat(first.publishedAt()).isNotNull();
@@ -395,11 +396,13 @@ class OnlinerConnectorTest {
     assertThat(result.get(0).publishedAt()).isNotNull();
     assertThat(result.get(0).rooms()).isEqualTo(2);   // rent_type = "2_rooms"
     assertThat(result.get(0).isOwner()).isTrue();      // contact.owner = true
+    assertThat(result.get(0).city()).isEqualTo("Минск");
     assertThat(result.get(1).externalId()).isEqualTo("1002");
     assertThat(result.get(1).dealType()).isEqualTo("RENT");
     assertThat(result.get(1).photoUrls()).isEmpty();
     assertThat(result.get(1).rooms()).isEqualTo(3);   // rent_type = "3_rooms"
     assertThat(result.get(1).isOwner()).isFalse();     // contact.owner = false
+    assertThat(result.get(1).city()).isEqualTo("Минск");
   }
 
   @Test
@@ -626,6 +629,67 @@ class OnlinerConnectorTest {
 
     // Then — null signals unknown ownership, not false
     assertThat(result.get(0).isOwner()).isNull();
+  }
+
+  // -------------------------------------------------------------------------
+  // City extraction from address (#350)
+  // -------------------------------------------------------------------------
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_extract_city_from_address_when_address_has_street_segment() {
+    // Given
+    var response = buildResponseWithAddress("Минск, улица Кедышко, 3");
+    mockRestClientReturning(response);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).city()).isEqualTo("Минск");
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_return_whole_address_as_city_when_address_has_no_comma() {
+    // Given — some Onliner listings only carry a bare city name, no street
+    var response = buildResponseWithAddress("Гродно");
+    mockRestClientReturning(response);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then
+    assertThat(result.get(0).city()).isEqualTo("Гродно");
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_trim_whitespace_from_extracted_city() {
+    // Given — extra whitespace around the city segment
+    var response = buildResponseWithAddress("  Минск  , улица Кедышко, 3");
+    mockRestClientReturning(response);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then
+    assertThat(result.get(0).city()).isEqualTo("Минск");
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_return_null_city_when_address_is_null() {
+    // Given — apartment with location = null
+    var response = buildResponseWithNullTitleFields();
+    mockRestClientReturning(response);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then
+    assertThat(result.get(0).city()).isNull();
   }
 
   // -------------------------------------------------------------------------
@@ -958,6 +1022,31 @@ class OnlinerConnectorTest {
         "https://r.onliner.by/ak/apartments/6001",
         "2_rooms",
         photoUrl,
+        price,
+        location,
+        new OnlinerContact(true),
+        OffsetDateTime.parse("2026-06-05T12:00:00+03:00"),
+        OffsetDateTime.parse("2026-06-05T12:00:00+03:00")
+    );
+    return new OnlinerSearchResponse(
+        List.of(apt), 1,
+        new OnlinerPage(50, 1, 1, 1)
+    );
+  }
+
+  private OnlinerSearchResponse buildResponseWithAddress(String address) {
+    var price = new OnlinerPrice("400.00", "USD",
+        Map.of("BYN", new OnlinerConvertedPrice("1305.00", "BYN")));
+    var location = new OnlinerLocation(
+        address,
+        new BigDecimal("53.9040"),
+        new BigDecimal("27.5620")
+    );
+    var apt = new OnlinerApartment(
+        10001L,
+        "https://r.onliner.by/ak/apartments/10001",
+        "2_rooms",
+        null,
         price,
         location,
         new OnlinerContact(true),

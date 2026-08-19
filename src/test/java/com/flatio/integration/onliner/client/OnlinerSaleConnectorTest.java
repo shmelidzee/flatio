@@ -195,6 +195,7 @@ class OnlinerSaleConnectorTest {
     assertThat(first.priceUsd()).isEqualByComparingTo("73449.63");
     assertThat(first.rooms()).isEqualTo(2);
     assertThat(first.address()).isEqualTo("Минск, Орловская ул. 11");
+    assertThat(first.city()).isEqualTo("Минск");
     assertThat(first.latitude()).isNotNull();
     assertThat(first.longitude()).isNotNull();
     assertThat(first.publishedAt()).isNotNull();
@@ -399,6 +400,53 @@ class OnlinerSaleConnectorTest {
   }
 
   // -------------------------------------------------------------------------
+  // City extraction from address (#350)
+  // -------------------------------------------------------------------------
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_extract_city_from_address_when_address_has_street_segment() {
+    // Given
+    var response = buildResponseWithAddress("Минск, улица Кедышко, 3");
+    mockRestClientReturning(response);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).city()).isEqualTo("Минск");
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_return_whole_address_as_city_when_address_has_no_comma() {
+    // Given — some Onliner listings only carry a bare city name, no street
+    var response = buildResponseWithAddress("Полоцк");
+    mockRestClientReturning(response);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then
+    assertThat(result.get(0).city()).isEqualTo("Полоцк");
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_return_null_city_when_address_is_null() {
+    // Given — apartment with location = null
+    var response = buildResponseWithNullLocation();
+    mockRestClientReturning(response);
+
+    // When
+    List<RawListing> result = connector.fetch();
+
+    // Then
+    assertThat(result.get(0).city()).isNull();
+  }
+
+  // -------------------------------------------------------------------------
   // HTTP error handling
   // -------------------------------------------------------------------------
 
@@ -481,10 +529,12 @@ class OnlinerSaleConnectorTest {
     assertThat(result.get(0).priceUsd()).isEqualByComparingTo("73449.63");
     assertThat(result.get(0).rooms()).isEqualTo(2);
     assertThat(result.get(0).isOwner()).isTrue();    // seller.type = "owner"
+    assertThat(result.get(0).city()).isEqualTo("Минск");
     assertThat(result.get(1).externalId()).isEqualTo("2002");
     assertThat(result.get(1).rooms()).isEqualTo(3);
     assertThat(result.get(1).isOwner()).isFalse();   // seller.type = "agent"
     assertThat(result.get(1).photoUrls()).isEmpty();
+    assertThat(result.get(1).city()).isEqualTo("Минск");
   }
 
   @Test
@@ -706,6 +756,22 @@ class OnlinerSaleConnectorTest {
     var apt = new OnlinerSaleApartment(
         9002L, "https://r.onliner.by/pk/apartments/9002",
         2, photoUrl, buildStandardPrice(), buildStandardLocation(),
+        new OnlinerSaleSeller("owner"), null, true,
+        OffsetDateTime.parse("2026-06-01T12:00:00+03:00"),
+        OffsetDateTime.parse("2026-06-01T12:00:00+03:00")
+    );
+    return new OnlinerSaleSearchResponse(List.of(apt), 1, new OnlinerPage(50, 1, 1, 1));
+  }
+
+  private OnlinerSaleSearchResponse buildResponseWithAddress(String address) {
+    var location = new OnlinerLocation(
+        address,
+        new BigDecimal("53.9040"),
+        new BigDecimal("27.5620")
+    );
+    var apt = new OnlinerSaleApartment(
+        10001L, "https://r.onliner.by/pk/apartments/10001",
+        2, null, buildStandardPrice(), location,
         new OnlinerSaleSeller("owner"), null, true,
         OffsetDateTime.parse("2026-06-01T12:00:00+03:00"),
         OffsetDateTime.parse("2026-06-01T12:00:00+03:00")
