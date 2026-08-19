@@ -64,6 +64,27 @@ describe("SourcesPage", () => {
     expect(screen.getByText("BY")).toBeInTheDocument();
   });
 
+  it("should_render_health_badge_when_source_has_never_synced", async () => {
+    // issue #354 — sourceHealth() still uses syncIntervalMinutes internally, only the editable
+    // column was removed; a source with no lastSyncAt must still show "Нет данных"
+    vi.mocked(fetch).mockResolvedValue(jsonResponse([{ ...ONLINER_SOURCE, lastSyncAt: undefined }]));
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText("Нет данных")).toBeInTheDocument());
+  });
+
+  it("should_not_render_interval_column_when_sources_loaded", async () => {
+    // issue #354 — the non-functional "Интервал, мин" column and its editable input were removed
+    vi.mocked(fetch).mockResolvedValue(jsonResponse([ONLINER_SOURCE]));
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText("Onliner")).toBeInTheDocument());
+    expect(screen.queryByText("Интервал, мин")).not.toBeInTheDocument();
+    expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
+  });
+
   it("should_send_patch_request_when_enabled_toggle_clicked", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse([ONLINER_SOURCE]));
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ ...ONLINER_SOURCE, enabled: false }));
@@ -113,6 +134,10 @@ describe("SourcesPage", () => {
     await waitFor(() => expect(screen.getByText("SUCCESS")).toBeInTheDocument());
     const historyTable = screen.getByText("SUCCESS").closest("table") as HTMLTableElement;
     expect(within(historyTable).getByText("DELTA")).toBeInTheDocument();
+
+    // issue #354 — colSpan must match the remaining 7 columns after removing "Интервал, мин"
+    const historyCell = historyTable.closest("td") as HTMLTableCellElement;
+    expect(historyCell).toHaveAttribute("colspan", "7");
   });
 
   it("should_expand_sync_run_history_when_row_activated_with_enter_key", async () => {
