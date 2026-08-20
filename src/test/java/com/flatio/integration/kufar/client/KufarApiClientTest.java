@@ -826,6 +826,85 @@ class KufarApiClientTest {
   }
 
   // -------------------------------------------------------------------------
+  // City extraction — from the area ad_parameter (issue #358)
+  // -------------------------------------------------------------------------
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_set_city_from_area_param_when_present() {
+    // Given
+    var adParams = List.of(
+        new KufarAdParameter("Область", "region", "Гродненская область", "grodno-region"),
+        new KufarAdParameter("Город", "area", "Гродно", "grodno")
+    );
+    var ad = buildAdWithParams(1501L, "Квартира в Гродно", 10000000L, adParams);
+    mockRestClientReturning(buildResponseWithAds(List.of(ad)));
+
+    // When
+    List<RawListing> result = apiClient.fetchAll(config, "RENT", "APARTMENT", "Fallback");
+
+    // Then
+    assertThat(result.get(0).city()).isEqualTo("Гродно");
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_return_null_city_when_area_param_is_absent() {
+    // Given — only region present, no area
+    var adParams = List.of(
+        new KufarAdParameter("Область", "region", "Минск", "minsk")
+    );
+    var ad = buildAdWithParams(1502L, "Квартира в Минске", 10000000L, adParams);
+    mockRestClientReturning(buildResponseWithAds(List.of(ad)));
+
+    // When
+    List<RawListing> result = apiClient.fetchAll(config, "SELL", "APARTMENT", "Fallback");
+
+    // Then
+    assertThat(result.get(0).city()).isNull();
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_set_city_from_area_param_even_when_account_parameters_address_used() {
+    // Given — account_parameters supplies a street-level address (unrelated free text), area
+    // still comes from the structured ad_parameters field regardless of which address source won
+    var accountParams = List.of(
+        new KufarAdParameter("Адрес", "address", "", "Соломовой ул, 141, Гродно, Гродненская область")
+    );
+    var adParams = List.of(
+        new KufarAdParameter("Область", "region", "Гродненская область", "grodno-region"),
+        new KufarAdParameter("Город", "area", "Гродно", "grodno")
+    );
+    var ad = buildAdWithAccountAndAdParams(1503L, "Квартира", 10000000L, accountParams, adParams);
+    mockRestClientReturning(buildResponseWithAds(List.of(ad)));
+
+    // When
+    List<RawListing> result = apiClient.fetchAll(config, "RENT", "APARTMENT", "Fallback");
+
+    // Then
+    assertThat(result.get(0).address()).isEqualTo("Соломовой ул, 141, Гродно, Гродненская область");
+    assertThat(result.get(0).city()).isEqualTo("Гродно");
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_use_area_v_when_vl_is_blank_for_city() {
+    // Given — vl blank (machine-only param), v holds the human-readable value
+    var adParams = List.of(
+        new KufarAdParameter("Город", "area", "", "Витебск")
+    );
+    var ad = buildAdWithParams(1504L, "Квартира", 10000000L, adParams);
+    mockRestClientReturning(buildResponseWithAds(List.of(ad)));
+
+    // When
+    List<RawListing> result = apiClient.fetchAll(config, "SELL", "APARTMENT", "Fallback");
+
+    // Then
+    assertThat(result.get(0).city()).isEqualTo("Витебск");
+  }
+
+  // -------------------------------------------------------------------------
   // Address resolution — account_parameters address takes priority (issue #334)
   // -------------------------------------------------------------------------
 

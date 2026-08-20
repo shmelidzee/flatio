@@ -148,6 +148,45 @@ class RateLimitFilterTest {
   }
 
   @Test
+  void should_rate_limit_admin_paths_with_the_dedicated_admin_limiter() throws Exception {
+    // Given — /api/v1/admin/** must use the separate, more generous api-admin config (issue #360),
+    // not api-authenticated shared with every other authenticated endpoint
+    SecurityContextHolder.getContext().setAuthentication(
+        new UsernamePasswordAuthenticationToken("42", null, java.util.List.of()));
+    var request = new MockHttpServletRequest("GET", "/api/v1/admin/listings");
+    var response = new MockHttpServletResponse();
+    when(rateLimiterRegistry.rateLimiter(eq("api-admin:42"), eq("api-admin")))
+        .thenReturn(rateLimiter);
+    when(rateLimiter.acquirePermission()).thenReturn(true);
+
+    // When
+    filter.doFilterInternal(request, response, filterChain);
+
+    // Then
+    verify(filterChain).doFilter(request, response);
+    verify(rateLimiterRegistry, never()).rateLimiter(eq("api-authenticated:42"), any(String.class));
+  }
+
+  @Test
+  void should_return_429_when_admin_limit_exceeded() throws Exception {
+    // Given
+    SecurityContextHolder.getContext().setAuthentication(
+        new UsernamePasswordAuthenticationToken("42", null, java.util.List.of()));
+    var request = new MockHttpServletRequest("GET", "/api/v1/admin/sources");
+    var response = new MockHttpServletResponse();
+    when(rateLimiterRegistry.rateLimiter(eq("api-admin:42"), eq("api-admin")))
+        .thenReturn(rateLimiter);
+    when(rateLimiter.acquirePermission()).thenReturn(false);
+
+    // When
+    filter.doFilterInternal(request, response, filterChain);
+
+    // Then
+    verify(filterChain, never()).doFilter(any(), any());
+    assertThat(response.getStatus()).isEqualTo(429);
+  }
+
+  @Test
   void should_skip_limiting_when_caller_is_not_authenticated_on_protected_path() throws Exception {
     // Given — no authentication in SecurityContext; Spring Security's own authorization
     // rules will reject the request further down the chain regardless
