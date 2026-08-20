@@ -1,5 +1,6 @@
 package com.flatio.integration.onliner.client;
 
+import com.flatio.common.util.ImageUrlValidator;
 import com.flatio.integration.core.ConnectorTransientException;
 import com.flatio.integration.core.ListingConnector;
 import com.flatio.integration.core.RawListing;
@@ -305,14 +306,15 @@ public class OnlinerSaleConnector implements ListingConnector {
    * joined and decoded.
    *
    * @param photoUrl raw photo URL from Onliner API, may be null
-   * @return decoded original URL, the input URL unchanged if not an imgproxy URL, or null on failure
+   * @return decoded original URL, the input URL unchanged if not an imgproxy URL, or null on
+   *     failure or if the resolved URL is not on an allowlisted host (issue #364)
    */
   private String resolvePhotoUrl(String photoUrl) {
     if (photoUrl == null) {
       return null;
     }
     if (!photoUrl.contains(IMGPROXY_ONLINER_HOST)) {
-      return photoUrl;
+      return validateOrReject(photoUrl);
     }
     try {
       String[] segments = photoUrl.split("/", -1);
@@ -334,11 +336,19 @@ public class OnlinerSaleConnector implements ListingConnector {
       int padLen = (BASE64_BLOCK_SIZE - base64.length() % BASE64_BLOCK_SIZE) % BASE64_BLOCK_SIZE;
       base64 = base64 + "=".repeat(padLen);
       byte[] decoded = Base64.getUrlDecoder().decode(base64);
-      return new String(decoded, StandardCharsets.UTF_8);
+      return validateOrReject(new String(decoded, StandardCharsets.UTF_8));
     } catch (Exception e) {
       log.warn("Failed to decode imgproxy photo URL: url={}, error={}", photoUrl, e.getMessage());
       return null;
     }
+  }
+
+  private String validateOrReject(String url) {
+    if (ImageUrlValidator.isAllowedImageUrl(url)) {
+      return url;
+    }
+    log.warn("Rejecting photo URL outside the allowed CDN hosts: url={}", url);
+    return null;
   }
 
   private String buildTitle(String address) {

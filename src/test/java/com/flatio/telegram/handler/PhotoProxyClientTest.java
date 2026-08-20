@@ -15,6 +15,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -40,9 +42,10 @@ class PhotoProxyClientTest {
   @SuppressWarnings("unchecked")
   void setUp() {
     photoProxyClient = new PhotoProxyClient(restClient);
-    when(restClient.get()).thenReturn(uriSpec);
-    doReturn(headersSpec).when(uriSpec).uri(anyString());
-    when(headersSpec.retrieve()).thenReturn(responseSpec);
+    // lenient: the not-allowlisted-host tests below short-circuit before restClient is touched
+    lenient().when(restClient.get()).thenReturn(uriSpec);
+    lenient().doReturn(headersSpec).when(uriSpec).uri(anyString());
+    lenient().when(headersSpec.retrieve()).thenReturn(responseSpec);
   }
 
   @Test
@@ -52,7 +55,7 @@ class PhotoProxyClientTest {
     when(responseSpec.body(byte[].class)).thenReturn(expectedBytes);
 
     // When
-    var result = photoProxyClient.download("https://cdn.example.com/photo.jpg", 42L);
+    var result = photoProxyClient.download("https://cdn.onliner.by/photo.jpg", 42L);
 
     // Then
     assertThat(result).isPresent().contains(expectedBytes);
@@ -64,7 +67,7 @@ class PhotoProxyClientTest {
     when(responseSpec.body(byte[].class)).thenReturn(null);
 
     // When
-    var result = photoProxyClient.download("https://cdn.example.com/photo.jpg", 42L);
+    var result = photoProxyClient.download("https://cdn.onliner.by/photo.jpg", 42L);
 
     // Then
     assertThat(result).isEmpty();
@@ -76,7 +79,7 @@ class PhotoProxyClientTest {
     when(responseSpec.body(byte[].class)).thenReturn(new byte[0]);
 
     // When
-    var result = photoProxyClient.download("https://cdn.example.com/photo.jpg", 42L);
+    var result = photoProxyClient.download("https://cdn.onliner.by/photo.jpg", 42L);
 
     // Then
     assertThat(result).isEmpty();
@@ -89,7 +92,7 @@ class PhotoProxyClientTest {
         .when(responseSpec).body(byte[].class);
 
     // When
-    var result = photoProxyClient.download("https://cdn.example.com/missing.jpg", 42L);
+    var result = photoProxyClient.download("https://cdn.onliner.by/missing.jpg", 42L);
 
     // Then
     assertThat(result).isEmpty();
@@ -102,10 +105,30 @@ class PhotoProxyClientTest {
         .when(responseSpec).body(byte[].class);
 
     // When
-    var result = photoProxyClient.download("https://cdn.example.com/photo.jpg", 42L);
+    var result = photoProxyClient.download("https://cdn.onliner.by/photo.jpg", 42L);
 
     // Then
     assertThat(result).isEmpty();
+  }
+
+  @Test
+  void should_return_empty_when_url_is_not_on_allowlisted_host() {
+    // When — attacker-controlled listing photo URL pointing at a non-allowlisted host (SSRF, #364)
+    var result = photoProxyClient.download("https://internal.example.com/photo.jpg", 42L);
+
+    // Then — rejected before any outbound request is attempted
+    assertThat(result).isEmpty();
+    verifyNoInteractions(restClient);
+  }
+
+  @Test
+  void should_return_empty_when_url_uses_non_https_schema() {
+    // When — SSRF vector: plain http bypassing TLS-only CDNs
+    var result = photoProxyClient.download("http://cdn.onliner.by/photo.jpg", 42L);
+
+    // Then
+    assertThat(result).isEmpty();
+    verifyNoInteractions(restClient);
   }
 
   @Test

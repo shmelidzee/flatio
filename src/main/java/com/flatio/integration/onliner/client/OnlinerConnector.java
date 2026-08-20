@@ -1,5 +1,6 @@
 package com.flatio.integration.onliner.client;
 
+import com.flatio.common.util.ImageUrlValidator;
 import com.flatio.integration.core.ConnectorTransientException;
 import com.flatio.integration.core.ListingConnector;
 import com.flatio.integration.core.RawListing;
@@ -347,15 +348,21 @@ public class OnlinerConnector implements ListingConnector {
    * a colon and appear before the base64 chunks. All segments after the last colon-containing
    * segment are joined and decoded as a single base64 string.
    *
+   * <p>The resolved URL — whether passed through unchanged or decoded from imgproxy segments —
+   * is validated against {@link ImageUrlValidator} before being returned (issue #364): it is
+   * untrusted data from an external API response, and an unvalidated absolute URL here would let
+   * a malicious listing point {@code PhotoProxyClient}'s later download at an arbitrary host.
+   *
    * @param photoUrl raw photo URL from Onliner API, may be null
-   * @return decoded original URL, the input URL unchanged if not an imgproxy URL, or null on failure
+   * @return decoded original URL, the input URL unchanged if not an imgproxy URL, or null if the
+   *     input is null, decoding fails, or the resolved URL fails the host allowlist check
    */
   private String resolvePhotoUrl(String photoUrl) {
     if (photoUrl == null) {
       return null;
     }
     if (!photoUrl.contains(IMGPROXY_ONLINER_HOST)) {
-      return photoUrl;
+      return validateOrReject(photoUrl);
     }
     try {
       String[] segments = photoUrl.split("/", -1);
@@ -385,11 +392,19 @@ public class OnlinerConnector implements ListingConnector {
       base64 = base64 + "=".repeat(padLen);
 
       byte[] decoded = Base64.getUrlDecoder().decode(base64);
-      return new String(decoded, StandardCharsets.UTF_8);
+      return validateOrReject(new String(decoded, StandardCharsets.UTF_8));
     } catch (Exception e) {
       log.warn("Failed to decode imgproxy photo URL: url={}, error={}", photoUrl, e.getMessage());
       return null;
     }
+  }
+
+  private String validateOrReject(String url) {
+    if (ImageUrlValidator.isAllowedImageUrl(url)) {
+      return url;
+    }
+    log.warn("Rejecting photo URL outside the allowed CDN hosts: url={}", url);
+    return null;
   }
 
   private String buildTitle(String address) {

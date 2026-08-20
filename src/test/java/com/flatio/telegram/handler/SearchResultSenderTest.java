@@ -117,9 +117,11 @@ class SearchResultSenderTest {
     // When
     searchResultSender.handle(buildCallback(1L, 100L, 10));
 
-    // Then — SendPhoto for the card (placeholder downloaded as binary), SendMessage for navigation only
-    verify(photoProxyClient).download(TEST_NO_PHOTO_URL, 1L);
-    verify(telegramClient).execute(any(SendPhoto.class));
+    // Then — placeholder sent directly by URL, skipping PhotoProxyClient entirely (no real photo)
+    ArgumentCaptor<SendPhoto> photoCaptor = ArgumentCaptor.forClass(SendPhoto.class);
+    verify(telegramClient).execute(photoCaptor.capture());
+    assertThat(photoCaptor.getValue().getPhoto().getAttachName()).isEqualTo(TEST_NO_PHOTO_URL);
+    verify(photoProxyClient, never()).download(anyString(), eq(1L));
     verify(telegramClient).execute(any(SendMessage.class));
   }
 
@@ -548,12 +550,12 @@ class SearchResultSenderTest {
   }
 
   // -------------------------------------------------------------------------
-  // photo URL validation — invalid schema resolves to placeholder before download
+  // photo URL validation — invalid schema goes straight to placeholder, no download attempt
   // -------------------------------------------------------------------------
 
   @Test
-  void should_download_placeholder_when_photo_url_has_no_http_schema() throws TelegramApiException {
-    // Given — listing with a short invalid URL "g"; resolvePhotoUrl replaces it with the placeholder
+  void should_send_placeholder_directly_when_photo_url_has_no_http_schema() throws TelegramApiException {
+    // Given — listing with a short invalid URL "g"
     var listing = buildListing(10L, "g", "https://realt.by/10");
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
     when(listingService.search(any(), any())).thenReturn(pageOf(listing));
@@ -563,14 +565,16 @@ class SearchResultSenderTest {
     // When
     searchResultSender.handle(buildCallback(1L, 100L, 10));
 
-    // Then — placeholder URL is downloaded (not "g"), binary photo is sent
-    verify(photoProxyClient).download(TEST_NO_PHOTO_URL, 10L);
-    verify(telegramClient).execute(any(SendPhoto.class));
+    // Then — placeholder sent by URL directly, no PhotoProxyClient call for "g"
+    ArgumentCaptor<SendPhoto> photoCaptor = ArgumentCaptor.forClass(SendPhoto.class);
+    verify(telegramClient).execute(photoCaptor.capture());
+    assertThat(photoCaptor.getValue().getPhoto().getAttachName()).isEqualTo(TEST_NO_PHOTO_URL);
+    verify(photoProxyClient, never()).download(anyString(), eq(10L));
     verify(telegramClient).execute(any(SendMessage.class));
   }
 
   @Test
-  void should_download_placeholder_when_photo_url_has_javascript_schema() throws TelegramApiException {
+  void should_send_placeholder_directly_when_photo_url_has_javascript_schema() throws TelegramApiException {
     // Given
     var listing = buildListing(11L, "javascript:void(0)", "https://realt.by/11");
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
@@ -581,14 +585,16 @@ class SearchResultSenderTest {
     // When
     searchResultSender.handle(buildCallback(1L, 100L, 10));
 
-    // Then — placeholder downloaded and uploaded as binary
-    verify(photoProxyClient).download(TEST_NO_PHOTO_URL, 11L);
-    verify(telegramClient).execute(any(SendPhoto.class));
+    // Then — placeholder sent by URL directly, no PhotoProxyClient call for a javascript: URL
+    ArgumentCaptor<SendPhoto> photoCaptor = ArgumentCaptor.forClass(SendPhoto.class);
+    verify(telegramClient).execute(photoCaptor.capture());
+    assertThat(photoCaptor.getValue().getPhoto().getAttachName()).isEqualTo(TEST_NO_PHOTO_URL);
+    verify(photoProxyClient, never()).download(anyString(), eq(11L));
     verify(telegramClient).execute(any(SendMessage.class));
   }
 
   @Test
-  void should_download_placeholder_when_photo_url_is_blank_with_spaces() throws TelegramApiException {
+  void should_send_placeholder_directly_when_photo_url_is_blank_with_spaces() throws TelegramApiException {
     // Given — listing with a whitespace-only URL
     var listing = buildListing(12L, "   ", "https://realt.by/12");
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
@@ -599,9 +605,11 @@ class SearchResultSenderTest {
     // When
     searchResultSender.handle(buildCallback(1L, 100L, 10));
 
-    // Then — placeholder URL is downloaded; binary photo card sent, no text fallback
-    verify(photoProxyClient).download(TEST_NO_PHOTO_URL, 12L);
-    verify(telegramClient).execute(any(SendPhoto.class));
+    // Then — placeholder sent by URL directly, no PhotoProxyClient call for a blank URL
+    ArgumentCaptor<SendPhoto> photoCaptor = ArgumentCaptor.forClass(SendPhoto.class);
+    verify(telegramClient).execute(photoCaptor.capture());
+    assertThat(photoCaptor.getValue().getPhoto().getAttachName()).isEqualTo(TEST_NO_PHOTO_URL);
+    verify(photoProxyClient, never()).download(anyString(), eq(12L));
     verify(telegramClient).execute(any(SendMessage.class));
   }
 

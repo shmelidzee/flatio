@@ -223,7 +223,19 @@ public class SearchResultSender {
   private void sendCard(String chatId, ListingSummaryResponse listing) {
     String caption = listingFormatter.buildCaption(listing);
     var keyboard = listingFormatter.buildKeyboard(listing.sourceUrl());
-    String photoUrl = resolvePhotoUrl(listing);
+    String photoUrl = listing.photoUrl();
+
+    if (!hasUsablePhotoUrl(photoUrl)) {
+      // No real photo (missing, blank, or not http/https) — go straight to the configured
+      // placeholder without a wasted PhotoProxyClient call. The placeholder itself is sent to
+      // Telegram directly by URL (see sendPlaceholderPhoto), never through PhotoProxyClient,
+      // which only downloads listing photos and enforces the source-CDN allowlist on them.
+      if (photoUrl != null && !photoUrl.isBlank()) {
+        log.debug("Invalid photo url, using placeholder: listingId={}, url={}", listing.id(), photoUrl);
+      }
+      sendPlaceholderPhoto(chatId, caption, keyboard, listing.id());
+      return;
+    }
 
     Instant start = Instant.now();
     Optional<byte[]> photoBytes = photoProxyClient.download(photoUrl, listing.id());
@@ -405,15 +417,8 @@ public class SearchResultSender {
     return name.isBlank() ? "photo.jpg" : name;
   }
 
-  private String resolvePhotoUrl(ListingSummaryResponse listing) {
-    String url = listing.photoUrl();
-    if (url != null && (url.startsWith("http://") || url.startsWith("https://"))) {
-      return url;
-    }
-    if (url != null && !url.isBlank()) {
-      log.debug("Invalid photo url, using placeholder: listingId={}, url={}", listing.id(), url);
-    }
-    return noPhotoUrl;
+  private boolean hasUsablePhotoUrl(String url) {
+    return url != null && (url.startsWith("http://") || url.startsWith("https://"));
   }
 
   private void sendTextCard(String chatId, String caption, InlineKeyboardMarkup keyboard) {
