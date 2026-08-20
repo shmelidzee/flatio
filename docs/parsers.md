@@ -503,7 +503,7 @@ Shared `connector-kufar` instance:
 | `address` | see below (`account_parameters` → detail page → `region`/`area`) | Three-tier resolution, issue #334; nullable |
 | `latitude` | — | Always `null` (not in API response; Nominatim fills later) |
 | `longitude` | — | Always `null` |
-| `city` | — | Always `null` (city is part of address string) |
+| `city` | `ad_parameters[p="area"]` | City or district; nullable when absent (issue #358) |
 | `sourceUrl` | `ad_link` | Full URL to listing page |
 | `publishedAt` | `list_time` | ISO-8601 with offset → `Instant`; `null` when absent or unparseable |
 | `photoUrls` | `images[].path` | Prefixed with `photo-cdn-base-url`; `List.of()` when absent |
@@ -529,6 +529,17 @@ Shared `connector-kufar` instance:
    silently failing on effectively every call before #334 landed.
 3. **`region` + `area` from `ad_parameters`** — coarsest fallback, always attempted last if
    neither of the above produced anything.
+
+### City extraction (issue #358)
+
+`city` is read directly from the `area` ad_parameter (city or district — the same structured
+field used in step 3 of address resolution above), independent of which address source won.
+Unlike Onliner/Realt, which derive city by parsing a free-text address string, Kufar already
+exposes it as a discrete field, so extracting it there avoids depending on the shape of whichever
+address source (`account_parameters`, detail page, or `region`/`area`) resolved `address`.
+Existing rows with `city = null` self-heal without a manual backfill: every full-sync job
+re-ingests all listings for its category on a daily cron, and `ListingIngestionService#ingest`
+updates `city` (via `RawListingMapper`) on every existing row it touches.
 
 ### Error handling
 

@@ -105,7 +105,7 @@ com.flatio
 │   ├── JwtAuthenticationFilter # OncePerRequestFilter — extracts Bearer token, populates SecurityContext
 │   ├── JwtProperties    # @ConfigurationProperties(prefix = "flatio.jwt"): secretKey, accessTokenExpiry
 │   ├── TelegramInitDataValidator # validates Telegram WebApp initData (HMAC-SHA256, bot token as secret) — issue #217
-│   ├── RateLimitFilter  # OncePerRequestFilter — per-caller rate limit on /api/v1/**: by client IP for /api/v1/auth/**, by JWT subject otherwise; dynamic RateLimiter per key via RateLimiterRegistry — issue #219
+│   ├── RateLimitFilter  # OncePerRequestFilter — per-caller rate limit on /api/v1/**: by client IP for /api/v1/auth/**, by JWT subject otherwise; dynamic RateLimiter per key via RateLimiterRegistry — issue #219. /api/v1/admin/** uses its own, more generous api-admin config instead of api-authenticated — issue #360
 │   └── SecurityConfig   # Spring Security filter chain: stateless, JWT-based, /api/v1/auth/** permitAll (token issuance), anyRequest().denyAll() otherwise (fail-closed)
 └── util/                # Utilities
 ```
@@ -473,6 +473,16 @@ shrink the window an XSS payload could exfiltrate a live token in. `ProtectedRou
 checks that a token is *present*; `api/client.ts`'s `apiFetch` wrapper is what actually reacts to
 an expired/invalid one — any admin API call it makes that comes back HTTP 401 clears the token and
 hard-redirects to `/admin/login`. Logout (sidebar) simply clears the token and navigates there too.
+
+**Routing and error handling (#359, #360).** `App.tsx` nests a `path="*"` route inside
+`ProtectedRoute > AdminLayout`, rendering `NotFoundPage.tsx` (sidebar still visible, link back to
+the dashboard) for any unmatched path — React Router previously rendered nothing at all on a
+route miss. The auth guard still runs first regardless of which child route matched, so an
+unauthenticated visitor on an unknown path is redirected to `/admin/login`, not shown the 404
+page. Admin API calls throw `ApiError` (carries the HTTP status) instead of a bare `Error`;
+`QueryErrorMessage.tsx` renders it, showing a distinct explanation with a retry button for `429`
+instead of the generic failure text, and `QueryClient`'s default retry no longer auto-retries 4xx
+responses (retrying an already-rate-limited caller only makes it worse).
 
 ---
 
