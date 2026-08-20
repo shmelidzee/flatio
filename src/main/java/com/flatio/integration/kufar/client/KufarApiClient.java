@@ -113,8 +113,15 @@ public class KufarApiClient {
         cursor = extractNextCursor(response);
         page++;
       } while (cursor != null && page < MAX_PAGES);
-    } catch (Exception e) {
+    } catch (RuntimeException e) {
+      // Rethrown (issue #366) rather than swallowed: a partial `result` here would otherwise be
+      // returned as if it were the complete listing set, and the calling connector's
+      // @Retry/@CircuitBreaker never sees the failure to retry or trip on. The caller's fallback
+      // method returns an empty list on exhausted retries, which the sync job already treats as
+      // "skip deactivation to avoid data loss" — so propagating here costs nothing extra and
+      // closes the false-mass-deactivation risk of treating a cut-short page range as complete.
       log.error("Error during full fetch: source={}, page={}, error={}", config.sourceId(), page, e.getMessage(), e);
+      throw e;
     }
     log.info("Full fetch completed: source={}, fetched={}", config.sourceId(), result.size());
     return result;
@@ -157,8 +164,10 @@ public class KufarApiClient {
         cursor = extractNextCursor(response);
         page++;
       } while (!done && cursor != null && page < MAX_PAGES);
-    } catch (Exception e) {
+    } catch (RuntimeException e) {
+      // Rethrown for the same reason as fetchAll (issue #366) — see its comment.
       log.error("Error during delta fetch: source={}, page={}, error={}", config.sourceId(), page, e.getMessage(), e);
+      throw e;
     }
     log.info("Delta fetch completed: source={}, fetched={}", config.sourceId(), result.size());
     return result;
