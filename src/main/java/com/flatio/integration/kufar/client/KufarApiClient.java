@@ -51,6 +51,13 @@ import java.util.Objects;
  * was silently falling back to the coarse region/area address regardless of rate limiting.
  * Priority order in {@link RawListing#address()}: {@code account_parameters} address →
  * detail-page address → region/area.
+ *
+ * <p><b>City (issue #358):</b> {@link RawListing#city()} is set from the {@code area} ad
+ * parameter (city or district — the same structured field used as the region/area address
+ * fallback above), not parsed out of the free-text address string. Onliner and Realt derive
+ * city from address text because that is the only place their source exposes it; Kufar already
+ * provides it as a discrete field, so using it directly avoids depending on the shape of
+ * whichever address source (account_parameters, detail page, or region/area) was resolved.
  */
 @Service
 @Slf4j
@@ -207,6 +214,7 @@ public class KufarApiClient {
     BigDecimal area = parseBigDecimalParam(adParams, PARAM_SIZE);
     List<KufarAdParameter> accountParams = ad.accountParameters() != null ? ad.accountParameters() : List.of();
     String address = resolveAddress(accountParams, adParams, ad.adLink());
+    String city = parseStringParam(adParams, PARAM_AREA);
     List<String> photoUrls = extractPhotoUrls(ad);
     Instant publishedAt = parseListTime(ad.listTime());
     Boolean isOwner = resolveIsOwner(ad);
@@ -233,7 +241,7 @@ public class KufarApiClient {
         address,
         null,
         null,
-        null,
+        city,
         ad.adLink(),
         publishedAt,
         photoUrls,

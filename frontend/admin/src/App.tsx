@@ -5,6 +5,7 @@ import { AdminLayout } from "./components/layout/AdminLayout";
 import { DashboardPage } from "./pages/DashboardPage";
 import { ListingsPage } from "./pages/ListingsPage";
 import { LoginPage } from "./pages/LoginPage";
+import { NotFoundPage } from "./pages/NotFoundPage";
 import { SourcesPage } from "./pages/SourcesPage";
 import { UsersPage } from "./pages/UsersPage";
 
@@ -18,6 +19,7 @@ export function App(): ReactElement {
           <Route path="/listings" element={<ListingsPage />} />
           <Route path="/sources" element={<SourcesPage />} />
           <Route path="/users" element={<UsersPage />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Route>
     </Routes>

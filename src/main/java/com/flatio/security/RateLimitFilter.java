@@ -38,8 +38,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
   private static final String API_PREFIX = "/api/v1/";
   private static final String AUTH_PREFIX = "/api/v1/auth/";
+  private static final String ADMIN_PREFIX = "/api/v1/admin/";
   private static final String AUTH_TELEGRAM_LIMITER = "api-auth-telegram";
   private static final String AUTHENTICATED_LIMITER = "api-authenticated";
+  private static final String ADMIN_LIMITER = "api-admin";
   private static final String REAL_IP_HEADER = "X-Real-IP";
 
   private final RateLimiterRegistry rateLimiterRegistry;
@@ -59,7 +61,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
       return;
     }
 
-    String limiterName = request.getRequestURI().startsWith(AUTH_PREFIX) ? AUTH_TELEGRAM_LIMITER : AUTHENTICATED_LIMITER;
+    String limiterName = resolveLimiterName(request.getRequestURI());
     var limiter = rateLimiterRegistry.rateLimiter(limiterName + ":" + key, limiterName);
 
     if (!limiter.acquirePermission()) {
@@ -69,6 +71,20 @@ public class RateLimitFilter extends OncePerRequestFilter {
     }
 
     filterChain.doFilter(request, response);
+  }
+
+  /**
+   * Picks the Resilience4j limiter configuration name for the given request path.
+   *
+   * @param path the request URI, already confirmed to start with {@link #API_PREFIX}
+   * @return {@link #AUTH_TELEGRAM_LIMITER} for auth endpoints, {@link #ADMIN_LIMITER} for
+   *     {@code /api/v1/admin/**}, otherwise {@link #AUTHENTICATED_LIMITER}
+   */
+  private String resolveLimiterName(String path) {
+    if (path.startsWith(AUTH_PREFIX)) {
+      return AUTH_TELEGRAM_LIMITER;
+    }
+    return path.startsWith(ADMIN_PREFIX) ? ADMIN_LIMITER : AUTHENTICATED_LIMITER;
   }
 
   private String resolveLimiterKey(HttpServletRequest request) {

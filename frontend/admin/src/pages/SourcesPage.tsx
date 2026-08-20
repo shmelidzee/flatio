@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchSources, fetchSyncRuns, updateSource } from "../api/adminSources";
 import type { AdminSource, AdminSourceUpdate, AdminSyncRun } from "../api/adminSources";
 import { formatRelativeTime } from "../lib/formatRelativeTime";
+import { QueryErrorMessage } from "../components/common/QueryErrorMessage";
 
 const SOURCES_QUERY_KEY = ["admin", "sources"];
 
@@ -74,7 +75,13 @@ export function SourcesPage(): ReactElement {
       <h1 className="text-xl font-semibold">Источники</h1>
 
       {sourcesQuery.isLoading && <p className="mt-4 text-sm text-gray-400">Загрузка…</p>}
-      {sourcesQuery.isError && <p className="mt-4 text-sm text-red-400">Не удалось загрузить источники.</p>}
+      {sourcesQuery.isError && (
+        <QueryErrorMessage
+          error={sourcesQuery.error}
+          fallback="Не удалось загрузить источники."
+          onRetry={() => void sourcesQuery.refetch()}
+        />
+      )}
       {sourcesQuery.data?.length === 0 && <p className="mt-4 text-sm text-gray-400">Источники не найдены.</p>}
 
       {sourcesQuery.data && sourcesQuery.data.length > 0 && (
@@ -193,7 +200,13 @@ function SyncRunHistory({ sourceId }: { sourceId: string }): ReactElement {
     return <p className="text-sm text-gray-400">Загрузка истории синков…</p>;
   }
   if (runsQuery.isError) {
-    return <p className="text-sm text-red-400">Не удалось загрузить историю синков.</p>;
+    return (
+      <QueryErrorMessage
+        error={runsQuery.error}
+        fallback="Не удалось загрузить историю синков."
+        onRetry={() => void runsQuery.refetch()}
+      />
+    );
   }
   const runs = runsQuery.data?.content ?? [];
   if (runs.length === 0) {

@@ -1,4 +1,5 @@
 import { apiFetch } from "./client";
+import { ApiError } from "./apiError";
 import type { components } from "./schema";
 
 export type AdminUser = components["schemas"]["AdminUserResponse"];
@@ -32,7 +33,7 @@ export async function fetchUsers(
   }
   const response = await apiFetch(`/api/v1/admin/users?${params.toString()}`);
   if (!response.ok) {
-    throw new Error(`Failed to fetch users: HTTP ${response.status}`);
+    throw new ApiError(response.status, `Failed to fetch users: HTTP ${response.status}`);
   }
   return (await response.json()) as PageAdminUser;
 }
@@ -44,7 +45,7 @@ export async function updateUser(id: number, patch: AdminUserUpdate): Promise<Ad
     body: JSON.stringify(patch),
   });
   if (!response.ok) {
-    throw new Error(await resolveUpdateErrorMessage(response));
+    throw new ApiError(response.status, await resolveUpdateErrorMessage(response));
   }
   return (await response.json()) as AdminUser;
 }
