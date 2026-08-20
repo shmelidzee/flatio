@@ -6,6 +6,7 @@ import com.flatio.domain.audit.AdminAuditObjectType;
 import com.flatio.domain.user.User;
 import com.flatio.domain.user.UserRole;
 import com.flatio.repository.UserRepository;
+import com.flatio.security.UserStatusCache;
 import com.flatio.service.AdminAuditLogService;
 import com.flatio.web.dto.AdminUserResponse;
 import com.flatio.web.dto.AdminUserSearchCriteria;
@@ -43,6 +44,9 @@ class AdminUserServiceImplTest {
 
   @Mock
   private AdminAuditLogService adminAuditLogService;
+
+  @Mock
+  private UserStatusCache userStatusCache;
 
   @InjectMocks
   private AdminUserServiceImpl adminUserService;
@@ -106,6 +110,7 @@ class AdminUserServiceImplTest {
     assertThat(user.getRole()).isEqualTo(UserRole.USER);
     assertThat(result).isSameAs(response);
     verify(userRepository).save(user);
+    verify(userStatusCache).evict(10L);
     verify(adminAuditLogService).record("updateUser", AdminAuditObjectType.USER, "10", 1L);
   }
 
@@ -125,6 +130,7 @@ class AdminUserServiceImplTest {
     // Then
     assertThat(user.getRole()).isEqualTo(UserRole.USER);
     verify(userRepository).save(user);
+    verify(userStatusCache).evict(20L);
   }
 
   @Test
@@ -173,6 +179,7 @@ class AdminUserServiceImplTest {
         .hasMessageContaining("1");
     assertThat(user.getRole()).isEqualTo(UserRole.ADMIN);
     verify(adminAuditLogService, never()).record(any(), any(), any(), any());
+    verify(userStatusCache, never()).evict(any());
   }
 
   @Test

@@ -6,6 +6,7 @@ import com.flatio.domain.audit.AdminAuditObjectType;
 import com.flatio.domain.user.User;
 import com.flatio.domain.user.UserRole;
 import com.flatio.repository.UserRepository;
+import com.flatio.security.UserStatusCache;
 import com.flatio.service.AdminAuditLogService;
 import com.flatio.service.AdminUserService;
 import com.flatio.web.dto.AdminUserResponse;
@@ -32,6 +33,7 @@ public class AdminUserServiceImpl implements AdminUserService {
   private final UserRepository userRepository;
   private final AdminUserMapper adminUserMapper;
   private final AdminAuditLogService adminAuditLogService;
+  private final UserStatusCache userStatusCache;
 
   @Override
   public Page<AdminUserResponse> search(AdminUserSearchCriteria criteria, Pageable pageable) {
@@ -54,6 +56,9 @@ public class AdminUserServiceImpl implements AdminUserService {
       user.setActive(request.active());
     }
     userRepository.save(user);
+    // Issue #365: evict so the new active/role state applies on the user's next request
+    // instead of waiting out UserStatusCache's TTL.
+    userStatusCache.evict(id);
     log.info("Admin action: action=updateUser, userId={}, active={}, role={}, adminId={}",
         id, user.isActive(), user.getRole(), currentAdminId);
     adminAuditLogService.record("updateUser", AdminAuditObjectType.USER, String.valueOf(id), currentAdminId);
