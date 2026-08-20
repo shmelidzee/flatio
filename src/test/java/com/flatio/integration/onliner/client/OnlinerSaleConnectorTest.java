@@ -467,6 +467,29 @@ class OnlinerSaleConnectorTest {
   }
 
   @Test
+  @SuppressWarnings("unchecked")
+  void should_return_partial_result_when_429_received_after_first_page_already_collected() {
+    // Given — page 1 succeeds and reports a second page available, page 2 hits 429
+    var page1 = new OnlinerSaleSearchResponse(buildValidResponse().apartments(), 2, new OnlinerPage(50, 2, 1, 2));
+    var retryHeaders = new HttpHeaders();
+    retryHeaders.set(HttpHeaders.RETRY_AFTER, "0");
+    var exception = HttpClientErrorException.create(
+        HttpStatus.TOO_MANY_REQUESTS, "Too Many Requests", retryHeaders, null, null);
+    when(restClient.get()).thenReturn(requestHeadersUriSpec);
+    when(requestHeadersUriSpec.uri(any(Function.class))).thenReturn(requestHeadersSpec);
+    when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
+    when(responseSpec.body(OnlinerSaleSearchResponse.class))
+        .thenReturn(page1)
+        .thenThrow(exception);
+
+    // When — no exception propagates, unlike the empty-result case above
+    List<RawListing> result = connector.fetch();
+
+    // Then — page 1's listings are kept instead of being discarded by a full retry
+    assertThat(result).hasSize(2);
+  }
+
+  @Test
   void should_cap_retry_after_when_server_returns_large_value() {
     // Given — server returns suspiciously large value to block the scheduler thread
     var headers = new HttpHeaders();

@@ -129,7 +129,7 @@ public class RealtSaleConnector implements ListingConnector {
         currentPage++;
       }
     } catch (HttpClientErrorException.TooManyRequests e) {
-      handleRateLimit(e);
+      handleRateLimitOrKeepPartial(result, e);
     } catch (HttpClientErrorException e) {
       log.error("Non-retryable HTTP error during RealtSale delta fetch: status={}, page={}, source={}",
           e.getStatusCode(), currentPage, properties.sourceId(), e);
@@ -172,7 +172,7 @@ public class RealtSaleConnector implements ListingConnector {
         currentPage++;
       }
     } catch (HttpClientErrorException.TooManyRequests e) {
-      handleRateLimit(e);
+      handleRateLimitOrKeepPartial(result, e);
     } catch (HttpClientErrorException e) {
       log.error("Non-retryable HTTP error fetching realt.by sale: status={}, page={}, source={}",
           e.getStatusCode(), currentPage, properties.sourceId(), e);
@@ -191,11 +191,28 @@ public class RealtSaleConnector implements ListingConnector {
         .body(String.class);
   }
 
-  private void handleRateLimit(HttpClientErrorException.TooManyRequests e) {
+  /**
+   * Handles a 429 response encountered mid-pagination.
+   *
+   * <p>If no listings have been collected yet, throws so Resilience4j retries the whole fetch
+   * from page 1. If some pages already succeeded, the partial result is kept and returned as-is
+   * instead of retrying — a full retry would discard already-collected data with no guarantee
+   * of getting further this time, whereas the next scheduled sync run naturally covers the rest
+   * (issue #370).
+   *
+   * @param result the listings collected so far in this fetch, never null
+   * @param e      the 429 response caught by the caller
+   */
+  private void handleRateLimitOrKeepPartial(List<RawListing> result, HttpClientErrorException.TooManyRequests e) {
     long retryAfterSeconds = parseRetryAfterSeconds(e.getResponseHeaders());
-    log.warn("Rate limited by realt.by sale (429): source={}, retryAfter={}s — Resilience4j will back off",
-        properties.sourceId(), retryAfterSeconds);
-    throw new ConnectorTransientException("Rate limited: source=" + properties.sourceId(), e);
+    if (result.isEmpty()) {
+      log.warn("Rate limited by realt.by sale (429): source={}, retryAfter={}s — Resilience4j will back off",
+          properties.sourceId(), retryAfterSeconds);
+      throw new ConnectorTransientException("Rate limited: source=" + properties.sourceId(), e);
+    }
+    log.warn("Rate limited by realt.by sale (429) after collecting {} listing(s) mid-pagination — "
+        + "returning partial result instead of retrying from page 1: source={}",
+        result.size(), properties.sourceId());
   }
 
   long parseRetryAfterSeconds(HttpHeaders headers) {

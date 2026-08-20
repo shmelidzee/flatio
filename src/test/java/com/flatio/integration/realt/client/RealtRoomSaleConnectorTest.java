@@ -122,6 +122,27 @@ class RealtRoomSaleConnectorTest {
   }
 
   @Test
+  @SuppressWarnings({"unchecked", "rawtypes"})
+  void should_return_partial_result_when_429_received_after_first_page_already_collected() throws IOException {
+    // Given — first page succeeds with a listing and a next-page link, second page hits 429
+    String pageWithNext = loadFixture("fixtures/realt/listing-page-with-pagination.html");
+    var retryHeaders = new HttpHeaders();
+    retryHeaders.set(HttpHeaders.RETRY_AFTER, "0");
+    var exception = HttpClientErrorException.create(
+        HttpStatus.TOO_MANY_REQUESTS, "Too Many Requests", retryHeaders, null, null);
+    when(restClient.get()).thenReturn(requestHeadersUriSpec);
+    when(requestHeadersUriSpec.uri(any(Function.class))).thenReturn(requestHeadersSpec);
+    when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
+    when(responseSpec.body(String.class)).thenReturn(pageWithNext).thenThrow(exception);
+
+    // When — no exception propagates, unlike the empty-result case above
+    List<RawListing> result = connector.fetch();
+
+    // Then — page 1's listing is kept instead of being discarded by a full retry
+    assertThat(result).hasSize(1);
+  }
+
+  @Test
   void should_propagate_server_exception_when_5xx_received() {
     // Given
     var exception = new HttpServerErrorException(HttpStatus.SERVICE_UNAVAILABLE);
