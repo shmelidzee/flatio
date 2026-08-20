@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchUsers, updateUser } from "../api/adminUsers";
 import type { AdminUser, AdminUserFilters, AdminUserUpdate, UserRoleValue } from "../api/adminUsers";
 import { formatRelativeTime } from "../lib/formatRelativeTime";
+import { QueryErrorMessage } from "../components/common/QueryErrorMessage";
 
 const USERS_QUERY_KEY = ["admin", "users"];
 const ROLE_OPTIONS: UserRoleValue[] = ["USER", "PRO", "ADMIN"];
@@ -93,7 +94,13 @@ export function UsersPage(): ReactElement {
       )}
 
       {usersQuery.isLoading && <p className="mt-4 text-sm text-gray-400">Загрузка…</p>}
-      {usersQuery.isError && <p className="mt-4 text-sm text-red-400">Не удалось загрузить пользователей.</p>}
+      {usersQuery.isError && (
+        <QueryErrorMessage
+          error={usersQuery.error}
+          fallback="Не удалось загрузить пользователей."
+          onRetry={() => void usersQuery.refetch()}
+        />
+      )}
       {users.length === 0 && !usersQuery.isLoading && !usersQuery.isError && (
         <p className="mt-4 text-sm text-gray-400">Пользователи не найдены.</p>
       )}

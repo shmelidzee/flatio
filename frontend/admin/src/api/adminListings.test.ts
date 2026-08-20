@@ -6,6 +6,7 @@ import {
   unlinkDuplicateGroup,
   updateListingStatus,
 } from "./adminListings";
+import { ApiError } from "./apiError";
 
 describe("adminListings", () => {
   beforeEach(() => {
@@ -46,6 +47,14 @@ describe("adminListings", () => {
     vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 500 }));
 
     await expect(fetchListings({}, 0)).rejects.toThrow("HTTP 500");
+  });
+
+  it("should_throw_api_error_with_status_when_rate_limited", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 429 }));
+
+    await expect(fetchListings({}, 0)).rejects.toSatisfy(
+      (error: unknown) => error instanceof ApiError && error.status === 429,
+    );
   });
 
   it("should_fetch_listing_detail_via_public_endpoint", async () => {

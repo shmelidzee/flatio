@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchUsers, updateUser } from "./adminUsers";
+import { ApiError } from "./apiError";
 
 describe("adminUsers", () => {
   beforeEach(() => {
@@ -49,6 +50,14 @@ describe("adminUsers", () => {
     vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 500 }));
 
     await expect(fetchUsers({}, 0)).rejects.toThrow("HTTP 500");
+  });
+
+  it("should_throw_api_error_with_status_when_rate_limited", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 429 }));
+
+    await expect(fetchUsers({}, 0)).rejects.toSatisfy(
+      (error: unknown) => error instanceof ApiError && error.status === 429,
+    );
   });
 
   it("should_send_patch_request_when_updating_user", async () => {

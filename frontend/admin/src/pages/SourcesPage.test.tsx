@@ -46,6 +46,15 @@ describe("SourcesPage", () => {
     await waitFor(() => expect(screen.getByText(/Не удалось загрузить источники/)).toBeInTheDocument());
   });
 
+  it("should_show_rate_limit_message_when_sources_fetch_returns_429", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 429 }));
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText(/Слишком много запросов/)).toBeInTheDocument());
+    expect(screen.queryByText(/Источники не найдены/)).not.toBeInTheDocument();
+  });
+
   it("should_show_empty_message_when_no_sources_returned", async () => {
     vi.mocked(fetch).mockResolvedValue(jsonResponse([]));
 

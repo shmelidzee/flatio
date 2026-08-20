@@ -63,6 +63,16 @@ describe("ListingsPage", () => {
     await waitFor(() => expect(screen.getByText(/Не удалось загрузить объявления/)).toBeInTheDocument());
   });
 
+  it("should_show_rate_limit_message_when_listings_fetch_returns_429", async () => {
+    mockFetchSequence(emptySourcesResponse(), new Response(null, { status: 429 }));
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText(/Слишком много запросов/)).toBeInTheDocument());
+    expect(screen.queryByText(/Объявления не найдены/)).not.toBeInTheDocument();
+    expect(screen.getByText("Повторить")).toBeInTheDocument();
+  });
+
   it("should_show_empty_message_when_no_listings_returned", async () => {
     mockFetchSequence(emptySourcesResponse(), listingsPage([]));
 

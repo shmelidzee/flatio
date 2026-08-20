@@ -6,6 +6,7 @@ import { fetchListings } from "../api/adminListings";
 import type { AdminListingFilters } from "../api/adminListings";
 import { formatRelativeTime } from "../lib/formatRelativeTime";
 import { ListingDetailModal } from "../components/listings/ListingDetailModal";
+import { QueryErrorMessage } from "../components/common/QueryErrorMessage";
 
 const EMPTY_FILTERS: AdminListingFilters = {};
 
@@ -154,7 +155,13 @@ export function ListingsPage(): ReactElement {
       </form>
 
       {listingsQuery.isLoading && <p className="mt-4 text-sm text-gray-400">Загрузка…</p>}
-      {listingsQuery.isError && <p className="mt-4 text-sm text-red-400">Не удалось загрузить объявления.</p>}
+      {listingsQuery.isError && (
+        <QueryErrorMessage
+          error={listingsQuery.error}
+          fallback="Не удалось загрузить объявления."
+          onRetry={() => void listingsQuery.refetch()}
+        />
+      )}
       {listings.length === 0 && !listingsQuery.isLoading && !listingsQuery.isError && (
         <p className="mt-4 text-sm text-gray-400">Объявления не найдены.</p>
       )}

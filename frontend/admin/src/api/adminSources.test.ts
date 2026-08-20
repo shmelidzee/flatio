@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchLatestSyncRuns, fetchRecentSyncRuns, fetchSources, fetchSyncRuns, updateSource } from "./adminSources";
+import { ApiError } from "./apiError";
 
 describe("adminSources", () => {
   beforeEach(() => {
@@ -25,6 +26,14 @@ describe("adminSources", () => {
     vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 500 }));
 
     await expect(fetchSources()).rejects.toThrow("HTTP 500");
+  });
+
+  it("should_throw_api_error_with_status_when_rate_limited", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 429 }));
+
+    await expect(fetchSources()).rejects.toSatisfy(
+      (error: unknown) => error instanceof ApiError && error.status === 429,
+    );
   });
 
   it("should_send_patch_request_when_updating_source", async () => {

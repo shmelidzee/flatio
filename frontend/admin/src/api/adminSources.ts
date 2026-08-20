@@ -1,4 +1,5 @@
 import { apiFetch } from "./client";
+import { ApiError } from "./apiError";
 import type { components } from "./schema";
 
 export type AdminSource = components["schemas"]["AdminSourceResponse"];
@@ -11,7 +12,7 @@ const SYNC_RUNS_PAGE_SIZE = 20;
 export async function fetchSources(): Promise<AdminSource[]> {
   const response = await apiFetch("/api/v1/admin/sources");
   if (!response.ok) {
-    throw new Error(`Failed to fetch sources: HTTP ${response.status}`);
+    throw new ApiError(response.status, `Failed to fetch sources: HTTP ${response.status}`);
   }
   return (await response.json()) as AdminSource[];
 }
@@ -23,7 +24,7 @@ export async function updateSource(sourceId: string, patch: AdminSourceUpdate): 
     body: JSON.stringify(patch),
   });
   if (!response.ok) {
-    throw new Error(`Failed to update source: HTTP ${response.status}`);
+    throw new ApiError(response.status, `Failed to update source: HTTP ${response.status}`);
   }
   return (await response.json()) as AdminSource;
 }
@@ -36,7 +37,7 @@ export async function fetchSyncRuns(sourceId: string, page: number): Promise<Pag
   });
   const response = await apiFetch(`/api/v1/admin/sync-runs?${params.toString()}`);
   if (!response.ok) {
-    throw new Error(`Failed to fetch sync runs: HTTP ${response.status}`);
+    throw new ApiError(response.status, `Failed to fetch sync runs: HTTP ${response.status}`);
   }
   return (await response.json()) as PageAdminSyncRun;
 }
@@ -44,7 +45,7 @@ export async function fetchSyncRuns(sourceId: string, page: number): Promise<Pag
 export async function fetchLatestSyncRuns(): Promise<AdminSyncRun[]> {
   const response = await apiFetch("/api/v1/admin/sync-runs/latest");
   if (!response.ok) {
-    throw new Error(`Failed to fetch latest sync runs: HTTP ${response.status}`);
+    throw new ApiError(response.status, `Failed to fetch latest sync runs: HTTP ${response.status}`);
   }
   return (await response.json()) as AdminSyncRun[];
 }
@@ -61,7 +62,7 @@ export async function fetchRecentSyncRuns(size: number, sourceId?: string): Prom
   }
   const response = await apiFetch(`/api/v1/admin/sync-runs?${params.toString()}`);
   if (!response.ok) {
-    throw new Error(`Failed to fetch recent sync runs: HTTP ${response.status}`);
+    throw new ApiError(response.status, `Failed to fetch recent sync runs: HTTP ${response.status}`);
   }
   return (await response.json()) as PageAdminSyncRun;
 }
