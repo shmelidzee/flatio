@@ -127,6 +127,32 @@ class GeocodingJobTest {
   }
 
   @Test
+  void should_resolve_remaining_listings_when_one_listing_fails_mid_batch() {
+    // Given — three listings; the second one fails, first and third must still resolve
+    var listing1 = buildListingWithCoordinates(1L, "53.9", "27.5");
+    var listing2 = buildListingWithCoordinates(2L, "54.0", "27.6");
+    var listing3 = buildListingWithCoordinates(3L, "55.0", "30.0");
+    when(listingRepository.findNeedingGeocoding(any())).thenReturn(List.of(listing1, listing2, listing3));
+    when(nominatimClient.reverseGeocode(listing1.getLatitude(), listing1.getLongitude()))
+        .thenReturn(Optional.of("Минск"));
+    when(nominatimClient.reverseGeocode(listing2.getLatitude(), listing2.getLongitude()))
+        .thenThrow(new RuntimeException("Connection refused"));
+    when(nominatimClient.reverseGeocode(listing3.getLatitude(), listing3.getLongitude()))
+        .thenReturn(Optional.of("Гродно"));
+
+    // When
+    assertThatNoException().isThrownBy(() -> geocodingJob.runGeocoding());
+
+    // Then — listing2's failure did not abort geocoding for listing1/listing3
+    assertThat(listing1.getCity()).isEqualTo("Минск");
+    assertThat(listing2.getCity()).isNull();
+    assertThat(listing3.getCity()).isEqualTo("Гродно");
+    verify(listingRepository).save(listing1);
+    verify(listingRepository, never()).save(listing2);
+    verify(listingRepository).save(listing3);
+  }
+
+  @Test
   void should_skip_iteration_without_exception_when_repository_throws() {
     // Given — e.g. DB unavailable
     when(listingRepository.findNeedingGeocoding(any()))

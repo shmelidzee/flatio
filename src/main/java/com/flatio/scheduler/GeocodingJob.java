@@ -16,9 +16,11 @@ import org.springframework.stereotype.Component;
  * Background job that enriches listings with a human-readable city name via reverse geocoding.
  *
  * <p>On each run, selects a batch of listings that have coordinates but no city, calls
- * {@link NominatimClient} for each one, and persists the resolved name. If Nominatim is
- * unavailable the entire iteration is skipped with a warning — the job is retried on the
- * next scheduled trigger.
+ * {@link NominatimClient} for each one, and persists the resolved name. A failure resolving one
+ * listing (rate limiter timeout, network error) only skips that listing — it does not abort
+ * geocoding for the rest of the batch (issue #372). A failure reading the batch itself (e.g. the
+ * database is unavailable) skips the whole run with a warning; the job is retried on the next
+ * scheduled trigger.
  *
  * <p>Cron schedule is configurable via {@code flatio.geocoding.cron}
  * (env: {@code FLATIO_GEOCODING_CRON}); default is every 30 minutes.
@@ -62,14 +64,36 @@ public class GeocodingJob {
   private int processListings(List<Listing> listings) {
     int resolved = 0;
     for (Listing listing : listings) {
-      Optional<String> city = nominatimClient.reverseGeocode(
-          listing.getLatitude(), listing.getLongitude());
-      if (city.isPresent()) {
-        listing.setCity(city.get());
-        listingRepository.save(listing);
+      if (resolveOne(listing)) {
         resolved++;
       }
     }
     return resolved;
+  }
+
+  /**
+   * Resolves and persists the city for a single listing, isolated from the rest of the batch.
+   *
+   * <p>A transient failure for one listing (rate limiter timeout, network error) must not abort
+   * geocoding for the remaining listings in the batch — mirrors the per-item isolation every
+   * source connector already applies (issue #372).
+   *
+   * @param listing the listing to geocode, never null
+   * @return true if the city was resolved and persisted, false otherwise
+   */
+  private boolean resolveOne(Listing listing) {
+    try {
+      Optional<String> city = nominatimClient.reverseGeocode(listing.getLatitude(), listing.getLongitude());
+      if (city.isEmpty()) {
+        return false;
+      }
+      listing.setCity(city.get());
+      listingRepository.save(listing);
+      return true;
+    } catch (Exception e) {
+      log.warn("Skipping geocoding for listing due to error: listingId={}, error={}",
+          listing.getId(), e.getMessage());
+      return false;
+    }
   }
 }
