@@ -335,6 +335,14 @@ resilience4j:
         limit-for-period: ${RATE_LIMIT_API_REQUESTS:60}
         limit-refresh-period: ${RATE_LIMIT_API_REFRESH_SECONDS:60}s
         timeout-duration: 0s
+      # Separate, more generous limiter for /api/v1/admin/** (issue #360): this is trusted
+      # internal traffic from a handful of admins, not the public API — the admin SPA fires
+      # several parallel queries per page (dashboard alone issues 6+), which exhausted the
+      # shared api-authenticated budget during normal use.
+      api-admin:
+        limit-for-period: ${RATE_LIMIT_ADMIN_API_REQUESTS:240}
+        limit-refresh-period: ${RATE_LIMIT_ADMIN_API_REFRESH_SECONDS:60}s
+        timeout-duration: 0s
   retry:
     instances:
       connector-onliner:
