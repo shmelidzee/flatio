@@ -71,8 +71,10 @@ cp src/main/resources/application-local.yml.example src/main/resources/applicati
 | `CORS_ALLOWED_ORIGINS` | Разрешённые CORS origins (через запятую) | `http://localhost:3000` |
 | `RATE_LIMIT_AUTH_REQUESTS` | Лимит запросов на `/api/v1/auth/**` за период, на один IP | `10` |
 | `RATE_LIMIT_AUTH_REFRESH_SECONDS` | Период обновления лимита `/api/v1/auth/**`, секунды | `60` |
-| `RATE_LIMIT_API_REQUESTS` | Лимит запросов на остальной `/api/v1/**` за период, на одного пользователя | `60` |
-| `RATE_LIMIT_API_REFRESH_SECONDS` | Период обновления лимита `/api/v1/**`, секунды | `60` |
+| `RATE_LIMIT_API_REQUESTS` | Лимит запросов на остальной `/api/v1/**` (кроме `/api/v1/admin/**`) за период, на одного пользователя | `60` |
+| `RATE_LIMIT_API_REFRESH_SECONDS` | Период обновления лимита `/api/v1/**` (кроме `/api/v1/admin/**`), секунды | `60` |
+| `RATE_LIMIT_ADMIN_API_REQUESTS` | Лимит запросов на `/api/v1/admin/**` за период, на одного администратора | `240` |
+| `RATE_LIMIT_ADMIN_API_REFRESH_SECONDS` | Период обновления лимита `/api/v1/admin/**`, секунды | `60` |
 
 При локальной разработке значения по умолчанию применяются автоматически, если переменные не заданы.
 `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` и `JWT_SECRET_KEY` не имеют дефолтов — приложение не стартует без них.
