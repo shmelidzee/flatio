@@ -7,7 +7,6 @@ import com.flatio.repository.SourceRepository;
 import com.flatio.service.ListingIngestionService;
 import com.flatio.service.SyncRunService;
 import com.flatio.service.domain.BatchIngestResult;
-import com.flatio.service.domain.SyncRunRequest;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import java.math.BigDecimal;
@@ -25,17 +24,15 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class OnlinerDeltaSyncJobTest {
+
+  private static final String SOURCE_ID = "ONLINER";
 
   @Mock private OnlinerConnector onlinerConnector;
   @Mock private SourceRepository sourceRepository;
@@ -49,18 +46,19 @@ class OnlinerDeltaSyncJobTest {
 
   @BeforeEach
   void setUp() {
-    source = buildSource("ONLINER");
-    when(onlinerConnector.getSourceId()).thenReturn("ONLINER");
-    when(sourceRepository.findByCode("ONLINER")).thenReturn(Optional.of(source));
+    source = buildSource(SOURCE_ID);
+    when(onlinerConnector.getSourceId()).thenReturn(SOURCE_ID);
+    when(sourceRepository.findByCode(SOURCE_ID)).thenReturn(Optional.of(source));
   }
 
   // -------------------------------------------------------------------------
-  // happy path
+  // cursor — read from SyncRunService, not kept in memory (issue #369)
   // -------------------------------------------------------------------------
 
   @Test
-  void should_call_fetchDelta_with_epoch_on_first_run() {
-    // Given — first run, lastRunAt defaults to EPOCH
+  void should_call_fetchDelta_with_epoch_when_no_prior_successful_run_recorded() {
+    // Given
+    when(syncRunService.findLastSuccessfulRunAt(SOURCE_ID)).thenReturn(Optional.empty());
     var raw = buildRawListing("ext-1");
     when(onlinerConnector.fetchDelta(Instant.EPOCH)).thenReturn(List.of(raw));
     when(listingIngestionService.ingestBatch(any(), eq(source)))
@@ -75,8 +73,25 @@ class OnlinerDeltaSyncJobTest {
   }
 
   @Test
+  void should_call_fetchDelta_with_db_cursor_when_prior_successful_run_recorded() {
+    // Given — the cursor comes from SyncRunService, surviving a hypothetical restart
+    Instant lastRun = Instant.parse("2026-06-27T04:00:00Z");
+    when(syncRunService.findLastSuccessfulRunAt(SOURCE_ID)).thenReturn(Optional.of(lastRun));
+    when(onlinerConnector.fetchDelta(lastRun)).thenReturn(List.of(buildRawListing("ext-1")));
+    when(listingIngestionService.ingestBatch(any(), eq(source)))
+        .thenReturn(new BatchIngestResult(1, 0, 0));
+
+    // When
+    deltaSyncJob.runDeltaSync();
+
+    // Then
+    verify(onlinerConnector).fetchDelta(lastRun);
+  }
+
+  @Test
   void should_pass_fetched_listings_to_ingest_batch() {
     // Given
+    when(syncRunService.findLastSuccessfulRunAt(SOURCE_ID)).thenReturn(Optional.empty());
     var raw1 = buildRawListing("ext-1");
     var raw2 = buildRawListing("ext-2");
     when(onlinerConnector.fetchDelta(any())).thenReturn(List.of(raw1, raw2));
@@ -91,45 +106,9 @@ class OnlinerDeltaSyncJobTest {
   }
 
   @Test
-  void should_update_cursor_after_successful_run_with_listings() {
-    // Given — capture the timestamp used in the second call
-    var raw = buildRawListing("ext-1");
-    when(onlinerConnector.fetchDelta(any())).thenReturn(List.of(raw));
-    when(listingIngestionService.ingestBatch(any(), eq(source)))
-        .thenReturn(new BatchIngestResult(1, 0, 0));
-
-    Instant before = Instant.now();
-    deltaSyncJob.runDeltaSync();
-    Instant after = Instant.now();
-
-    // When — second run; cursor should be > EPOCH
-    var captor = ArgumentCaptor.forClass(Instant.class);
-    when(onlinerConnector.fetchDelta(captor.capture())).thenReturn(List.of());
-    deltaSyncJob.runDeltaSync();
-
-    // Then — cursor advanced past EPOCH
-    assertThat(captor.getValue()).isAfterOrEqualTo(before).isBeforeOrEqualTo(after);
-  }
-
-  @Test
-  void should_update_cursor_after_run_that_returned_no_new_listings() {
-    // Given — empty result still advances the cursor
-    when(onlinerConnector.fetchDelta(Instant.EPOCH)).thenReturn(List.of());
-
-    deltaSyncJob.runDeltaSync();
-
-    // When — second run; cursor should no longer be EPOCH
-    var captor = ArgumentCaptor.forClass(Instant.class);
-    when(onlinerConnector.fetchDelta(captor.capture())).thenReturn(List.of());
-    deltaSyncJob.runDeltaSync();
-
-    // Then
-    assertThat(captor.getValue()).isAfter(Instant.EPOCH);
-  }
-
-  @Test
   void should_skip_ingest_when_fetch_returns_empty_list() {
     // Given
+    when(syncRunService.findLastSuccessfulRunAt(SOURCE_ID)).thenReturn(Optional.empty());
     when(onlinerConnector.fetchDelta(any())).thenReturn(List.of());
 
     // When
@@ -146,7 +125,7 @@ class OnlinerDeltaSyncJobTest {
   @Test
   void should_not_propagate_exception_when_source_not_found_in_db() {
     // Given
-    when(sourceRepository.findByCode("ONLINER")).thenReturn(Optional.empty());
+    when(sourceRepository.findByCode(SOURCE_ID)).thenReturn(Optional.empty());
 
     // When / Then — no exception propagates
     assertThatNoException().isThrownBy(() -> deltaSyncJob.runDeltaSync());
@@ -169,6 +148,7 @@ class OnlinerDeltaSyncJobTest {
   @Test
   void should_not_propagate_exception_when_fetch_throws() {
     // Given
+    when(syncRunService.findLastSuccessfulRunAt(SOURCE_ID)).thenReturn(Optional.empty());
     when(onlinerConnector.fetchDelta(any())).thenThrow(new RuntimeException("Connection refused"));
 
     // When / Then
@@ -179,6 +159,7 @@ class OnlinerDeltaSyncJobTest {
   @Test
   void should_skip_sync_when_circuit_breaker_is_open() {
     // Given
+    when(syncRunService.findLastSuccessfulRunAt(SOURCE_ID)).thenReturn(Optional.empty());
     when(onlinerConnector.fetchDelta(any())).thenThrow(
         CallNotPermittedException.createCallNotPermittedException(CircuitBreaker.ofDefaults("test-cb")));
 
@@ -190,6 +171,7 @@ class OnlinerDeltaSyncJobTest {
   @Test
   void should_not_propagate_exception_when_db_unavailable_during_ingest() {
     // Given — ingestBatch throws DataAccessException (DB down)
+    when(syncRunService.findLastSuccessfulRunAt(SOURCE_ID)).thenReturn(Optional.empty());
     var raw = buildRawListing("ext-db-err");
     when(onlinerConnector.fetchDelta(any())).thenReturn(List.of(raw));
     when(listingIngestionService.ingestBatch(any(), eq(source)))
@@ -199,21 +181,6 @@ class OnlinerDeltaSyncJobTest {
     assertThatNoException().isThrownBy(() -> deltaSyncJob.runDeltaSync());
   }
 
-  @Test
-  void should_not_update_cursor_when_fetch_throws() {
-    // Given — first call throws, second call returns empty; both must receive EPOCH
-    doThrow(new RuntimeException("Timeout"))
-        .doReturn(List.of())
-        .when(onlinerConnector).fetchDelta(Instant.EPOCH);
-
-    // When — two runs
-    deltaSyncJob.runDeltaSync();
-    deltaSyncJob.runDeltaSync();
-
-    // Then — cursor was not advanced: both calls received EPOCH
-    verify(onlinerConnector, times(2)).fetchDelta(Instant.EPOCH);
-  }
-
   // -------------------------------------------------------------------------
   // sync run recording
   // -------------------------------------------------------------------------
@@ -221,6 +188,7 @@ class OnlinerDeltaSyncJobTest {
   @Test
   void should_record_success_run_when_delta_sync_completes_with_listings() {
     // Given
+    when(syncRunService.findLastSuccessfulRunAt(SOURCE_ID)).thenReturn(Optional.empty());
     var raw = buildRawListing("ext-rec-1");
     when(onlinerConnector.fetchDelta(any())).thenReturn(List.of(raw));
     when(listingIngestionService.ingestBatch(any(), eq(source)))
@@ -230,39 +198,47 @@ class OnlinerDeltaSyncJobTest {
     deltaSyncJob.runDeltaSync();
 
     // Then — a SUCCESS run is recorded
-    verify(syncRunService).record(argThat(r ->
-        r.status() == com.flatio.domain.source.SyncRunStatus.SUCCESS
-            && r.syncType() == com.flatio.domain.source.SyncType.DELTA
-            && r.listingsFetched() == 1));
+    ArgumentCaptor<com.flatio.service.domain.SyncRunRequest> captor =
+        ArgumentCaptor.forClass(com.flatio.service.domain.SyncRunRequest.class);
+    verify(syncRunService).record(captor.capture());
+    assertThat(captor.getValue().status()).isEqualTo(com.flatio.domain.source.SyncRunStatus.SUCCESS);
+    assertThat(captor.getValue().syncType()).isEqualTo(com.flatio.domain.source.SyncType.DELTA);
+    assertThat(captor.getValue().listingsFetched()).isEqualTo(1);
   }
 
   @Test
   void should_record_success_run_when_delta_returns_empty_list() {
     // Given — empty response is still a successful run (no new listings)
+    when(syncRunService.findLastSuccessfulRunAt(SOURCE_ID)).thenReturn(Optional.empty());
     when(onlinerConnector.fetchDelta(any())).thenReturn(List.of());
 
     // When
     deltaSyncJob.runDeltaSync();
 
     // Then — run is still recorded as SUCCESS
-    verify(syncRunService).record(argThat(r ->
-        r.status() == com.flatio.domain.source.SyncRunStatus.SUCCESS
-            && r.listingsFetched() == 0));
+    ArgumentCaptor<com.flatio.service.domain.SyncRunRequest> captor =
+        ArgumentCaptor.forClass(com.flatio.service.domain.SyncRunRequest.class);
+    verify(syncRunService).record(captor.capture());
+    assertThat(captor.getValue().status()).isEqualTo(com.flatio.domain.source.SyncRunStatus.SUCCESS);
+    assertThat(captor.getValue().listingsFetched()).isZero();
   }
 
   @Test
   void should_record_failure_run_when_fetch_throws() {
     // Given — fetchDelta throws an unexpected exception
+    when(syncRunService.findLastSuccessfulRunAt(SOURCE_ID)).thenReturn(Optional.empty());
     when(onlinerConnector.fetchDelta(any())).thenThrow(new RuntimeException("Connection refused"));
 
     // When
     deltaSyncJob.runDeltaSync();
 
     // Then — a FAILURE run is recorded so the health indicator can detect the gap
-    verify(syncRunService).record(argThat(r ->
-        r.status() == com.flatio.domain.source.SyncRunStatus.FAILURE
-            && r.syncType() == com.flatio.domain.source.SyncType.DELTA
-            && r.listingsFetched() == 0));
+    ArgumentCaptor<com.flatio.service.domain.SyncRunRequest> captor =
+        ArgumentCaptor.forClass(com.flatio.service.domain.SyncRunRequest.class);
+    verify(syncRunService).record(captor.capture());
+    assertThat(captor.getValue().status()).isEqualTo(com.flatio.domain.source.SyncRunStatus.FAILURE);
+    assertThat(captor.getValue().syncType()).isEqualTo(com.flatio.domain.source.SyncType.DELTA);
+    assertThat(captor.getValue().listingsFetched()).isZero();
   }
 
   // -------------------------------------------------------------------------
