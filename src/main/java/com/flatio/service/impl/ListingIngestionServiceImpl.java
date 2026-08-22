@@ -27,6 +27,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -86,8 +87,9 @@ public class ListingIngestionServiceImpl implements ListingIngestionService {
         } else if (outcome == IngestOutcome.UPDATED) {
           updated++;
         }
-      } catch (DataIntegrityViolationException e) {
-        // Concurrent INSERT by another sync job — retry in a fresh transaction to UPDATE the existing record.
+      } catch (DataIntegrityViolationException | OptimisticLockingFailureException e) {
+        // Concurrent INSERT (another sync job) or UPDATE (e.g. admin moderation) on the same
+        // listing — retry against the latest row state/version in a fresh transaction.
         IngestOutcome retried = retryAfterConflict(raw, source);
         if (retried != null) {
           if (retried == IngestOutcome.UPDATED) updated++;
@@ -107,7 +109,7 @@ public class ListingIngestionServiceImpl implements ListingIngestionService {
   }
 
   private IngestOutcome retryAfterConflict(RawListing raw, Source source) {
-    log.debug("Concurrent insert conflict, retrying ingest: externalId={}, source={}",
+    log.debug("Concurrent write conflict, retrying ingest: externalId={}, source={}",
         raw.externalId(), source.getCode());
     try {
       return self.ingest(raw, source);

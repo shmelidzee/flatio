@@ -3,6 +3,7 @@ package com.flatio.web.controller;
 import com.flatio.common.exception.AdminAccessDeniedException;
 import com.flatio.common.exception.InvalidTelegramAuthException;
 import com.flatio.security.JwtService;
+import com.flatio.security.UserStatusCache;
 import com.flatio.service.AuthService;
 import com.flatio.web.dto.AuthResponse;
 import io.github.resilience4j.ratelimiter.RateLimiterRegistry;
@@ -40,6 +41,9 @@ class AuthControllerTest {
 
   @MockBean
   private JwtService jwtService;
+
+  @MockBean
+  private UserStatusCache userStatusCache;
 
   @MockBean
   private RateLimiterRegistry rateLimiterRegistry;

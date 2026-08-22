@@ -2,6 +2,7 @@ package com.flatio.web.controller;
 
 import com.flatio.common.exception.AdminAccessDeniedException;
 import com.flatio.common.exception.InvalidTelegramAuthException;
+import com.flatio.common.exception.ListingConcurrentModificationException;
 import com.flatio.common.exception.ListingNotFoundException;
 import com.flatio.common.exception.SelfRoleChangeForbiddenException;
 import com.flatio.common.exception.SourceNotFoundException;
@@ -36,6 +37,15 @@ public class GlobalExceptionHandler {
   public ErrorResponse handleListingNotFound(ListingNotFoundException ex, HttpServletRequest request) {
     log.warn("Resource not found on {}: {}", request.getRequestURI(), ex.getMessage());
     return buildError(HttpStatus.NOT_FOUND, ex.getMessage(), request.getRequestURI(), List.of());
+  }
+
+  @ExceptionHandler(ListingConcurrentModificationException.class)
+  @ResponseStatus(HttpStatus.CONFLICT)
+  public ErrorResponse handleListingConcurrentModification(
+      ListingConcurrentModificationException ex, HttpServletRequest request
+  ) {
+    log.warn("Concurrent modification on {}: {}", request.getRequestURI(), ex.getMessage());
+    return buildError(HttpStatus.CONFLICT, ex.getMessage(), request.getRequestURI(), List.of());
   }
 
   @ExceptionHandler(SourceNotFoundException.class)

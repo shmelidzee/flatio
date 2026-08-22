@@ -1,5 +1,6 @@
 package com.flatio.service.impl;
 
+import com.flatio.common.exception.ListingConcurrentModificationException;
 import com.flatio.common.exception.ListingNotFoundException;
 import com.flatio.domain.audit.AdminAuditObjectType;
 import com.flatio.domain.listing.Listing;
@@ -20,6 +21,7 @@ import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -49,7 +51,7 @@ public class AdminListingServiceImpl implements AdminListingService {
     Listing listing = listingRepository.findById(id)
         .orElseThrow(() -> new ListingNotFoundException(id));
     listing.setStatus(status);
-    listingRepository.save(listing);
+    saveWithConflictCheck(listing, id);
     log.info("Admin action: action=updateListingStatus, listingId={}, status={}, adminId={}",
         id, status, adminId);
     adminAuditLogService.record(
@@ -63,10 +65,28 @@ public class AdminListingServiceImpl implements AdminListingService {
     Listing listing = listingRepository.findById(id)
         .orElseThrow(() -> new ListingNotFoundException(id));
     listing.setDedupHash(null);
-    listingRepository.save(listing);
+    saveWithConflictCheck(listing, id);
     log.info("Admin action: action=unlinkDuplicateGroup, listingId={}, adminId={}", id, adminId);
     adminAuditLogService.record(
         "unlinkDuplicateGroup", AdminAuditObjectType.LISTING, String.valueOf(id), Long.parseLong(adminId));
+  }
+
+  /**
+   * Flushes the listing update immediately so a version conflict with a concurrent writer (e.g.
+   * the ingestion sync job) surfaces here as {@link ListingConcurrentModificationException},
+   * instead of only at transaction commit after this method has already returned.
+   *
+   * @param listing the listing with pending in-memory changes
+   * @param id      the listing id, used for the conflict error message
+   * @throws ListingConcurrentModificationException if the row's version was changed concurrently
+   */
+  private void saveWithConflictCheck(Listing listing, Long id) {
+    try {
+      listingRepository.saveAndFlush(listing);
+    } catch (OptimisticLockingFailureException e) {
+      log.warn("Concurrent modification conflict on listingId={}", id, e);
+      throw new ListingConcurrentModificationException(id);
+    }
   }
 
   private Specification<Listing> buildSearchSpec(AdminListingSearchCriteria criteria) {

@@ -217,7 +217,7 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
                  l.city, l.district, l.status, l.source_url, l.dedup_hash,
                  l.is_owner, l.is_negotiable, l.reposted_from, l.last_reposted_at,
                  l.missed_syncs_count, l.published_at, l.created_at, l.updated_at,
-                 l.photo_url
+                 l.photo_url, l.version
           FROM listings l
           LEFT JOIN source src_filter ON src_filter.code = CAST(:sourceCode AS varchar)
           INNER JOIN currency cur ON cur.id = l.currency_id
