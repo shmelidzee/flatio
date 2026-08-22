@@ -33,6 +33,26 @@ ListingConnector.fetchDelta(since)    ListingConnector.fetch()
 
 All connectors share the same contract — see `docs/architecture.md`, section **Connector Contract**.
 
+**HTTP 429 mid-pagination — full fetch vs. delta fetch differ (issues #370, #371).** Onliner and
+Realt connectors page through results without a server-side cursor, so a 429 can land after some
+pages already succeeded. What happens next depends on which fetch is running:
+- **Full fetch** (`fetch()`/`fetchAll()`, used by the daily full-sync jobs) always rethrows
+  `ConnectorTransientException` on a 429, discarding whatever pages it already collected, so
+  Resilience4j retries the *whole* crawl from page 1. A full-sync job feeds its result into
+  `applyMissedSyncPenalty`, which deactivates every listing absent from that result — keeping a
+  page-range-truncated partial result there would look identical to those listings having actually
+  disappeared, causing a false mass-deactivation. Same reasoning already applied to Kufar in #366
+  (`KufarApiClient.fetchAll` rethrows for the identical reason).
+- **Delta fetch** (`fetchDelta(since)`) keeps the partial result and returns it as-is instead of
+  retrying — delta results only ingest new/updated listings and never drive deactivation, so
+  discarding already-fetched pages on retry would just be wasted work; the next scheduled delta run
+  naturally covers whatever was missed.
+
+Both connectors implement this as two small private methods per fetch mode
+(`handleFullFetchRateLimit` / `handleDeltaFetchRateLimit`) rather than one shared handler with a
+branch — sharing the handler between the two call sites is exactly what let the mass-deactivation
+bug through review once already.
+
 ---
 
 ## OnlinerConnector
@@ -135,7 +155,9 @@ resilience4j:
 ### Error handling
 
 - **HTTP 5xx / network failure:** exception propagates from `fetch()`, `@Retry` triggers with exponential backoff; after 3 failed attempts circuit breaker records the failure; `fetchFallback` returns `List.of()`
-- **HTTP 429 Too Many Requests:** `Retry-After` header is read (default 5s), thread sleeps, then `ConnectorTransientException` is thrown to trigger retry
+- **HTTP 429 Too Many Requests:** `Retry-After` header is read (default 5s). If no listings were
+  collected yet, `ConnectorTransientException` is thrown immediately. If some pages already
+  succeeded, behavior differs by fetch mode — see **HTTP 429 mid-pagination** above
 - **HTTP 4xx (non-429):** logged at ERROR, returns `List.of()` without retry
 - **Circuit breaker OPEN:** `CallNotPermittedException` is caught by `OnlinerDeltaSyncJob` / `OnlinerFullSyncJob`, which logs `WARN "Circuit OPEN, skipping Onliner sync"` and exits the current run without propagating the exception
 - **Single broken listing** (e.g., `price: null`, invalid `price.amount`): skipped with `log.warn`, rest are processed
@@ -318,7 +340,9 @@ flatio:
 ### Error handling
 
 - **HTTP 5xx / network failure:** propagates from `fetch()`, `@Retry` triggers; after 3 failures `fetchFallback` returns `List.of()`
-- **HTTP 429 Too Many Requests:** `Retry-After` header is read, `ConnectorTransientException` is thrown to trigger retry
+- **HTTP 429 Too Many Requests:** `Retry-After` header is read. If no listings were collected yet,
+  `ConnectorTransientException` is thrown immediately. If some pages already succeeded, behavior
+  differs by fetch mode — see **HTTP 429 mid-pagination** above
 - **HTTP 4xx (non-429):** logged at ERROR, returns `List.of()` without retry
 - **`__NEXT_DATA__` missing or unparseable:** `log.warn` / `log.error`, returns `List.of()` without retry
 - **`__NEXT_DATA__` exceeds 5 MB:** `log.error` + returns `List.of()` — OOM guard before `objectMapper.readTree()`
