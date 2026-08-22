@@ -151,11 +151,28 @@ Table: `listings`
 | `published_at` | `TIMESTAMPTZ` | nullable | |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL | Auto-set on insert |
 | `updated_at` | `TIMESTAMPTZ` | NOT NULL | Auto-set on update |
+| `version` | `BIGINT` | NOT NULL | JPA `@Version` — optimistic lock (issue #367, `V52`) |
 
 Unique constraint: `(external_id, source_id)` — used for deduplication during parsing.
 
 Indexes: `source_id`, `status`, `deal_type`, `price`, `published_at`, `dedup_hash`,
 `(dedup_hash, source_id) WHERE dedup_hash IS NOT NULL` (partial composite — repost detection).
+
+**Optimistic locking (issue #367):** `Listing` is written from at least three independent paths —
+admin moderation (`AdminListingServiceImpl`), source sync ingestion
+(`ListingIngestionServiceImpl`), and geocoding (`GeocodingJob`) — with no coordination between
+them. The `@Version` column detects a lost-update race instead of letting the last writer silently
+overwrite another's change:
+- `AdminListingServiceImpl.updateStatus`/`unlinkDuplicateGroup` flush immediately
+  (`saveAndFlush`) so a version conflict surfaces inside the method, and translate it to
+  `ListingConcurrentModificationException` → HTTP `409 Conflict` — an admin action loses a race
+  outright rather than silently applying to stale data.
+- `ListingIngestionServiceImpl.ingestBatch` instead retries the conflicting listing against the
+  latest row version (same retry path already used for a concurrent-insert `DataIntegrityViolationException`,
+  issue #366) — a background sync job's write should not fail a whole batch item over a
+  transient race with another writer.
+- `GeocodingJob` already isolates per-listing errors (issue #372); a version conflict there is
+  simply skipped and logged, picked up again on the job's next run.
 
 ### PriceHistory (append-only)
 
@@ -301,6 +318,24 @@ JWT-based stateless authentication via Spring Security. Sessions are disabled.
 
 `anyRequest().denyAll()` ensures no route is accidentally left open.
 
+### JWT revocation (issue #365)
+
+A JWT's `roles` claim is signed at issue time and normally stays valid for the token's whole
+lifetime (access token: 1 hour) even if the user is deactivated or has their role changed a second
+later. `JwtAuthenticationFilter` closes that gap by never trusting the token's own `roles` claim —
+authorities are instead sourced from `UserStatusCache`, a 30-second-TTL, DB-backed cache keyed by
+user id (`active` + `role` only, nothing more sensitive).
+
+**Known limitation — up to 30 seconds of stale access.** `AdminUserServiceImpl.update()` evicts the
+cache entry immediately after its transaction commits (`TransactionSynchronizationManager.afterCommit`,
+not before — evicting pre-commit would let a concurrent request re-read the still-uncommitted row and
+re-cache the stale state for a fresh TTL). Evicting on write closes the gap for that specific user
+immediately in the common case, but any request already served from a cache entry populated in the
+previous few seconds — or any user not explicitly evicted — still sees the old `active`/`role` for
+up to `UserStatusCache.TTL_SECONDS` (30s). This is a deliberate trade-off: re-validating against the
+database on every request would defeat the purpose of a stateless JWT. Do not treat deactivation or
+a role downgrade as taking effect instantly when reasoning about incident response timing.
+
 ### Telegram webhook security (two layers)
 
 The webhook path is `/<bot-token>` — Telegram's own recommended technique
@@ -374,6 +409,12 @@ UI (`/swagger-ui.html`) remains available as an interim way to exercise them.
 All admin endpoints require the `ADMIN` role (see [Security](#security)) and are implemented by
 `AdminSourceController`, `AdminListingController`, `AdminUserController`, and
 `AdminAuditLogController` in `com.flatio.web.controller`.
+
+**`PATCH /api/v1/admin/listings/{id}` and `DELETE .../duplicate-group` can return `409 Conflict`**
+(issue #367) — the target listing's `version` changed since it was loaded, most often because a
+sync job re-ingested it concurrently. The admin action is rejected rather than silently applied to
+stale data (`ListingConcurrentModificationException`); the SPA should surface this as "someone/something
+else just changed this listing, reload and retry."
 
 **Audit log (#326).** Admin actions were already logged to SLF4J (`Admin action: action=..., ...`)
 but that wasn't queryable from the SPA. Issue #326 asked the PO to choose between an API built on

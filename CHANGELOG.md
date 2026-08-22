@@ -8,6 +8,42 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Fixed
+- **PR #398 — Аудит гонок и изоляции ошибок: оптимистичная блокировка, SSRF-редирект, ложная деактивация, race conditions (issues #364–#372)**
+  - **#364** — URL фото объявлений проверяются по allowlist источников (`onliner.by`, `kufar.by`,
+    `realt.by`) перед скачиванием — `ImageUrlValidator`, применён и на этапе коннекторов, и
+    повторно в `PhotoProxyClient` как последний рубеж. При ревью PR обнаружено и исправлено: сам
+    `PhotoDownloadConfig.photoDownloadRestClient` следовал HTTP-редиректам, позволяя обойти
+    allowlist через 3xx-ответ с доверенного хоста на внутренний адрес — редиректы отключены
+    (`HttpClient.Redirect.NEVER`), как уже сделано для `KufarClientConfig` (issue #315)
+  - **#365** — `JwtAuthenticationFilter` больше не доверяет claim `roles` из самого JWT; авторитеты
+    берутся из `UserStatusCache` (TTL 30с, БД-подкреплённый). `AdminUserServiceImpl.update()`
+    эвиктит кэш сразу после коммита транзакции (`TransactionSynchronizationManager.afterCommit`,
+    не до — иначе конкурентный запрос успевает перечитать ещё не закоммиченную строку и
+    закэшировать устаревшее состояние на полный TTL). 30-секундное окно ревокации задокументировано
+    как известное ограничение в `docs/architecture.md`
+  - **#366** — `KufarApiClient.fetchAll` пробрасывает ошибку вместо проглатывания при обрыве
+    посреди пагинации — иначе partial-результат уходил в `applyMissedSyncPenalty` как будто
+    полный, что могло массово деактивировать реально активные объявления
+  - **#367** — на `Listing` добавлено поле `@Version` (Flyway `V52`). `AdminListingServiceImpl`
+    флашит немедленно и отдаёт `409 Conflict` (`ListingConcurrentModificationException`) при
+    конфликте версии; `ListingIngestionServiceImpl` вместо этого ретраит через уже существующий
+    механизм разрешения конфликтов (issue #366)
+  - **#368** — мутации `SearchFilterState` в `SearchFilterWizard` сериализованы через
+    `ConcurrentHashMap#compute` (держит лок на бакет ключа на всё время read-modify-write) —
+    быстрые повторные нажатия кнопок или повторный callback от Telegram больше не могут
+    чередовать запись полей одного состояния между потоками пула
+  - **#369** — курсор дельта-синка Onliner читается из `SyncRunService` (БД), а не из in-memory
+    поля, которое обнулялось при рестарте инстанса
+  - **#370, #371** — усилена обработка HTTP 429 в коннекторах Onliner/Realt: если ответ пришёл
+    после того как уже собраны какие-то объявления, полный (`fetch`/`fetchAll`) и дельта
+    (`fetchDelta`) фетчи ведут себя по-разному. При ревью PR обнаружено и исправлено: изначально
+    оба режима делили один обработчик, который для полного фетча возвращал usable partial-результат
+    — тот же риск ложной массовой деактивации, что и в #366. Разделено на
+    `handleFullFetchRateLimit` (всегда rethrow, ретрай с начала) и `handleDeltaFetchRateLimit`
+    (сохраняет partial — дельта не запускает деактивацию), см. `docs/parsers.md`
+  - **#372** — `GeocodingJob` изолирует ошибку геокодинга одного объявления от остальных в батче
+  - Побочный фикс: `AuthControllerTest` был красным на `develop` с момента #365 —
+    `@WebMvcTest`-срез не мокал новую зависимость `UserStatusCache` в `JwtAuthenticationFilter`
 - **PR #362 — Город Kufar, 404-маршрут admin SPA, обработка 429/ошибок в админке (issues #358, #359, #360)**
   - **#358** — `KufarApiClient` не заполнял поле `city` у объявлений всех шести Kufar-источников;
     теперь город берётся из структурированного `area` ad_parameter (город/район), независимо от
