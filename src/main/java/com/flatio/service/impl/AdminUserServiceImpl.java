@@ -23,6 +23,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 @Transactional(readOnly = true)
@@ -58,12 +60,39 @@ public class AdminUserServiceImpl implements AdminUserService {
     userRepository.save(user);
     // Issue #365: evict so the new active/role state applies on the user's next request
     // instead of waiting out UserStatusCache's TTL.
-    userStatusCache.evict(id);
+    evictStatusCacheAfterCommit(id);
     log.info("Admin action: action=updateUser, userId={}, active={}, role={}, adminId={}",
         id, user.isActive(), user.getRole(), currentAdminId);
     adminAuditLogService.record("updateUser", AdminAuditObjectType.USER, String.valueOf(id), currentAdminId);
 
     return adminUserMapper.toResponse(user);
+  }
+
+  /**
+   * Evicts the user's cached status only once this transaction commits.
+   *
+   * <p>Evicting immediately, before commit, leaves a window where a concurrent request can hit
+   * {@link UserStatusCache}, miss, and re-read the still-uncommitted (pre-update) row straight
+   * from the database — re-caching the stale state for a fresh TTL and defeating the fast
+   * revocation this cache exists for.
+   *
+   * <p>Falls back to an immediate evict when no Spring transaction is actually active (e.g. a
+   * unit test invoking this service directly, bypassing the {@code @Transactional} proxy) —
+   * there is no pending commit to wait for in that case.
+   *
+   * @param id the updated user's id
+   */
+  private void evictStatusCacheAfterCommit(Long id) {
+    if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+      userStatusCache.evict(id);
+      return;
+    }
+    TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+      @Override
+      public void afterCommit() {
+        userStatusCache.evict(id);
+      }
+    });
   }
 
   /**

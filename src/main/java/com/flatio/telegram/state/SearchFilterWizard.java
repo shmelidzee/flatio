@@ -81,11 +81,13 @@ public class SearchFilterWizard {
    * @return updated state after the selection is applied
    */
   public SearchFilterState applySelection(Long telegramId, FilterStep step, String value) {
-    var state = states.computeIfAbsent(telegramId, id -> new SearchFilterState());
-    // Serializes field writes on this user's state — the bot handles each Telegram update on a
-    // pooled thread with no ordering guarantee, so two rapid taps (or a Telegram-side retry) can
-    // otherwise interleave setters and leave currentStep out of sync with the fields it implies.
-    synchronized (state) {
+    // ConcurrentHashMap#compute holds this key's bin lock for the whole remapping call, so the
+    // read-modify-write below is atomic — the bot handles each Telegram update on a pooled thread
+    // with no ordering guarantee, and two rapid taps (or a Telegram-side retry) racing on the same
+    // telegramId would otherwise be able to interleave setters and leave currentStep out of sync
+    // with the fields it implies.
+    return states.compute(telegramId, (id, existing) -> {
+      SearchFilterState state = existing != null ? existing : new SearchFilterState();
       switch (step) {
         case DEAL_TYPE -> {
           state.setDealType(VALUE_ANY.equals(value) ? null : parseDealType(value));
@@ -116,8 +118,8 @@ public class SearchFilterWizard {
         default -> log.warn("Unexpected step in applySelection: step={}", step);
       }
       log.debug("Filter step applied: telegramId={}, step={}, value={}", telegramId, step, value);
-    }
-    return state;
+      return state;
+    });
   }
 
   /**
@@ -130,10 +132,18 @@ public class SearchFilterWizard {
    * @return updated state after stepping back; restarts the wizard if already at the first step
    */
   public SearchFilterState stepBack(Long telegramId) {
-    var state = states.computeIfAbsent(telegramId, id -> new SearchFilterState());
-    synchronized (state) {
+    // See applySelection for why this runs inside ConcurrentHashMap#compute rather than a
+    // computeIfAbsent + synchronized(state) pair: the DEAL_TYPE case below replaces the state
+    // wholesale (a "restart"), and doing that outside this atomic remapping call would let a
+    // concurrent applySelection/stepBack/applyKeyword hold a reference to the object being
+    // replaced, apply its update to it, and have that update silently lost once discarded here.
+    return states.compute(telegramId, (id, existing) -> {
+      SearchFilterState state = existing != null ? existing : new SearchFilterState();
       switch (state.getCurrentStep()) {
-        case DEAL_TYPE -> { return start(telegramId); }
+        case DEAL_TYPE -> {
+          state = new SearchFilterState();
+          log.debug("Filter wizard started: telegramId={}", telegramId);
+        }
         case PROPERTY_TYPE -> { state.setDealType(null); state.setCurrentStep(FilterStep.DEAL_TYPE); }
         case ROOMS -> { state.setPropertyType(null); state.setCurrentStep(FilterStep.PROPERTY_TYPE); }
         case PRICE -> {
@@ -157,7 +167,7 @@ public class SearchFilterWizard {
         }
       }
       return state;
-    }
+    });
   }
 
   /**
@@ -171,13 +181,13 @@ public class SearchFilterWizard {
    * @return updated state positioned at DONE
    */
   public SearchFilterState applyKeyword(Long telegramId, String text) {
-    var state = states.computeIfAbsent(telegramId, id -> new SearchFilterState());
-    synchronized (state) {
+    return states.compute(telegramId, (id, existing) -> {
+      SearchFilterState state = existing != null ? existing : new SearchFilterState();
       state.setQuery(text == null || text.isBlank() ? null : text.strip());
       state.setCurrentStep(FilterStep.DONE);
       log.debug("Keyword applied: telegramId={}, hasQuery={}", telegramId, state.getQuery() != null);
-    }
-    return state;
+      return state;
+    });
   }
 
   /**

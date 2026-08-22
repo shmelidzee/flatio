@@ -126,7 +126,7 @@ public class RealtHouseRentConnector implements ListingConnector {
         currentPage++;
       }
     } catch (HttpClientErrorException.TooManyRequests e) {
-      handleRateLimitOrKeepPartial(result, e);
+      handleDeltaFetchRateLimit(result, e);
     } catch (HttpClientErrorException e) {
       log.error("Non-retryable HTTP error during RealtHouseRent delta fetch: status={}, page={}, source={}",
           e.getStatusCode(), currentPage, properties.sourceId(), e);
@@ -168,7 +168,7 @@ public class RealtHouseRentConnector implements ListingConnector {
         currentPage++;
       }
     } catch (HttpClientErrorException.TooManyRequests e) {
-      handleRateLimitOrKeepPartial(result, e);
+      handleFullFetchRateLimit(e);
     } catch (HttpClientErrorException e) {
       log.error("Non-retryable HTTP error fetching realt.by house rent: status={}, page={}, source={}",
           e.getStatusCode(), currentPage, properties.sourceId(), e);
@@ -188,18 +188,35 @@ public class RealtHouseRentConnector implements ListingConnector {
   }
 
   /**
-   * Handles a 429 response encountered mid-pagination.
+   * Handles a 429 response encountered mid-pagination during a full fetch.
    *
-   * <p>If no listings have been collected yet, throws so Resilience4j retries the whole fetch
-   * from page 1. If some pages already succeeded, the partial result is kept and returned as-is
-   * instead of retrying — a full retry would discard already-collected data with no guarantee
-   * of getting further this time, whereas the next scheduled sync run naturally covers the rest
-   * (issue #370).
+   * <p>Unlike {@link #handleDeltaFetchRateLimit}, this always rethrows — a full fetch's result
+   * feeds {@code applyMissedSyncPenalty}, which treats every listing absent from the result as
+   * gone and deactivates it. Keeping a page-range-truncated partial result here would silently
+   * mass-deactivate every listing on the pages not yet reached, the same false-mass-deactivation
+   * risk closed for Kufar in issue #366. Rethrowing lets Resilience4j retry the whole fetch from
+   * page 1, and its fallback returns an empty list on exhausted retries, which the full-sync job
+   * already treats as "skip deactivation to avoid data loss".
+   *
+   * @param e the 429 response caught by the caller
+   */
+  private void handleFullFetchRateLimit(HttpClientErrorException.TooManyRequests e) {
+    long retryAfterSeconds = parseRetryAfterSeconds(e.getResponseHeaders());
+    log.warn("Rate limited by realt.by (429) during full fetch: source={}, retryAfter={}s — Resilience4j will back off",
+        properties.sourceId(), retryAfterSeconds);
+    throw new ConnectorTransientException("Rate limited: source=" + properties.sourceId(), e);
+  }
+
+  /**
+   * Handles a 429 response encountered mid-pagination during a delta fetch.
+   *
+   * <p>Delta results are only used to ingest new/updated listings, never to deactivate absent
+   * ones, so a partial result is safe to keep instead of discarding already-fetched pages.
    *
    * @param result the listings collected so far in this fetch, never null
    * @param e      the 429 response caught by the caller
    */
-  private void handleRateLimitOrKeepPartial(List<RawListing> result, HttpClientErrorException.TooManyRequests e) {
+  private void handleDeltaFetchRateLimit(List<RawListing> result, HttpClientErrorException.TooManyRequests e) {
     long retryAfterSeconds = parseRetryAfterSeconds(e.getResponseHeaders());
     if (result.isEmpty()) {
       log.warn("Rate limited by realt.by (429): source={}, retryAfter={}s — Resilience4j will back off",
