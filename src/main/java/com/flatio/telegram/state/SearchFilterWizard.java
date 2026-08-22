@@ -82,36 +82,41 @@ public class SearchFilterWizard {
    */
   public SearchFilterState applySelection(Long telegramId, FilterStep step, String value) {
     var state = states.computeIfAbsent(telegramId, id -> new SearchFilterState());
-    switch (step) {
-      case DEAL_TYPE -> {
-        state.setDealType(VALUE_ANY.equals(value) ? null : parseDealType(value));
-        state.setCurrentStep(FilterStep.PROPERTY_TYPE);
+    // Serializes field writes on this user's state — the bot handles each Telegram update on a
+    // pooled thread with no ordering guarantee, so two rapid taps (or a Telegram-side retry) can
+    // otherwise interleave setters and leave currentStep out of sync with the fields it implies.
+    synchronized (state) {
+      switch (step) {
+        case DEAL_TYPE -> {
+          state.setDealType(VALUE_ANY.equals(value) ? null : parseDealType(value));
+          state.setCurrentStep(FilterStep.PROPERTY_TYPE);
+        }
+        case PROPERTY_TYPE -> {
+          String propertyType = VALUE_ANY.equals(value) ? null : parsePropertyType(value);
+          state.setPropertyType(propertyType);
+          // ROOM is indivisible — skip the ROOMS step
+          state.setCurrentStep("ROOM".equals(propertyType) ? FilterStep.PRICE : FilterStep.ROOMS);
+        }
+        case ROOMS -> {
+          state.setRooms(VALUE_ANY.equals(value) ? null : parseRooms(value));
+          state.setCurrentStep(FilterStep.PRICE);
+        }
+        case PRICE -> {
+          applyPriceRange(state, value);
+          state.setCurrentStep(FilterStep.OWNER_ONLY);
+        }
+        case OWNER_ONLY -> {
+          state.setOwnerOnly(VALUE_ANY.equals(value) ? null : Boolean.parseBoolean(value));
+          state.setCurrentStep(FilterStep.KEYWORD);
+        }
+        case KEYWORD -> {
+          state.setQuery(VALUE_ANY.equals(value) ? null : value);
+          state.setCurrentStep(FilterStep.DONE);
+        }
+        default -> log.warn("Unexpected step in applySelection: step={}", step);
       }
-      case PROPERTY_TYPE -> {
-        String propertyType = VALUE_ANY.equals(value) ? null : parsePropertyType(value);
-        state.setPropertyType(propertyType);
-        // ROOM is indivisible — skip the ROOMS step
-        state.setCurrentStep("ROOM".equals(propertyType) ? FilterStep.PRICE : FilterStep.ROOMS);
-      }
-      case ROOMS -> {
-        state.setRooms(VALUE_ANY.equals(value) ? null : parseRooms(value));
-        state.setCurrentStep(FilterStep.PRICE);
-      }
-      case PRICE -> {
-        applyPriceRange(state, value);
-        state.setCurrentStep(FilterStep.OWNER_ONLY);
-      }
-      case OWNER_ONLY -> {
-        state.setOwnerOnly(VALUE_ANY.equals(value) ? null : Boolean.parseBoolean(value));
-        state.setCurrentStep(FilterStep.KEYWORD);
-      }
-      case KEYWORD -> {
-        state.setQuery(VALUE_ANY.equals(value) ? null : value);
-        state.setCurrentStep(FilterStep.DONE);
-      }
-      default -> log.warn("Unexpected step in applySelection: step={}", step);
+      log.debug("Filter step applied: telegramId={}, step={}, value={}", telegramId, step, value);
     }
-    log.debug("Filter step applied: telegramId={}, step={}, value={}", telegramId, step, value);
     return state;
   }
 
@@ -126,31 +131,33 @@ public class SearchFilterWizard {
    */
   public SearchFilterState stepBack(Long telegramId) {
     var state = states.computeIfAbsent(telegramId, id -> new SearchFilterState());
-    switch (state.getCurrentStep()) {
-      case DEAL_TYPE -> { return start(telegramId); }
-      case PROPERTY_TYPE -> { state.setDealType(null); state.setCurrentStep(FilterStep.DEAL_TYPE); }
-      case ROOMS -> { state.setPropertyType(null); state.setCurrentStep(FilterStep.PROPERTY_TYPE); }
-      case PRICE -> {
-        state.setRooms(null);
-        // ROOM type skips ROOMS step in both directions
-        boolean wasRoom = "ROOM".equals(state.getPropertyType());
-        state.setCurrentStep(wasRoom ? FilterStep.PROPERTY_TYPE : FilterStep.ROOMS);
+    synchronized (state) {
+      switch (state.getCurrentStep()) {
+        case DEAL_TYPE -> { return start(telegramId); }
+        case PROPERTY_TYPE -> { state.setDealType(null); state.setCurrentStep(FilterStep.DEAL_TYPE); }
+        case ROOMS -> { state.setPropertyType(null); state.setCurrentStep(FilterStep.PROPERTY_TYPE); }
+        case PRICE -> {
+          state.setRooms(null);
+          // ROOM type skips ROOMS step in both directions
+          boolean wasRoom = "ROOM".equals(state.getPropertyType());
+          state.setCurrentStep(wasRoom ? FilterStep.PROPERTY_TYPE : FilterStep.ROOMS);
+        }
+        case OWNER_ONLY -> {
+          state.setPriceMin(null);
+          state.setPriceMax(null);
+          state.setCurrentStep(FilterStep.PRICE);
+        }
+        case KEYWORD -> {
+          state.setOwnerOnly(null);
+          state.setCurrentStep(FilterStep.OWNER_ONLY);
+        }
+        case DONE -> {
+          state.setQuery(null);
+          state.setCurrentStep(FilterStep.KEYWORD);
+        }
       }
-      case OWNER_ONLY -> {
-        state.setPriceMin(null);
-        state.setPriceMax(null);
-        state.setCurrentStep(FilterStep.PRICE);
-      }
-      case KEYWORD -> {
-        state.setOwnerOnly(null);
-        state.setCurrentStep(FilterStep.OWNER_ONLY);
-      }
-      case DONE -> {
-        state.setQuery(null);
-        state.setCurrentStep(FilterStep.KEYWORD);
-      }
+      return state;
     }
-    return state;
   }
 
   /**
@@ -165,9 +172,11 @@ public class SearchFilterWizard {
    */
   public SearchFilterState applyKeyword(Long telegramId, String text) {
     var state = states.computeIfAbsent(telegramId, id -> new SearchFilterState());
-    state.setQuery(text == null || text.isBlank() ? null : text.strip());
-    state.setCurrentStep(FilterStep.DONE);
-    log.debug("Keyword applied: telegramId={}, hasQuery={}", telegramId, state.getQuery() != null);
+    synchronized (state) {
+      state.setQuery(text == null || text.isBlank() ? null : text.strip());
+      state.setCurrentStep(FilterStep.DONE);
+      log.debug("Keyword applied: telegramId={}, hasQuery={}", telegramId, state.getQuery() != null);
+    }
     return state;
   }
 
