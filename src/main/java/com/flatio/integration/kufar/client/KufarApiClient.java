@@ -1,5 +1,6 @@
 package com.flatio.integration.kufar.client;
 
+import com.flatio.common.util.ImageUrlValidator;
 import com.flatio.integration.core.RawListing;
 import com.flatio.integration.kufar.config.KufarProperties;
 import com.flatio.integration.kufar.dto.KufarAd;
@@ -113,8 +114,15 @@ public class KufarApiClient {
         cursor = extractNextCursor(response);
         page++;
       } while (cursor != null && page < MAX_PAGES);
-    } catch (Exception e) {
+    } catch (RuntimeException e) {
+      // Rethrown (issue #366) rather than swallowed: a partial `result` here would otherwise be
+      // returned as if it were the complete listing set, and the calling connector's
+      // @Retry/@CircuitBreaker never sees the failure to retry or trip on. The caller's fallback
+      // method returns an empty list on exhausted retries, which the sync job already treats as
+      // "skip deactivation to avoid data loss" — so propagating here costs nothing extra and
+      // closes the false-mass-deactivation risk of treating a cut-short page range as complete.
       log.error("Error during full fetch: source={}, page={}, error={}", config.sourceId(), page, e.getMessage(), e);
+      throw e;
     }
     log.info("Full fetch completed: source={}, fetched={}", config.sourceId(), result.size());
     return result;
@@ -157,8 +165,10 @@ public class KufarApiClient {
         cursor = extractNextCursor(response);
         page++;
       } while (!done && cursor != null && page < MAX_PAGES);
-    } catch (Exception e) {
+    } catch (RuntimeException e) {
+      // Rethrown for the same reason as fetchAll (issue #366) — see its comment.
       log.error("Error during delta fetch: source={}, page={}, error={}", config.sourceId(), page, e.getMessage(), e);
+      throw e;
     }
     log.info("Delta fetch completed: source={}, fetched={}", config.sourceId(), result.size());
     return result;
@@ -370,11 +380,32 @@ public class KufarApiClient {
         .map(KufarImage::path)
         .filter(path -> path != null && !path.isBlank())
         .map(path -> toFullPhotoUrl(cdnBase, path))
+        .filter(Objects::nonNull)
         .toList();
   }
 
+  /**
+   * Builds the full photo URL for a single image path.
+   *
+   * <p>Kufar's own API normally returns a relative path to be joined with the configured CDN
+   * base, but an already-absolute path is validated against {@link ImageUrlValidator} rather
+   * than trusted outright (issue #364) — {@code path} is untrusted data from an external API
+   * response, and passing an attacker-controlled absolute URL straight through would let a
+   * malicious listing point {@code PhotoProxyClient}'s later download at an arbitrary host.
+   *
+   * @param cdnBase configured CDN base URL, may be null/blank
+   * @param path    image path or absolute URL from the ad's {@code images} array, never blank
+   * @return the resolved photo URL, or {@code null} if an absolute path fails the allowlist check
+   */
   private String toFullPhotoUrl(String cdnBase, String path) {
-    if (cdnBase == null || cdnBase.isBlank() || path.startsWith("http")) {
+    if (path.startsWith("http")) {
+      if (ImageUrlValidator.isAllowedImageUrl(path)) {
+        return path;
+      }
+      log.warn("Rejecting photo URL outside the allowed CDN hosts: url={}", path);
+      return null;
+    }
+    if (cdnBase == null || cdnBase.isBlank()) {
       return path;
     }
     String base = cdnBase.endsWith("/") ? cdnBase.substring(0, cdnBase.length() - 1) : cdnBase;

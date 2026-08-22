@@ -1,5 +1,6 @@
 package com.flatio.integration.onliner.client;
 
+import com.flatio.common.util.ImageUrlValidator;
 import com.flatio.integration.core.ConnectorTransientException;
 import com.flatio.integration.core.ListingConnector;
 import com.flatio.integration.core.RawListing;
@@ -140,7 +141,7 @@ public class OnlinerSaleConnector implements ListingConnector {
         currentPage++;
       } while (!done && currentPage <= lastPage);
     } catch (HttpClientErrorException.TooManyRequests e) {
-      handleRateLimit(e);
+      handleDeltaFetchRateLimit(result, e);
     } catch (HttpClientErrorException e) {
       log.error("Non-retryable error on delta fetch: status={}, source={}", e.getStatusCode(), properties.sourceId(), e);
     }
@@ -181,7 +182,7 @@ public class OnlinerSaleConnector implements ListingConnector {
         currentPage++;
       } while (currentPage <= lastPage);
     } catch (HttpClientErrorException.TooManyRequests e) {
-      handleRateLimit(e);
+      handleFullFetchRateLimit(e);
     } catch (HttpClientErrorException e) {
       log.error("Non-retryable error on full fetch: status={}, source={}", e.getStatusCode(), properties.sourceId(), e);
     }
@@ -305,14 +306,15 @@ public class OnlinerSaleConnector implements ListingConnector {
    * joined and decoded.
    *
    * @param photoUrl raw photo URL from Onliner API, may be null
-   * @return decoded original URL, the input URL unchanged if not an imgproxy URL, or null on failure
+   * @return decoded original URL, the input URL unchanged if not an imgproxy URL, or null on
+   *     failure or if the resolved URL is not on an allowlisted host (issue #364)
    */
   private String resolvePhotoUrl(String photoUrl) {
     if (photoUrl == null) {
       return null;
     }
     if (!photoUrl.contains(IMGPROXY_ONLINER_HOST)) {
-      return photoUrl;
+      return validateOrReject(photoUrl);
     }
     try {
       String[] segments = photoUrl.split("/", -1);
@@ -334,11 +336,19 @@ public class OnlinerSaleConnector implements ListingConnector {
       int padLen = (BASE64_BLOCK_SIZE - base64.length() % BASE64_BLOCK_SIZE) % BASE64_BLOCK_SIZE;
       base64 = base64 + "=".repeat(padLen);
       byte[] decoded = Base64.getUrlDecoder().decode(base64);
-      return new String(decoded, StandardCharsets.UTF_8);
+      return validateOrReject(new String(decoded, StandardCharsets.UTF_8));
     } catch (Exception e) {
       log.warn("Failed to decode imgproxy photo URL: url={}, error={}", photoUrl, e.getMessage());
       return null;
     }
+  }
+
+  private String validateOrReject(String url) {
+    if (ImageUrlValidator.isAllowedImageUrl(url)) {
+      return url;
+    }
+    log.warn("Rejecting photo URL outside the allowed CDN hosts: url={}", url);
+    return null;
   }
 
   private String buildTitle(String address) {
@@ -348,11 +358,45 @@ public class OnlinerSaleConnector implements ListingConnector {
     return "Квартира на продажу (Onliner)";
   }
 
-  private void handleRateLimit(HttpClientErrorException.TooManyRequests e) {
+  /**
+   * Handles a 429 response encountered mid-pagination during a full fetch.
+   *
+   * <p>Unlike {@link #handleDeltaFetchRateLimit}, this always rethrows — a full fetch's result
+   * feeds {@code applyMissedSyncPenalty}, which treats every listing absent from the result as
+   * gone and deactivates it. Keeping a page-range-truncated partial result here would silently
+   * mass-deactivate every listing on the pages not yet reached, the same false-mass-deactivation
+   * risk closed for Kufar in issue #366. Rethrowing lets Resilience4j retry the whole fetch from
+   * page 1, and its fallback returns an empty list on exhausted retries, which the full-sync job
+   * already treats as "skip deactivation to avoid data loss".
+   *
+   * @param e the 429 response caught by the caller
+   */
+  private void handleFullFetchRateLimit(HttpClientErrorException.TooManyRequests e) {
     long retryAfterSeconds = parseRetryAfterSeconds(e.getResponseHeaders());
-    log.warn("Rate limited by Onliner sale API (429): source={}, retryAfterSeconds={}", properties.sourceId(), retryAfterSeconds);
-    sleepQuietly(retryAfterSeconds * 1000L);
+    log.warn("Rate limited by Onliner sale API (429) during full fetch: source={}, retryAfterSeconds={} — Resilience4j will back off",
+        properties.sourceId(), retryAfterSeconds);
     throw new ConnectorTransientException("Rate limited: source=" + properties.sourceId(), e);
+  }
+
+  /**
+   * Handles a 429 response encountered mid-pagination during a delta fetch.
+   *
+   * <p>Delta results are only used to ingest new/updated listings, never to deactivate absent
+   * ones, so a partial result is safe to keep instead of discarding already-fetched pages.
+   *
+   * @param result the listings collected so far in this fetch, never null
+   * @param e      the 429 response caught by the caller
+   */
+  private void handleDeltaFetchRateLimit(List<RawListing> result, HttpClientErrorException.TooManyRequests e) {
+    long retryAfterSeconds = parseRetryAfterSeconds(e.getResponseHeaders());
+    if (result.isEmpty()) {
+      log.warn("Rate limited by Onliner sale API (429): source={}, retryAfterSeconds={} — Resilience4j will back off",
+          properties.sourceId(), retryAfterSeconds);
+      throw new ConnectorTransientException("Rate limited: source=" + properties.sourceId(), e);
+    }
+    log.warn("Rate limited by Onliner sale API (429) after collecting {} listing(s) mid-pagination — "
+        + "returning partial result instead of retrying from page 1: source={}",
+        result.size(), properties.sourceId());
   }
 
   long parseRetryAfterSeconds(HttpHeaders headers) {
@@ -367,14 +411,6 @@ public class OnlinerSaleConnector implements ListingConnector {
       return Math.min(Long.parseLong(retryAfter.trim()), MAX_RETRY_AFTER_SECONDS);
     } catch (NumberFormatException e) {
       return DEFAULT_RETRY_AFTER_SECONDS;
-    }
-  }
-
-  private void sleepQuietly(long millis) {
-    try {
-      Thread.sleep(millis);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
     }
   }
 }

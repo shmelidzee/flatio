@@ -28,6 +28,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.Set;
@@ -763,6 +764,43 @@ class ListingIngestionServiceImplTest {
     assertThat(result.errors()).isZero();
     assertThat(result.updated()).isEqualTo(1);
     assertThat(result.added()).isEqualTo(1);
+  }
+
+  // -------------------------------------------------------------------------
+  // ingestBatch — concurrent update conflict handling (#367)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_not_count_error_when_concurrent_update_conflict_is_resolved_on_retry() {
+    // Given — first call loses the optimistic lock race (e.g. against admin moderation), retry succeeds
+    var raw = buildRawListing("ext-version-conflict-1", BigDecimal.valueOf(500));
+    when(self.ingest(raw, source))
+        .thenThrow(new OptimisticLockingFailureException("stale version"))
+        .thenReturn(IngestOutcome.UPDATED);
+
+    // When
+    var result = ingestionService.ingestBatch(List.of(raw), source);
+
+    // Then — conflict is resolved by retry; no error counted, no update silently lost
+    assertThat(result.errors()).isZero();
+    assertThat(result.updated()).isEqualTo(1);
+    assertThat(result.added()).isZero();
+  }
+
+  @Test
+  void should_count_error_when_retry_also_fails_after_update_conflict() {
+    // Given — first call loses the optimistic lock race; retry also fails
+    var raw = buildRawListing("ext-version-conflict-2", BigDecimal.valueOf(500));
+    when(self.ingest(raw, source))
+        .thenThrow(new OptimisticLockingFailureException("stale version"))
+        .thenThrow(new RuntimeException("DB unreachable"));
+
+    // When
+    var result = ingestionService.ingestBatch(List.of(raw), source);
+
+    // Then — unrecoverable failure counted as error
+    assertThat(result.errors()).isEqualTo(1);
+    assertThat(result.updated()).isZero();
   }
 
   // -------------------------------------------------------------------------

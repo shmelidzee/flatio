@@ -1,10 +1,10 @@
 package com.flatio.telegram.config;
 
+import java.net.http.HttpClient;
 import java.time.Duration;
-import org.springframework.boot.web.client.ClientHttpRequestFactories;
-import org.springframework.boot.web.client.ClientHttpRequestFactorySettings;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 /**
@@ -26,17 +26,29 @@ public class PhotoDownloadConfig {
    * <p>Enforces 5-second connect and read timeouts so that a slow or unreachable CDN
    * does not block the Telegram update thread.
    *
+   * <p>HTTP redirects are not followed ({@code HttpClient.Redirect.NEVER}) — {@link
+   * com.flatio.telegram.handler.PhotoProxyClient} validates the URL against {@link
+   * com.flatio.common.util.ImageUrlValidator}'s host allowlist before this client is called, but
+   * that check only covers the original URL. Without disabling redirects, a compromised or
+   * malformed CDN response could 3xx this server to an arbitrary host, including internal or
+   * cloud-metadata addresses (SSRF via redirect, same class of issue as #315). A 3xx response is
+   * returned as-is and degrades to an empty body, which {@code PhotoProxyClient} already treats
+   * as a download failure.
+   *
    * @param builder Spring-managed RestClient.Builder
-   * @return RestClient with short timeouts and no fixed base URL
+   * @return RestClient with short timeouts, no fixed base URL, and redirects disabled
    */
   @Bean("photoDownloadRestClient")
   public RestClient photoDownloadRestClient(RestClient.Builder builder) {
-    var factorySettings = ClientHttpRequestFactorySettings.DEFAULTS
-        .withConnectTimeout(CONNECT_TIMEOUT)
-        .withReadTimeout(READ_TIMEOUT);
+    var httpClient = HttpClient.newBuilder()
+        .followRedirects(HttpClient.Redirect.NEVER)
+        .connectTimeout(CONNECT_TIMEOUT)
+        .build();
+    var requestFactory = new JdkClientHttpRequestFactory(httpClient);
+    requestFactory.setReadTimeout(READ_TIMEOUT);
 
     return builder
-        .requestFactory(ClientHttpRequestFactories.get(factorySettings))
+        .requestFactory(requestFactory)
         .build();
   }
 }

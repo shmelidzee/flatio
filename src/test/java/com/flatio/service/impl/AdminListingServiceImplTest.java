@@ -1,5 +1,6 @@
 package com.flatio.service.impl;
 
+import com.flatio.common.exception.ListingConcurrentModificationException;
 import com.flatio.common.exception.ListingNotFoundException;
 import com.flatio.domain.audit.AdminAuditObjectType;
 import com.flatio.domain.listing.Listing;
@@ -17,6 +18,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -27,6 +29,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -106,7 +109,7 @@ class AdminListingServiceImplTest {
     // Then
     assertThat(listing.getStatus()).isEqualTo(ListingStatus.INACTIVE);
     assertThat(result).isSameAs(summary);
-    verify(listingRepository).save(listing);
+    verify(listingRepository).saveAndFlush(listing);
     verify(adminAuditLogService).record("updateListingStatus", AdminAuditObjectType.LISTING, "42", 7L);
   }
 
@@ -119,6 +122,22 @@ class AdminListingServiceImplTest {
     assertThatThrownBy(() -> adminListingService.updateStatus(99L, ListingStatus.INACTIVE, "7"))
         .isInstanceOf(ListingNotFoundException.class)
         .hasMessageContaining("99");
+  }
+
+  @Test
+  void should_throw_concurrent_modification_exception_when_status_update_conflicts() {
+    // Given
+    var listing = new Listing();
+    listing.setId(42L);
+    listing.setStatus(ListingStatus.ACTIVE);
+    when(listingRepository.findById(42L)).thenReturn(Optional.of(listing));
+    when(listingRepository.saveAndFlush(listing)).thenThrow(new OptimisticLockingFailureException("stale version"));
+
+    // When / Then
+    assertThatThrownBy(() -> adminListingService.updateStatus(42L, ListingStatus.INACTIVE, "7"))
+        .isInstanceOf(ListingConcurrentModificationException.class)
+        .hasMessageContaining("42");
+    verify(adminAuditLogService, never()).record(any(), any(), any(), any());
   }
 
   // -------------------------------------------------------------------------
@@ -139,7 +158,7 @@ class AdminListingServiceImplTest {
     // Then
     assertThat(listing.getDedupHash()).isNull();
     ArgumentCaptor<Listing> captor = ArgumentCaptor.forClass(Listing.class);
-    verify(listingRepository).save(captor.capture());
+    verify(listingRepository).saveAndFlush(captor.capture());
     assertThat(captor.getValue().getDedupHash()).isNull();
     verify(adminAuditLogService).record("unlinkDuplicateGroup", AdminAuditObjectType.LISTING, "5", 7L);
   }
@@ -153,5 +172,21 @@ class AdminListingServiceImplTest {
     assertThatThrownBy(() -> adminListingService.unlinkDuplicateGroup(123L, "7"))
         .isInstanceOf(ListingNotFoundException.class)
         .hasMessageContaining("123");
+  }
+
+  @Test
+  void should_throw_concurrent_modification_exception_when_unlink_conflicts() {
+    // Given
+    var listing = new Listing();
+    listing.setId(5L);
+    listing.setDedupHash("abc123");
+    when(listingRepository.findById(5L)).thenReturn(Optional.of(listing));
+    when(listingRepository.saveAndFlush(listing)).thenThrow(new OptimisticLockingFailureException("stale version"));
+
+    // When / Then
+    assertThatThrownBy(() -> adminListingService.unlinkDuplicateGroup(5L, "7"))
+        .isInstanceOf(ListingConcurrentModificationException.class)
+        .hasMessageContaining("5");
+    verify(adminAuditLogService, never()).record(any(), any(), any(), any());
   }
 }

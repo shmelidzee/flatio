@@ -7,6 +7,7 @@ import com.flatio.integration.realt.config.RealtHouseSaleProperties;
 import com.flatio.service.CurrencyRateService;
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.Instant;
 import java.util.List;
 import java.util.function.Function;
 import org.junit.jupiter.api.BeforeEach;
@@ -133,6 +134,50 @@ class RealtHouseSaleConnectorTest {
     // When / Then
     assertThatThrownBy(() -> connector.fetch())
         .isInstanceOf(ConnectorTransientException.class);
+  }
+
+  @Test
+  @SuppressWarnings({"unchecked", "rawtypes"})
+  void should_throw_when_full_fetch_hits_429_after_first_page_already_collected() throws IOException {
+    // Given — first page succeeds with a listing and a next-page link, second page hits 429
+    String pageWithNext = loadFixture("fixtures/realt/listing-page-with-pagination.html");
+    var retryHeaders = new HttpHeaders();
+    retryHeaders.set(HttpHeaders.RETRY_AFTER, "0");
+    var exception = HttpClientErrorException.create(
+        HttpStatus.TOO_MANY_REQUESTS, "Too Many Requests", retryHeaders, null, null);
+    when(restClient.get()).thenReturn(requestHeadersUriSpec);
+    when(requestHeadersUriSpec.uri(any(Function.class))).thenReturn(requestHeadersSpec);
+    when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
+    when(responseSpec.body(String.class)).thenReturn(pageWithNext).thenThrow(exception);
+
+    // When / Then — a full fetch's result feeds the missed-sync deactivation penalty, so a
+    // page-range-truncated partial result must not be returned as if it were complete; rethrowing
+    // lets Resilience4j retry the whole fetch from page 1 instead
+    assertThatThrownBy(() -> connector.fetch())
+        .isInstanceOf(ConnectorTransientException.class)
+        .hasCauseInstanceOf(HttpClientErrorException.TooManyRequests.class);
+  }
+
+  @Test
+  @SuppressWarnings({"unchecked", "rawtypes"})
+  void should_return_partial_result_when_delta_fetch_hits_429_after_first_page_already_collected() throws IOException {
+    // Given — first page succeeds with a listing and a next-page link, second page hits 429
+    String pageWithNext = loadFixture("fixtures/realt/listing-page-with-pagination.html");
+    var retryHeaders = new HttpHeaders();
+    retryHeaders.set(HttpHeaders.RETRY_AFTER, "0");
+    var exception = HttpClientErrorException.create(
+        HttpStatus.TOO_MANY_REQUESTS, "Too Many Requests", retryHeaders, null, null);
+    when(restClient.get()).thenReturn(requestHeadersUriSpec);
+    when(requestHeadersUriSpec.uri(any(Function.class))).thenReturn(requestHeadersSpec);
+    when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
+    when(responseSpec.body(String.class)).thenReturn(pageWithNext).thenThrow(exception);
+
+    // When — delta results never drive deactivation, so no exception propagates here, unlike
+    // the full-fetch case above
+    List<RawListing> result = connector.fetchDelta(Instant.parse("2020-01-01T00:00:00Z"));
+
+    // Then — page 1's listing is kept instead of being discarded by a full retry
+    assertThat(result).hasSize(1);
   }
 
   @Test

@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.Base64;
 import java.util.List;
@@ -464,6 +465,54 @@ class OnlinerSaleConnectorTest {
     assertThatThrownBy(() -> connector.fetch())
         .isInstanceOf(ConnectorTransientException.class)
         .hasCauseInstanceOf(HttpClientErrorException.TooManyRequests.class);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_throw_when_full_fetch_hits_429_after_first_page_already_collected() {
+    // Given — page 1 succeeds and reports a second page available, page 2 hits 429
+    var page1 = new OnlinerSaleSearchResponse(buildValidResponse().apartments(), 2, new OnlinerPage(50, 2, 1, 2));
+    var retryHeaders = new HttpHeaders();
+    retryHeaders.set(HttpHeaders.RETRY_AFTER, "0");
+    var exception = HttpClientErrorException.create(
+        HttpStatus.TOO_MANY_REQUESTS, "Too Many Requests", retryHeaders, null, null);
+    when(restClient.get()).thenReturn(requestHeadersUriSpec);
+    when(requestHeadersUriSpec.uri(any(Function.class))).thenReturn(requestHeadersSpec);
+    when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
+    when(responseSpec.body(OnlinerSaleSearchResponse.class))
+        .thenReturn(page1)
+        .thenThrow(exception);
+
+    // When / Then — a full fetch's result feeds the missed-sync deactivation penalty, so a
+    // page-range-truncated partial result must not be returned as if it were complete; rethrowing
+    // lets Resilience4j retry the whole fetch from page 1 instead
+    assertThatThrownBy(() -> connector.fetch())
+        .isInstanceOf(ConnectorTransientException.class)
+        .hasCauseInstanceOf(HttpClientErrorException.TooManyRequests.class);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_return_partial_result_when_delta_fetch_hits_429_after_first_page_already_collected() {
+    // Given — page 1 succeeds and reports a second page available, page 2 hits 429
+    var page1 = new OnlinerSaleSearchResponse(buildValidResponse().apartments(), 2, new OnlinerPage(50, 2, 1, 2));
+    var retryHeaders = new HttpHeaders();
+    retryHeaders.set(HttpHeaders.RETRY_AFTER, "0");
+    var exception = HttpClientErrorException.create(
+        HttpStatus.TOO_MANY_REQUESTS, "Too Many Requests", retryHeaders, null, null);
+    when(restClient.get()).thenReturn(requestHeadersUriSpec);
+    when(requestHeadersUriSpec.uri(any(Function.class))).thenReturn(requestHeadersSpec);
+    when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
+    when(responseSpec.body(OnlinerSaleSearchResponse.class))
+        .thenReturn(page1)
+        .thenThrow(exception);
+
+    // When — delta results never drive deactivation, so no exception propagates here, unlike
+    // the full-fetch case above
+    List<RawListing> result = connector.fetchDelta(Instant.parse("2020-01-01T00:00:00Z"));
+
+    // Then — page 1's listings are kept instead of being discarded by a full retry
+    assertThat(result).hasSize(2);
   }
 
   @Test

@@ -81,38 +81,45 @@ public class SearchFilterWizard {
    * @return updated state after the selection is applied
    */
   public SearchFilterState applySelection(Long telegramId, FilterStep step, String value) {
-    var state = states.computeIfAbsent(telegramId, id -> new SearchFilterState());
-    switch (step) {
-      case DEAL_TYPE -> {
-        state.setDealType(VALUE_ANY.equals(value) ? null : parseDealType(value));
-        state.setCurrentStep(FilterStep.PROPERTY_TYPE);
+    // ConcurrentHashMap#compute holds this key's bin lock for the whole remapping call, so the
+    // read-modify-write below is atomic — the bot handles each Telegram update on a pooled thread
+    // with no ordering guarantee, and two rapid taps (or a Telegram-side retry) racing on the same
+    // telegramId would otherwise be able to interleave setters and leave currentStep out of sync
+    // with the fields it implies.
+    return states.compute(telegramId, (id, existing) -> {
+      SearchFilterState state = existing != null ? existing : new SearchFilterState();
+      switch (step) {
+        case DEAL_TYPE -> {
+          state.setDealType(VALUE_ANY.equals(value) ? null : parseDealType(value));
+          state.setCurrentStep(FilterStep.PROPERTY_TYPE);
+        }
+        case PROPERTY_TYPE -> {
+          String propertyType = VALUE_ANY.equals(value) ? null : parsePropertyType(value);
+          state.setPropertyType(propertyType);
+          // ROOM is indivisible — skip the ROOMS step
+          state.setCurrentStep("ROOM".equals(propertyType) ? FilterStep.PRICE : FilterStep.ROOMS);
+        }
+        case ROOMS -> {
+          state.setRooms(VALUE_ANY.equals(value) ? null : parseRooms(value));
+          state.setCurrentStep(FilterStep.PRICE);
+        }
+        case PRICE -> {
+          applyPriceRange(state, value);
+          state.setCurrentStep(FilterStep.OWNER_ONLY);
+        }
+        case OWNER_ONLY -> {
+          state.setOwnerOnly(VALUE_ANY.equals(value) ? null : Boolean.parseBoolean(value));
+          state.setCurrentStep(FilterStep.KEYWORD);
+        }
+        case KEYWORD -> {
+          state.setQuery(VALUE_ANY.equals(value) ? null : value);
+          state.setCurrentStep(FilterStep.DONE);
+        }
+        default -> log.warn("Unexpected step in applySelection: step={}", step);
       }
-      case PROPERTY_TYPE -> {
-        String propertyType = VALUE_ANY.equals(value) ? null : parsePropertyType(value);
-        state.setPropertyType(propertyType);
-        // ROOM is indivisible — skip the ROOMS step
-        state.setCurrentStep("ROOM".equals(propertyType) ? FilterStep.PRICE : FilterStep.ROOMS);
-      }
-      case ROOMS -> {
-        state.setRooms(VALUE_ANY.equals(value) ? null : parseRooms(value));
-        state.setCurrentStep(FilterStep.PRICE);
-      }
-      case PRICE -> {
-        applyPriceRange(state, value);
-        state.setCurrentStep(FilterStep.OWNER_ONLY);
-      }
-      case OWNER_ONLY -> {
-        state.setOwnerOnly(VALUE_ANY.equals(value) ? null : Boolean.parseBoolean(value));
-        state.setCurrentStep(FilterStep.KEYWORD);
-      }
-      case KEYWORD -> {
-        state.setQuery(VALUE_ANY.equals(value) ? null : value);
-        state.setCurrentStep(FilterStep.DONE);
-      }
-      default -> log.warn("Unexpected step in applySelection: step={}", step);
-    }
-    log.debug("Filter step applied: telegramId={}, step={}, value={}", telegramId, step, value);
-    return state;
+      log.debug("Filter step applied: telegramId={}, step={}, value={}", telegramId, step, value);
+      return state;
+    });
   }
 
   /**
@@ -125,32 +132,42 @@ public class SearchFilterWizard {
    * @return updated state after stepping back; restarts the wizard if already at the first step
    */
   public SearchFilterState stepBack(Long telegramId) {
-    var state = states.computeIfAbsent(telegramId, id -> new SearchFilterState());
-    switch (state.getCurrentStep()) {
-      case DEAL_TYPE -> { return start(telegramId); }
-      case PROPERTY_TYPE -> { state.setDealType(null); state.setCurrentStep(FilterStep.DEAL_TYPE); }
-      case ROOMS -> { state.setPropertyType(null); state.setCurrentStep(FilterStep.PROPERTY_TYPE); }
-      case PRICE -> {
-        state.setRooms(null);
-        // ROOM type skips ROOMS step in both directions
-        boolean wasRoom = "ROOM".equals(state.getPropertyType());
-        state.setCurrentStep(wasRoom ? FilterStep.PROPERTY_TYPE : FilterStep.ROOMS);
+    // See applySelection for why this runs inside ConcurrentHashMap#compute rather than a
+    // computeIfAbsent + synchronized(state) pair: the DEAL_TYPE case below replaces the state
+    // wholesale (a "restart"), and doing that outside this atomic remapping call would let a
+    // concurrent applySelection/stepBack/applyKeyword hold a reference to the object being
+    // replaced, apply its update to it, and have that update silently lost once discarded here.
+    return states.compute(telegramId, (id, existing) -> {
+      SearchFilterState state = existing != null ? existing : new SearchFilterState();
+      switch (state.getCurrentStep()) {
+        case DEAL_TYPE -> {
+          state = new SearchFilterState();
+          log.debug("Filter wizard started: telegramId={}", telegramId);
+        }
+        case PROPERTY_TYPE -> { state.setDealType(null); state.setCurrentStep(FilterStep.DEAL_TYPE); }
+        case ROOMS -> { state.setPropertyType(null); state.setCurrentStep(FilterStep.PROPERTY_TYPE); }
+        case PRICE -> {
+          state.setRooms(null);
+          // ROOM type skips ROOMS step in both directions
+          boolean wasRoom = "ROOM".equals(state.getPropertyType());
+          state.setCurrentStep(wasRoom ? FilterStep.PROPERTY_TYPE : FilterStep.ROOMS);
+        }
+        case OWNER_ONLY -> {
+          state.setPriceMin(null);
+          state.setPriceMax(null);
+          state.setCurrentStep(FilterStep.PRICE);
+        }
+        case KEYWORD -> {
+          state.setOwnerOnly(null);
+          state.setCurrentStep(FilterStep.OWNER_ONLY);
+        }
+        case DONE -> {
+          state.setQuery(null);
+          state.setCurrentStep(FilterStep.KEYWORD);
+        }
       }
-      case OWNER_ONLY -> {
-        state.setPriceMin(null);
-        state.setPriceMax(null);
-        state.setCurrentStep(FilterStep.PRICE);
-      }
-      case KEYWORD -> {
-        state.setOwnerOnly(null);
-        state.setCurrentStep(FilterStep.OWNER_ONLY);
-      }
-      case DONE -> {
-        state.setQuery(null);
-        state.setCurrentStep(FilterStep.KEYWORD);
-      }
-    }
-    return state;
+      return state;
+    });
   }
 
   /**
@@ -164,11 +181,13 @@ public class SearchFilterWizard {
    * @return updated state positioned at DONE
    */
   public SearchFilterState applyKeyword(Long telegramId, String text) {
-    var state = states.computeIfAbsent(telegramId, id -> new SearchFilterState());
-    state.setQuery(text == null || text.isBlank() ? null : text.strip());
-    state.setCurrentStep(FilterStep.DONE);
-    log.debug("Keyword applied: telegramId={}, hasQuery={}", telegramId, state.getQuery() != null);
-    return state;
+    return states.compute(telegramId, (id, existing) -> {
+      SearchFilterState state = existing != null ? existing : new SearchFilterState();
+      state.setQuery(text == null || text.isBlank() ? null : text.strip());
+      state.setCurrentStep(FilterStep.DONE);
+      log.debug("Keyword applied: telegramId={}, hasQuery={}", telegramId, state.getQuery() != null);
+      return state;
+    });
   }
 
   /**

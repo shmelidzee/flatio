@@ -5,6 +5,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.lang.NonNull;
@@ -23,6 +24,12 @@ import org.springframework.web.filter.OncePerRequestFilter;
  *
  * <p>Requests without a token, or with an invalid token, are passed through unchanged.
  * Spring Security will then enforce access rules based on the (absent) authentication.
+ *
+ * <p><b>Revocation (issue #365):</b> authorities are sourced from {@link UserStatusCache}, not
+ * from the token's own {@code roles} claim — a role change or deactivation applied through the
+ * admin panel therefore takes effect on the user's next request instead of only once the token
+ * expires. A token whose subject no longer resolves to an active user is treated the same as
+ * a missing token: the request proceeds unauthenticated.
  */
 @Component
 @RequiredArgsConstructor
@@ -33,6 +40,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
   private static final String BEARER_PREFIX = "Bearer ";
 
   private final JwtService jwtService;
+  private final UserStatusCache userStatusCache;
 
   @Override
   protected void doFilterInternal(
@@ -55,19 +63,36 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
       return;
     }
 
-    setAuthentication(token);
+    setAuthentication(token, request.getRequestURI());
     filterChain.doFilter(request, response);
   }
 
-  private void setAuthentication(String token) {
+  private void setAuthentication(String token, String requestUri) {
     var subject = jwtService.extractSubject(token);
-    var authorities = jwtService.extractRoles(token).stream()
-        .map(role -> new SimpleGrantedAuthority("ROLE_" + role))
-        .toList();
+    var userId = parseUserId(subject);
+    if (userId == null) {
+      log.debug("JWT subject is not a numeric user id, skipping authentication: subject={}", subject);
+      return;
+    }
 
+    var statusOpt = userStatusCache.getStatus(userId);
+    if (statusOpt.isEmpty() || !statusOpt.get().active()) {
+      log.debug("Skipping authentication for inactive or unknown user: userId={}, uri={}", userId, requestUri);
+      return;
+    }
+
+    var authorities = List.of(new SimpleGrantedAuthority("ROLE_" + statusOpt.get().role().name()));
     var authentication = new UsernamePasswordAuthenticationToken(
         subject, null, authorities
     );
     SecurityContextHolder.getContext().setAuthentication(authentication);
+  }
+
+  private Long parseUserId(String subject) {
+    try {
+      return Long.valueOf(subject);
+    } catch (NumberFormatException e) {
+      return null;
+    }
   }
 }

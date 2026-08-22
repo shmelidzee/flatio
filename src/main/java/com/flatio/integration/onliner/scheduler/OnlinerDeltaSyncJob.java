@@ -13,7 +13,6 @@ import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
@@ -23,10 +22,12 @@ import org.springframework.stereotype.Component;
 /**
  * Periodically fetches only new and recently updated Onliner listings (delta sync).
  *
- * <p>Tracks the last successful run timestamp and passes it to
- * {@link OnlinerConnector#fetchDelta(Instant)}. On the very first execution
- * (before any successful run) the threshold is {@link Instant#EPOCH}, causing a
- * full page pass — subsequent executions only retrieve listings newer than the previous run.
+ * <p>The {@code since} cursor is read from {@link SyncRunService#findLastSuccessfulRunAt(String)}
+ * on every run — not kept in memory — so it survives application restarts without any in-memory
+ * state (issue #369, matching the pattern already used by the Realt and Kufar delta jobs). On the
+ * very first execution (before any successful run is recorded) the threshold is
+ * {@link Instant#EPOCH}, causing a full page pass — subsequent executions only retrieve listings
+ * newer than the previous successful run.
  *
  * <p>Cron schedule is configurable via {@code flatio.sync.onliner.delta.cron}
  * (env: {@code FLATIO_SYNC_ONLINER_DELTA_CRON}); default is every 10 minutes.
@@ -41,17 +42,12 @@ public class OnlinerDeltaSyncJob {
   private final ListingIngestionService listingIngestionService;
   private final SyncRunService syncRunService;
 
-  private final AtomicReference<Instant> lastRunAt = new AtomicReference<>(Instant.EPOCH);
-
   /**
-   * Fetches listings newer than the previous run timestamp and persists them.
-   *
-   * <p>The {@code since} cursor is updated only on a successful fetch to avoid
-   * skipping listings after a transient failure.
+   * Fetches listings newer than the previous successful run timestamp and persists them.
    */
   @Scheduled(cron = "${flatio.sync.onliner.delta.cron}")
   public void runDeltaSync() {
-    Instant since = lastRunAt.get();
+    Instant since = syncRunService.findLastSuccessfulRunAt(onlinerConnector.getSourceId()).orElse(Instant.EPOCH);
     Instant runStart = Instant.now();
     log.info("Onliner delta sync started: since={}", since);
 
@@ -68,7 +64,6 @@ public class OnlinerDeltaSyncJob {
 
       if (rawListings.isEmpty()) {
         log.info("Onliner delta sync: no new listings since={}", since);
-        lastRunAt.set(runStart);
         Instant finish = Instant.now();
         syncRunService.record(SyncRunRequest.success(
             onlinerConnector.getSourceId(), SyncType.DELTA, runStart, finish, 0,
@@ -86,8 +81,6 @@ public class OnlinerDeltaSyncJob {
 
       log.info("Onliner delta sync completed: fetched={}, added={}, updated={}, errors={}, durationMs={}",
           rawListings.size(), result.added(), result.updated(), result.errors(), durationMs);
-
-      lastRunAt.set(runStart);
     } catch (CallNotPermittedException e) {
       log.warn("Onliner delta sync skipped: circuit breaker OPEN");
     } catch (DataAccessException e) {

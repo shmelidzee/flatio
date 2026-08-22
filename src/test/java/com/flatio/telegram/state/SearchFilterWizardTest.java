@@ -3,6 +3,10 @@ package com.flatio.telegram.state;
 import com.flatio.domain.listing.DealType;
 import com.flatio.config.SellPriceFilterProperties;
 import java.math.BigDecimal;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -629,5 +633,42 @@ class SearchFilterWizardTest {
     // Then — string stored as-is; parameterised query in ListingRepository prevents injection
     assertThat(state.getQuery()).isEqualTo("тихий район'; DROP TABLE listings; --");
     assertThat(state.getCurrentStep()).isEqualTo(FilterStep.DONE);
+  }
+
+  // -------------------------------------------------------------------------
+  // Concurrency — serialized state mutation (#368)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_keep_current_step_consistent_with_property_type_under_concurrent_selection() throws InterruptedException {
+    // Given — the same user's PROPERTY_TYPE step is answered with two different values that each
+    // imply a different next step (ROOM skips ROOMS, APARTMENT does not), racing on pooled threads
+    // to simulate two rapid taps or a Telegram-side retried callback
+    wizard.start(1L);
+    wizard.applySelection(1L, FilterStep.DEAL_TYPE, "RENT");
+    int iterations = 500;
+    ExecutorService executor = Executors.newFixedThreadPool(8);
+    CountDownLatch latch = new CountDownLatch(iterations * 2);
+
+    // When
+    for (int i = 0; i < iterations; i++) {
+      executor.submit(() -> {
+        wizard.applySelection(1L, FilterStep.PROPERTY_TYPE, "ROOM");
+        latch.countDown();
+      });
+      executor.submit(() -> {
+        wizard.applySelection(1L, FilterStep.PROPERTY_TYPE, "APARTMENT");
+        latch.countDown();
+      });
+    }
+    boolean completed = latch.await(10, TimeUnit.SECONDS);
+    executor.shutdown();
+
+    // Then — currentStep always matches the property type that was actually stored, whichever
+    // selection happened to apply last; a race would otherwise be able to tear the two apart
+    assertThat(completed).isTrue();
+    var state = wizard.getState(1L).orElseThrow();
+    FilterStep expectedStep = "ROOM".equals(state.getPropertyType()) ? FilterStep.PRICE : FilterStep.ROOMS;
+    assertThat(state.getCurrentStep()).isEqualTo(expectedStep);
   }
 }

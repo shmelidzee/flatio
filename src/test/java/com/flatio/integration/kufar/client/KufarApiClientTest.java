@@ -16,6 +16,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.util.UriBuilder;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -27,6 +28,7 @@ import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -455,6 +457,51 @@ class KufarApiClientTest {
     assertThat(result).hasSize(2);
     assertThat(result).extracting(RawListing::externalId).containsExactly("701", "702");
     verify(responseSpec, times(2)).body(KufarSearchResponse.class);
+  }
+
+  // -------------------------------------------------------------------------
+  // Exception propagation mid-pagination (issue #366)
+  // -------------------------------------------------------------------------
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_propagate_exception_from_fetchAll_when_second_page_fails() {
+    // Given — first page succeeds with a "next" cursor, second page request throws
+    var firstResponse = buildResponseWithCursor(
+        List.of(buildValidAd(901L, "Страница 1", 7000000L, "private")),
+        "cursor-token-xyz"
+    );
+    when(restClient.get()).thenReturn(requestHeadersUriSpec);
+    when(requestHeadersUriSpec.uri(any(Function.class))).thenReturn(requestHeadersSpec);
+    when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
+    when(responseSpec.body(KufarSearchResponse.class))
+        .thenReturn(firstResponse)
+        .thenThrow(new RestClientException("Connection reset"));
+
+    // When / Then — propagates instead of silently returning page 1 as if it were the complete
+    // result (previously swallowed here, letting a cut-short fetch masquerade as a full one)
+    assertThatThrownBy(() -> apiClient.fetchAll(config, "RENT", "APARTMENT", "Fallback"))
+        .isInstanceOf(RestClientException.class);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_propagate_exception_from_fetchDelta_when_second_page_fails() {
+    // Given — first page succeeds with a "next" cursor, second page request throws
+    var firstResponse = buildResponseWithCursor(
+        List.of(buildValidAd(902L, "Страница 1", 7000000L, "private")),
+        "cursor-token-xyz"
+    );
+    when(restClient.get()).thenReturn(requestHeadersUriSpec);
+    when(requestHeadersUriSpec.uri(any(Function.class))).thenReturn(requestHeadersSpec);
+    when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
+    when(responseSpec.body(KufarSearchResponse.class))
+        .thenReturn(firstResponse)
+        .thenThrow(new RestClientException("Connection reset"));
+
+    // When / Then
+    assertThatThrownBy(() -> apiClient.fetchDelta(config, Instant.EPOCH, "RENT", "APARTMENT", "Fallback"))
+        .isInstanceOf(RestClientException.class);
   }
 
   @Test
