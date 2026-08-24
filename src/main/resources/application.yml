@@ -237,6 +237,10 @@ flatio:
   geocoding:
     cron: ${FLATIO_GEOCODING_CRON:0 */30 * * * *}
     batch-size: ${FLATIO_GEOCODING_BATCH_SIZE:50}
+    # Listings whose geocodingFailedAttempts reaches this threshold are excluded from
+    # findNeedingGeocoding — otherwise a listing with persistently bad coordinates would keep
+    # occupying batch slots on every run indefinitely (issue #380).
+    max-attempts: ${FLATIO_GEOCODING_MAX_ATTEMPTS:5}
   search:
     fts-language: ${FLATIO_SEARCH_FTS_LANGUAGE:russian}
   jwt:
@@ -429,7 +433,14 @@ resilience4j:
         wait-duration-in-open-state: 60s
         automatic-transition-from-open-to-half-open-enabled: true
         permitted-number-of-calls-in-half-open-state: 1
-      connector-realt:
+      # Issue #373: each realt.by category gets its own circuit breaker instance so a run of
+      # failures in one category (e.g. Realt changes the room-listing page markup) cannot open
+      # the breaker for unrelated, healthy categories that happen to share the same sliding
+      # window. The Resilience4j RateLimiter stays shared per group (connector-realt /
+      # connector-realt-sale, see the ratelimiter.instances section above) — rate limiting is
+      # about being polite to the origin server, which is the same physical host regardless of
+      # category, so sharing it there is intentional and unrelated to this per-category CB split.
+      connector-realt-apartment-rent:
         sliding-window-type: COUNT_BASED
         sliding-window-size: 5
         minimum-number-of-calls: 5
@@ -437,7 +448,39 @@ resilience4j:
         wait-duration-in-open-state: 60s
         automatic-transition-from-open-to-half-open-enabled: true
         permitted-number-of-calls-in-half-open-state: 1
-      connector-realt-sale:
+      connector-realt-room-rent:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 5
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 100
+        wait-duration-in-open-state: 60s
+        automatic-transition-from-open-to-half-open-enabled: true
+        permitted-number-of-calls-in-half-open-state: 1
+      connector-realt-house-rent:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 5
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 100
+        wait-duration-in-open-state: 60s
+        automatic-transition-from-open-to-half-open-enabled: true
+        permitted-number-of-calls-in-half-open-state: 1
+      connector-realt-apartment-sale:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 5
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 100
+        wait-duration-in-open-state: 60s
+        automatic-transition-from-open-to-half-open-enabled: true
+        permitted-number-of-calls-in-half-open-state: 1
+      connector-realt-room-sale:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 5
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 100
+        wait-duration-in-open-state: 60s
+        automatic-transition-from-open-to-half-open-enabled: true
+        permitted-number-of-calls-in-half-open-state: 1
+      connector-realt-house-sale:
         sliding-window-type: COUNT_BASED
         sliding-window-size: 5
         minimum-number-of-calls: 5

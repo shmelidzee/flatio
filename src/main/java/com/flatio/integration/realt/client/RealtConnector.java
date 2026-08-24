@@ -26,8 +26,12 @@ import org.springframework.web.client.RestClient;
  * {@link RealtHtmlParser}. Pagination is driven by the presence of the
  * {@code data-testid="nextBtn"} anchor in the HTML.
  *
- * <p>Rate limiting (1 req/2 s), circuit breaker (opens after 5 failures, stays open 60 s),
- * and retry with exponential backoff (3 attempts: 2 s → 4 s → 8 s) are applied via Resilience4j.
+ * <p>Rate limiting (1 req/2 s) is shared with {@link RealtRoomConnector} and
+ * {@link RealtHouseRentConnector} under the {@code connector-realt} instance — all three target
+ * the same origin server (realt.by). The circuit breaker (opens after 5 failures, stays open
+ * 60 s) is dedicated to this connector's category ({@code connector-realt-apartment-rent}) so a
+ * run of failures in one rental category cannot open the breaker for the others (issue #373).
+ * Retry with exponential backoff (3 attempts: 2 s → 4 s → 8 s) is applied via Resilience4j.
  * On exhausted retries {@link #fetchFallback} returns an empty list.
  */
 @Service
@@ -81,7 +85,7 @@ public class RealtConnector implements ListingConnector {
    */
   @Override
   @RateLimiter(name = "connector-realt")
-  @CircuitBreaker(name = "connector-realt")
+  @CircuitBreaker(name = "connector-realt-apartment-rent")
   @Retry(name = "connector-realt", fallbackMethod = "fetchFallback")
   public List<RawListing> fetch() {
     return fetchAllInternal();
@@ -97,7 +101,7 @@ public class RealtConnector implements ListingConnector {
    * @return list of recently published listings, never null, may be empty
    */
   @RateLimiter(name = "connector-realt")
-  @CircuitBreaker(name = "connector-realt")
+  @CircuitBreaker(name = "connector-realt-apartment-rent")
   @Retry(name = "connector-realt", fallbackMethod = "fetchDeltaFallback")
   public List<RawListing> fetchDelta(Instant since) {
     log.info("Delta fetch started: source={}, since={}", properties.sourceId(), since);

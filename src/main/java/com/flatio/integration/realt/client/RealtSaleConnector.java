@@ -25,8 +25,12 @@ import org.springframework.web.client.RestClient;
  * <p>Fetches SSR HTML from realt.by (Next.js) and delegates listing extraction to
  * {@link RealtHtmlParser}. All extracted listings have {@code dealType = SELL}.
  *
- * <p>Rate limiting (1 req/2 s), circuit breaker (opens after 5 failures, stays open 60 s),
- * and retry with exponential backoff (3 attempts: 2 s → 4 s → 8 s) are applied via Resilience4j.
+ * <p>Rate limiting (1 req/2 s) is shared with {@link RealtRoomSaleConnector} and
+ * {@link RealtHouseSaleConnector} under the {@code connector-realt-sale} instance — all three
+ * target the same origin server (realt.by). The circuit breaker (opens after 5 failures, stays
+ * open 60 s) is dedicated to this connector's category ({@code connector-realt-apartment-sale})
+ * so a run of failures in one sale category cannot open the breaker for the others (issue #373).
+ * Retry with exponential backoff (3 attempts: 2 s → 4 s → 8 s) is applied via Resilience4j.
  * On exhausted retries {@link #fetchFallback} returns an empty list.
  */
 @Service
@@ -79,7 +83,7 @@ public class RealtSaleConnector implements ListingConnector {
    */
   @Override
   @RateLimiter(name = "connector-realt-sale")
-  @CircuitBreaker(name = "connector-realt-sale")
+  @CircuitBreaker(name = "connector-realt-apartment-sale")
   @Retry(name = "connector-realt-sale", fallbackMethod = "fetchFallback")
   public List<RawListing> fetch() {
     return fetchAllInternal();
@@ -95,7 +99,7 @@ public class RealtSaleConnector implements ListingConnector {
    * @return list of recently published sale listings, never null, may be empty
    */
   @RateLimiter(name = "connector-realt-sale")
-  @CircuitBreaker(name = "connector-realt-sale")
+  @CircuitBreaker(name = "connector-realt-apartment-sale")
   @Retry(name = "connector-realt-sale", fallbackMethod = "fetchDeltaFallback")
   public List<RawListing> fetchDelta(Instant since) {
     log.info("Delta fetch started: source={}, since={}", properties.sourceId(), since);
