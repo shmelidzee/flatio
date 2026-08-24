@@ -88,6 +88,48 @@ class FilterCallbackHandlerTest {
     verify(wizard).start(1L);
   }
 
+  // -------------------------------------------------------------------------
+  // parseMode(HTML) — required for escapeHtml()-encoded keyword text to render
+  // correctly instead of as literal entities (issue #384)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_set_html_parse_mode_when_handling_callback() {
+    // Given
+    when(wizard.start(1L)).thenReturn(freshState);
+    var callback = buildCallback(1L, 100L, 10, "action:search");
+
+    // When
+    var result = handler.handle(callback);
+
+    // Then
+    assertThat(result.getParseMode()).isEqualTo("HTML");
+  }
+
+  @Test
+  void should_set_html_parse_mode_when_starting_wizard_message() {
+    // Given
+    when(wizard.start(1L)).thenReturn(freshState);
+
+    // When
+    var result = handler.startWizardMessage(1L, "100");
+
+    // Then
+    assertThat(result.getParseMode()).isEqualTo("HTML");
+  }
+
+  @Test
+  void should_set_html_parse_mode_when_handling_keyword_text() {
+    // Given
+    when(wizard.applyKeyword(1L, "гараж & сарай")).thenReturn(freshState);
+
+    // When
+    var result = handler.handleKeywordText(1L, "100", "гараж & сарай");
+
+    // Then
+    assertThat(result.getParseMode()).isEqualTo("HTML");
+  }
+
   @Test
   void should_return_current_state_when_filter_search_received() {
     // Given
