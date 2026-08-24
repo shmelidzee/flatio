@@ -78,7 +78,8 @@ class ListingServiceImplIT {
         .thenReturn(mock(ListingSummaryResponse.class));
     var currencyRateService = mock(CurrencyRateService.class);
     when(currencyRateService.getUsdToByn()).thenReturn(Optional.empty());
-    listingService = new ListingServiceImpl(listingRepository, priceHistoryRepository, listingMapper, currencyRateService);
+    listingService = new ListingServiceImpl(
+        listingRepository, priceHistoryRepository, sourceRepository, currencyRepository, listingMapper, currencyRateService);
   }
 
   // -------------------------------------------------------------------------

@@ -1,11 +1,15 @@
 package com.flatio.service.impl;
 
 import com.flatio.common.exception.ListingNotFoundException;
+import com.flatio.domain.currency.Currency;
 import com.flatio.domain.listing.Listing;
 import com.flatio.domain.listing.ListingStatus;
 import com.flatio.domain.listing.PriceHistory;
+import com.flatio.domain.source.Source;
+import com.flatio.repository.CurrencyRepository;
 import com.flatio.repository.ListingRepository;
 import com.flatio.repository.PriceHistoryRepository;
+import com.flatio.repository.SourceRepository;
 import com.flatio.service.CurrencyRateService;
 import com.flatio.service.ListingService;
 import com.flatio.web.dto.ListingResponse;
@@ -22,7 +26,9 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -53,6 +59,8 @@ public class ListingServiceImpl implements ListingService {
 
   private final ListingRepository listingRepository;
   private final PriceHistoryRepository priceHistoryRepository;
+  private final SourceRepository sourceRepository;
+  private final CurrencyRepository currencyRepository;
   private final ListingMapper listingMapper;
   private final CurrencyRateService currencyRateService;
 
@@ -86,7 +94,7 @@ public class ListingServiceImpl implements ListingService {
     String dealType = criteria.dealType() != null ? criteria.dealType().name() : null;
     String cityPattern = criteria.city() != null && !criteria.city().isBlank()
         ? "%" + criteria.city().toLowerCase() + "%" : null;
-    return listingRepository.fullTextSearch(
+    Page<Listing> page = listingRepository.fullTextSearch(
         criteria.query(),
         ftsLanguage,
         effectiveStatus.name(),
@@ -99,7 +107,36 @@ public class ListingServiceImpl implements ListingService {
         criteria.propertyType(),
         Boolean.TRUE.equals(criteria.ownerOnly()) ? Boolean.TRUE : null,
         toNativePageable(pageable)
-    ).map(l -> enrichWithPriceUsd(listingMapper.toSummaryResponse(l), usdToByn));
+    );
+    primeSourceAndCurrencyCache(page.getContent());
+    return page.map(l -> enrichWithPriceUsd(listingMapper.toSummaryResponse(l), usdToByn));
+  }
+
+  /**
+   * Batch-loads the distinct {@code source} and {@code currency} rows referenced by a page of
+   * listings into the current persistence context, so the mapper's per-row
+   * {@code getSource().getCode()} / {@code getCurrency().getCode()} lazy-proxy access resolves
+   * from the already-loaded entities instead of issuing one extra query per row.
+   *
+   * <p>{@link ListingRepository#fullTextSearch} is a native query, which cannot use
+   * {@code JOIN FETCH} the way the {@code Specification}-based {@link #search} does — this is
+   * the batch-fetch alternative called out in issue #377.
+   *
+   * @param listings the page content just returned by {@code fullTextSearch}, never null
+   */
+  private void primeSourceAndCurrencyCache(List<Listing> listings) {
+    Set<Long> sourceIds = listings.stream()
+        .map(Listing::getSource).filter(Objects::nonNull)
+        .map(Source::getId).collect(Collectors.toSet());
+    Set<Long> currencyIds = listings.stream()
+        .map(Listing::getCurrency).filter(Objects::nonNull)
+        .map(Currency::getId).collect(Collectors.toSet());
+    if (!sourceIds.isEmpty()) {
+      sourceRepository.findAllById(sourceIds);
+    }
+    if (!currencyIds.isEmpty()) {
+      currencyRepository.findAllById(currencyIds);
+    }
   }
 
   /**

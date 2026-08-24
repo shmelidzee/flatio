@@ -1,12 +1,16 @@
 package com.flatio.service;
 
 import com.flatio.common.exception.ListingNotFoundException;
+import com.flatio.domain.currency.Currency;
 import com.flatio.domain.listing.DealType;
 import com.flatio.domain.listing.Listing;
 import com.flatio.domain.listing.ListingStatus;
 import com.flatio.domain.listing.PriceHistory;
+import com.flatio.domain.source.Source;
+import com.flatio.repository.CurrencyRepository;
 import com.flatio.repository.ListingRepository;
 import com.flatio.repository.PriceHistoryRepository;
+import com.flatio.repository.SourceRepository;
 import com.flatio.service.CurrencyRateService;
 import com.flatio.service.impl.ListingServiceImpl;
 import com.flatio.web.dto.ListingResponse;
@@ -19,6 +23,7 @@ import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -54,6 +59,12 @@ class ListingServiceTest {
 
   @Mock
   private PriceHistoryRepository priceHistoryRepository;
+
+  @Mock
+  private SourceRepository sourceRepository;
+
+  @Mock
+  private CurrencyRepository currencyRepository;
 
   @Mock
   private ListingMapper listingMapper;
@@ -329,6 +340,31 @@ class ListingServiceTest {
         eq(pageable)
     );
     verify(listingRepository, never()).findAll(any(Specification.class), eq(pageable));
+  }
+
+  @Test
+  void should_batch_load_distinct_sources_and_currencies_for_fts_page() {
+    // Given — two listings from the same source/currency in one FTS page (issue #377: the
+    // native query cannot JOIN FETCH, so source/currency are primed via a batch lookup instead
+    // of one query per row)
+    var pageable = PageRequest.of(0, 20);
+    var listing1 = buildListingWithSourceAndCurrency(1L, 10L, 20L);
+    var listing2 = buildListingWithSourceAndCurrency(2L, 10L, 20L);
+    var page = new PageImpl<>(List.of(listing1, listing2), pageable, 2);
+
+    when(listingRepository.fullTextSearch(
+        eq("квартира"), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()
+    )).thenReturn(page);
+    when(listingMapper.toSummaryResponse(any())).thenReturn(buildListingSummary(1L));
+
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, "квартира", null);
+
+    // When
+    listingService.search(criteria, pageable);
+
+    // Then — one batch lookup per distinct id set, not one per row
+    verify(sourceRepository).findAllById(Set.of(10L));
+    verify(currencyRepository).findAllById(Set.of(20L));
   }
 
   @Test
@@ -745,6 +781,17 @@ class ListingServiceTest {
     listing.setStatus(ListingStatus.ACTIVE);
     listing.setDealType(DealType.SELL);
     listing.setSourceUrl("https://example.com/listing/" + id);
+    return listing;
+  }
+
+  private static Listing buildListingWithSourceAndCurrency(Long id, Long sourceId, Long currencyId) {
+    var listing = buildListing(id);
+    var source = new Source();
+    source.setId(sourceId);
+    var currency = new Currency();
+    currency.setId(currencyId);
+    listing.setSource(source);
+    listing.setCurrency(currency);
     return listing;
   }
 
