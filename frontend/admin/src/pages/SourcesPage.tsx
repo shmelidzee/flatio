@@ -58,18 +58,9 @@ function formatDuration(durationMs: number | undefined): string {
 }
 
 export function SourcesPage(): ReactElement {
-  const queryClient = useQueryClient();
   const [expandedSourceId, setExpandedSourceId] = useState<string | null>(null);
 
   const sourcesQuery = useQuery({ queryKey: SOURCES_QUERY_KEY, queryFn: fetchSources });
-
-  const updateMutation = useMutation({
-    mutationFn: ({ sourceId, patch }: { sourceId: string; patch: AdminSourceUpdate }) =>
-      updateSource(sourceId, patch),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: SOURCES_QUERY_KEY });
-    },
-  });
 
   function toggleExpanded(sourceId: string): void {
     setExpandedSourceId((current) => (current === sourceId ? null : sourceId));
@@ -109,11 +100,7 @@ export function SourcesPage(): ReactElement {
                   key={source.sourceId}
                   source={source}
                   expanded={expandedSourceId === source.sourceId}
-                  saving={updateMutation.isPending && updateMutation.variables?.sourceId === source.sourceId}
                   onToggleExpanded={() => toggleExpanded(source.sourceId ?? "")}
-                  onToggleEnabled={() =>
-                    updateMutation.mutate({ sourceId: source.sourceId ?? "", patch: { enabled: !source.enabled } })
-                  }
                 />
               ))}
             </tbody>
@@ -127,13 +114,25 @@ export function SourcesPage(): ReactElement {
 interface SourceRowProps {
   source: AdminSource;
   expanded: boolean;
-  saving: boolean;
   onToggleExpanded: () => void;
-  onToggleEnabled: () => void;
 }
 
-function SourceRow({ source, expanded, saving, onToggleExpanded, onToggleEnabled }: SourceRowProps): ReactElement {
+/**
+ * Each row owns its own {@code useMutation} instance rather than sharing one across the whole
+ * table (issue #391) — TanStack Query only tracks {@code isPending}/{@code variables} for the
+ * most recently invoked call of a given mutation, so a single shared mutation's "saving" state
+ * followed whichever row was toggled last, not the row a given button actually belongs to.
+ */
+function SourceRow({ source, expanded, onToggleExpanded }: SourceRowProps): ReactElement {
+  const queryClient = useQueryClient();
   const health = sourceHealth(source);
+
+  const updateMutation = useMutation({
+    mutationFn: (patch: AdminSourceUpdate) => updateSource(source.sourceId ?? "", patch),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: SOURCES_QUERY_KEY });
+    },
+  });
 
   return (
     <>
@@ -161,8 +160,8 @@ function SourceRow({ source, expanded, saving, onToggleExpanded, onToggleEnabled
             role="switch"
             aria-checked={source.enabled}
             aria-label={source.enabled ? "Отключить источник" : "Включить источник"}
-            disabled={saving}
-            onClick={onToggleEnabled}
+            disabled={updateMutation.isPending}
+            onClick={() => updateMutation.mutate({ enabled: !source.enabled })}
             className={`relative h-5 w-9 rounded-full transition-colors disabled:opacity-50 ${
               source.enabled ? "bg-accent" : "bg-surface-border"
             }`}

@@ -169,6 +169,31 @@ describe("SourcesPage", () => {
     expect(historyCell).toHaveAttribute("colspan", "7");
   });
 
+  it("should_keep_other_rows_enabled_when_one_row_toggle_is_pending", async () => {
+    // issue #391 — a mutation shared across the whole table disabled every row's switch while
+    // any single row's PATCH was in flight; each row must track its own pending state
+    const KUFAR_SOURCE = { ...ONLINER_SOURCE, sourceId: "kufar", displayName: "Kufar", url: "https://api.kufar.by" };
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse([ONLINER_SOURCE, KUFAR_SOURCE]));
+    let resolvePatch: (response: Response) => void = () => {};
+    vi.mocked(fetch).mockImplementationOnce(
+      () => new Promise<Response>((resolve) => { resolvePatch = resolve; }),
+    );
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Onliner")).toBeInTheDocument());
+
+    const switches = screen.getAllByRole("switch");
+    fireEvent.click(switches[0]);
+
+    await waitFor(() => expect(switches[0]).toBeDisabled());
+    expect(switches[1]).not.toBeDisabled();
+
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse([{ ...ONLINER_SOURCE, enabled: false }, KUFAR_SOURCE]));
+    resolvePatch(jsonResponse({ ...ONLINER_SOURCE, enabled: false }));
+
+    await waitFor(() => expect(switches[0]).not.toBeDisabled());
+  });
+
   it("should_expand_sync_run_history_when_row_activated_with_enter_key", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse([ONLINER_SOURCE]));
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ content: [], totalPages: 0 }));
