@@ -8,8 +8,14 @@ import { QueryErrorMessage } from "../components/common/QueryErrorMessage";
 
 const SOURCES_QUERY_KEY = ["admin", "sources"];
 
-/** A source counts as stale once this many sync intervals have passed without a successful sync. */
-const STALE_INTERVAL_FACTOR = 2;
+// Per-source syncIntervalMinutes was removed from the API (issue #387) — it was stored and
+// editable but no scheduler ever read it, since every connector's actual sync cadence comes from
+// static flatio.sync.<source>.{delta,full}.cron properties, not this per-source DB value.
+// Health is therefore judged against a single fixed threshold for all sources, matching the
+// ~1-day margin ListingIngestionServiceImpl already uses for missed-full-sync deactivation
+// (flatio.sync.inactive-threshold) — a source with no successful sync in over a day is stale
+// regardless of its category's configured cadence (issue #390).
+const STALE_THRESHOLD_HOURS = 24;
 
 type Health = "healthy" | "stale" | "never";
 
@@ -17,9 +23,8 @@ function sourceHealth(source: AdminSource): Health {
   if (!source.lastSyncAt) {
     return "never";
   }
-  const elapsedMinutes = (Date.now() - new Date(source.lastSyncAt).getTime()) / 60_000;
-  const interval = source.syncIntervalMinutes ?? 0;
-  return interval > 0 && elapsedMinutes > interval * STALE_INTERVAL_FACTOR ? "stale" : "healthy";
+  const elapsedHours = (Date.now() - new Date(source.lastSyncAt).getTime()) / 3_600_000;
+  return elapsedHours > STALE_THRESHOLD_HOURS ? "stale" : "healthy";
 }
 
 const HEALTH_LABEL: Record<Health, string> = {

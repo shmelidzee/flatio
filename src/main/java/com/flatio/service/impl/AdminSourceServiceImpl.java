@@ -50,12 +50,9 @@ public class AdminSourceServiceImpl implements AdminSourceService {
     if (request.enabled() != null) {
       source.setActive(request.enabled());
     }
-    if (request.syncIntervalMinutes() != null) {
-      source.setSyncIntervalMinutes(request.syncIntervalMinutes());
-    }
     sourceRepository.save(source);
-    log.info("Admin action: action=updateSource, sourceId={}, enabled={}, syncIntervalMinutes={}, adminId={}",
-        sourceId, source.isActive(), source.getSyncIntervalMinutes(), adminId);
+    log.info("Admin action: action=updateSource, sourceId={}, enabled={}, adminId={}",
+        sourceId, source.isActive(), adminId);
     adminAuditLogService.record("updateSource", AdminAuditObjectType.SOURCE, sourceId, adminId);
 
     return adminSourceMapper.toResponse(

@@ -294,7 +294,6 @@ class KufarSyncExecutorIsolationTest {
     source.setName("Kufar Apartment Rent");
     source.setUrl("https://www.kufar.by");
     source.setActive(true);
-    source.setSyncIntervalMinutes(15);
     source.setCountry(new Country());
     return source;
   }
