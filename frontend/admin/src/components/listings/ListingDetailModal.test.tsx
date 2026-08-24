@@ -34,6 +34,7 @@ const DETAIL = {
   status: "ACTIVE",
   hasDuplicates: false,
   priceHistory: [{ price: 75000, currency: "USD", recordedAt: "2026-01-15T11:00:00Z" }],
+  sourceUrl: "https://re.kufar.by/vi/minsk/snyat-kvartiru/123456",
 };
 
 describe("ListingDetailModal", () => {
@@ -95,6 +96,30 @@ describe("ListingDetailModal", () => {
       expect(patchCall).toBeDefined();
       expect(patchCall?.[1]?.body).toBe(JSON.stringify({ status: "INACTIVE" }));
     });
+  });
+
+  // -------------------------------------------------------------------------
+  // "open on source" link (issue #396)
+  // -------------------------------------------------------------------------
+
+  it("should_render_open_on_source_link_when_source_url_present", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse(DETAIL));
+
+    renderModal();
+
+    const link = await screen.findByRole("link", { name: "Открыть на источнике" });
+    expect(link).toHaveAttribute("href", DETAIL.sourceUrl);
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
+  it("should_not_render_open_on_source_link_when_source_url_absent", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ ...DETAIL, sourceUrl: undefined }));
+
+    renderModal();
+
+    await waitFor(() => expect(screen.getByText(DETAIL.title)).toBeInTheDocument());
+    expect(screen.queryByRole("link", { name: "Открыть на источнике" })).not.toBeInTheDocument();
   });
 
   // -------------------------------------------------------------------------
