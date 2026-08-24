@@ -146,6 +146,22 @@ class ListingControllerTest {
     assertThat(order.getDirection()).isEqualTo(Sort.Direction.DESC);
   }
 
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_clamp_page_size_when_requested_size_exceeds_max() throws Exception {
+    // Given — spring.data.web.pageable.max-page-size is 100 (issue #386)
+    var pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+    Page<ListingSummaryResponse> emptyPage = Page.empty();
+    when(listingService.search(any(), pageableCaptor.capture())).thenReturn(emptyPage);
+
+    // When — request far exceeds the configured max
+    mockMvc.perform(get("/api/v1/listings").param("size", "2000"))
+        .andExpect(status().isOk());
+
+    // Then — Spring Data clamps to the configured max, not the requested 2000
+    assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(100);
+  }
+
   // -------------------------------------------------------------------------
   // GET /api/v1/listings/{id}
   // -------------------------------------------------------------------------

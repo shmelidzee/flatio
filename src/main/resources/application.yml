@@ -19,6 +19,13 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+  data:
+    web:
+      pageable:
+        # Caps ?size= on every paginated endpoint. Without this, Spring Data's implicit default
+        # (2000) is ~100x the @PageableDefault(size = 20) documented in controllers, letting any
+        # authenticated caller force a large DISTINCT JOIN FETCH page in one request (issue #386).
+        max-page-size: ${FLATIO_PAGEABLE_MAX_SIZE:100}
   lifecycle:
     timeout-per-shutdown-phase: 30s
 
