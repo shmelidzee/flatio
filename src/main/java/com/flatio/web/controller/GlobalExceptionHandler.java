@@ -17,6 +17,7 @@ import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.BindException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -125,6 +126,19 @@ public class GlobalExceptionHandler {
     String message = String.format("Invalid value '%s' for parameter '%s'", ex.getValue(), ex.getName());
     log.warn("Type mismatch on {}: {}", request.getRequestURI(), message);
     return buildError(HttpStatus.BAD_REQUEST, message, request.getRequestURI(), List.of());
+  }
+
+  @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+  @ResponseStatus(HttpStatus.METHOD_NOT_ALLOWED)
+  public ErrorResponse handleMethodNotSupported(
+      HttpRequestMethodNotSupportedException ex, HttpServletRequest request
+  ) {
+    // Without this handler, a path registered under a different HTTP method (issue #361 — the
+    // Telegram webhook is mapped at a path derived from configuration and can collide with an
+    // unrelated route) fell through to handleUnexpected below and returned a misleading 500
+    // instead of the 405 this actually is.
+    log.warn("Method not allowed on {}: {}", request.getRequestURI(), ex.getMessage());
+    return buildError(HttpStatus.METHOD_NOT_ALLOWED, ex.getMessage(), request.getRequestURI(), List.of());
   }
 
   @ExceptionHandler(Exception.class)
