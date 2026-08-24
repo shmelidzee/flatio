@@ -26,6 +26,9 @@ import org.springframework.stereotype.Component;
  * (env: {@code FLATIO_GEOCODING_CRON}); default is every 30 minutes.
  * Batch size is configurable via {@code flatio.geocoding.batch-size}
  * (env: {@code FLATIO_GEOCODING_BATCH_SIZE}); default is 50.
+ * A listing whose {@code geocodingFailedAttempts} reaches {@code flatio.geocoding.max-attempts}
+ * (env: {@code FLATIO_GEOCODING_MAX_ATTEMPTS}; default 5) is excluded from future batches —
+ * otherwise persistently bad coordinates would keep occupying batch slots forever (issue #380).
  */
 @Component
 @Slf4j
@@ -38,6 +41,9 @@ public class GeocodingJob {
   @Value("${flatio.geocoding.batch-size:50}")
   private int batchSize;
 
+  @Value("${flatio.geocoding.max-attempts:5}")
+  private int maxAttempts;
+
   /**
    * Selects a batch of listings without a city name and resolves each one via Nominatim.
    *
@@ -49,7 +55,7 @@ public class GeocodingJob {
   public void runGeocoding() {
     log.info("Geocoding job started: batchSize={}", batchSize);
     try {
-      List<Listing> batch = listingRepository.findNeedingGeocoding(PageRequest.of(0, batchSize));
+      List<Listing> batch = listingRepository.findNeedingGeocoding(maxAttempts, PageRequest.of(0, batchSize));
       if (batch.isEmpty()) {
         log.debug("Geocoding job: no listings need geocoding");
         return;
@@ -76,7 +82,9 @@ public class GeocodingJob {
    *
    * <p>A transient failure for one listing (rate limiter timeout, network error) must not abort
    * geocoding for the remaining listings in the batch — mirrors the per-item isolation every
-   * source connector already applies (issue #372).
+   * source connector already applies (issue #372). Every failed attempt — Nominatim returning
+   * no result or an error — increments {@code geocodingFailedAttempts} so a listing with
+   * persistently bad coordinates eventually drops out of {@link #runGeocoding}'s batch (#380).
    *
    * @param listing the listing to geocode, never null
    * @return true if the city was resolved and persisted, false otherwise
@@ -85,6 +93,7 @@ public class GeocodingJob {
     try {
       Optional<String> city = nominatimClient.reverseGeocode(listing.getLatitude(), listing.getLongitude());
       if (city.isEmpty()) {
+        registerFailedAttempt(listing);
         return false;
       }
       listing.setCity(city.get());
@@ -93,7 +102,13 @@ public class GeocodingJob {
     } catch (Exception e) {
       log.warn("Skipping geocoding for listing due to error: listingId={}, error={}",
           listing.getId(), e.getMessage());
+      registerFailedAttempt(listing);
       return false;
     }
+  }
+
+  private void registerFailedAttempt(Listing listing) {
+    listing.setGeocodingFailedAttempts(listing.getGeocodingFailedAttempts() + 1);
+    listingRepository.save(listing);
   }
 }

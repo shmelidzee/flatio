@@ -141,6 +141,9 @@ public class Listing {
   @Column(name = "missed_syncs_count", nullable = false)
   private int missedSyncsCount;
 
+  @Column(name = "geocoding_failed_attempts", nullable = false)
+  private int geocodingFailedAttempts;
+
   @Column(name = "published_at")
   private Instant publishedAt;
 
