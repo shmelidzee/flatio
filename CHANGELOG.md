@@ -8,6 +8,76 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Fixed
+- **PR #405 — Аудит admin-фронтенда: race condition в toggle-кнопках, allowlist фото объявлений (issues #391–#394)**
+  - **#391** — `SourcesPage`/`UsersPage` использовали один `useMutation` на всю таблицу; TanStack
+    Query отслеживает `isPending`/`variables` только для последнего вызванного `mutate()`, поэтому
+    переключение одной строки, пока PATCH другой строки ещё не завершился, снимало `disabled` с
+    кнопки первой строки раньше времени. Мутация перенесена внутрь `SourceRow`/`UserRow` — каждая
+    строка независима. Регрессионный тест держит первый PATCH в pending через управляемый
+    `Promise` и проверяет, что вторая строка остаётся заблокированной только своим состоянием
+  - **#392** — `DashboardPage` определял недоступность ещё не задеплоенных эндпоинтов через
+    `error.message.includes("404")`; заменено на типизированную проверку
+    `error instanceof ApiError && error.status === 404`
+  - **#393** — только `updateUser` показывал `ErrorResponse.message` от бэкенда, остальные мутации
+    (`updateSource`, `updateListingStatus`, `unlinkDuplicateGroup`) — общий `HTTP {status}`.
+    Резолвер вынесен в `api/apiError.ts#resolveErrorMessage` и применён единообразно
+  - **#394** — `photoUrl` объявления (данные из внешнего скрапинга) рендерился в `<img src>` без
+    проверки — вредоносное объявление могло указать tracking-pixel URL или тяжёлый `data:` URI.
+    Добавлен `lib/isAllowedImageUrl.ts`, зеркалирующий бэкендовый allowlist `ImageUrlValidator`
+    (issue #364): только `https://` и хосты `onliner.by`/`kufar.by`/`realt.by` (включая
+    поддомены)
+  - **#361** (bug-репорт «GET /admin → 500 на dev-окружении Railway») в этот PR не входит —
+    код на `develop` уже корректен (см. `AdminSpaWebConfigTest`, фикс #349), проблема на стороне
+    деплоя Railway вне зоны code-фиксов; остаётся открытым, зона ответственности `devops-engineer`
+- **PR #404 — Аудит: неиспользуемое поле источника, экранирование LIKE, дефолтный пароль БД (issues #387–#390)**
+  - **#387** — `Source.syncIntervalMinutes` не читался ни одним планировщиком (реальный cadence
+    задаётся статическими cron-свойствами `flatio.sync.<source>.*.cron`); убран из DTO/entity,
+    колонка удалена миграцией `V55`
+  - **#390** — `SourcesPage.sourceHealth()` зависел от того же поля (`interval > 0 && ...` всегда
+    было `false`, источник всегда показывал «Здоров»); заменено на фиксированный порог 24 часа
+    без успешного синка
+  - **#388** — `%`/`_` не экранировались в LIKE-паттернах поиска по городу/keyword; добавлен
+    `LikePatternUtils`. Для Criteria API потребовался явный 3-аргументный `cb.like(expr, pattern,
+    escapeChar)` — Hibernate 6 иначе рендерит `ESCAPE ''`, отключая экранирование целиком
+    (подтверждено интеграционным тестом на реальном Postgres)
+  - **#389** — `DB_FLATIO_PASSWORD` больше не имеет дефолта `flatio_local` в `application.yml`;
+    `docs/local-setup.md`/`README.md` обновлены
+- **PR #403 — Аудит web/telegram-слоя: unbounded state, ложные ERROR-логи, лимит page size (issues #381–#386)**
+  - **#381** — составной индекс `(source_id, status, missed_syncs_count)` (миграция `V54`) для
+    `deactivateByMissedSyncsThreshold`
+  - **#382** — `SearchFilterWizard.states`/`SearchResultSender.sessions` заменены на Caffeine
+    `Cache` (`expireAfterWrite`/`expireAfterAccess` 30 мин, `maximumSize` 10 000) — не были
+    ограничены по размеру, неограниченный рост in-memory state. Caffeine не был транзитивной
+    зависимостью проекта (`spring-boot-starter-cache` не подключён) — добавлена явно
+  - **#383** — `FlatioBot`/`SearchResultSender` различают Telegram HTTP 403 («bot was blocked by
+    the user») от реальных сбоев: `DEBUG`-лог вместо `ERROR`/`WARN`, без повторных попыток отправки
+  - **#384** — `.parseMode("HTML")` добавлен во все сборщики сообщений `FilterCallbackHandler`,
+    использующие `escapeHtml()` — иначе экранированная разметка отображалась как текст
+  - **#385** — `@Size(max = 255)` на `name` в `CreateSubscriptionRequest`/`UpdateSubscriptionRequest`
+  - **#386** — `spring.data.web.pageable.max-page-size: 100` — REST `Pageable` больше не принимает
+    произвольно большой `size`
+- **PR #402 — Аудит интеграционного/service-слоя: изоляция circuit breaker, гонки регистрации, N+1 (issues #373–#380)**
+  - **#373** — circuit breaker для каждой категории realt.by-коннекторов разведён по отдельным
+    инстансам Resilience4j (`connector-realt-apartment-rent`, `-room-rent`, `-house-rent`,
+    `-apartment-sale`, `-room-sale`, `-house-sale`) — сбои в одной категории (например, Realt
+    меняет разметку страницы комнат) больше не открывают breaker для здоровых категорий,
+    делящих тот же origin-сервер. RateLimiter остаётся общим на группу (rent/sale) — это про
+    вежливость к одному и тому же серверу, а не про изоляцию ошибок
+  - **#374** — `TelegramWebhookConfig.flatioWebhookBot()` падает при старте, если
+    `TELEGRAM_WEBHOOK_SECRET_TOKEN` не задан вне профиля `local`
+  - **#375**, **#376** — `UserServiceImpl.findOrCreate`/`UserSavedSearchServiceImpl.save`
+    обрабатывают конкурентную гонку регистрации/сохранения через retry-after-conflict (тот же
+    паттерн self-injected AOP-прокси, что уже применён в `ListingIngestionServiceImpl`)
+  - **#377** — устранён N+1 в `ListingServiceImpl.searchWithFts`: distinct `source`/`currency`
+    батчево догружаются по id перед маппингом (native-запрос не может использовать `JOIN FETCH`)
+  - **#378** — null-guard на `raw.price()` в `ListingIngestionServiceImpl.isPriceChanged` (NPE,
+    если источник перестал присылать цену)
+  - **#379** — `DataIntegrityViolationException` в `ingestBatch` ретраится только при нарушении
+    именно `uq_listing_external_source` (проверка по `ConstraintViolationException.getConstraintName()`
+    по цепочке cause)
+  - **#380** — `findNeedingGeocoding` получил `ORDER BY l.id` и порог `geocodingFailedAttempts`
+    (новая колонка, миграция `V53`); `GeocodingJob` инкрементирует счётчик при каждой неудачной
+    попытке
 - **PR #398 — Аудит гонок и изоляции ошибок: оптимистичная блокировка, SSRF-редирект, ложная деактивация, race conditions (issues #364–#372)**
   - **#364** — URL фото объявлений проверяются по allowlist источников (`onliner.by`, `kufar.by`,
     `realt.by`) перед скачиванием — `ImageUrlValidator`, применён и на этапе коннекторов, и
