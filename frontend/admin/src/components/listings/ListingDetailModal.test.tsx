@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ListingDetailModal } from "./ListingDetailModal";
 
-function renderModal(onClose = vi.fn()) {
+function renderModal(onClose = vi.fn(), photoUrl: string | null | undefined = "https://cdn.onliner.by/photo.jpg") {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -11,7 +11,7 @@ function renderModal(onClose = vi.fn()) {
     onClose,
     ...render(
       <QueryClientProvider client={queryClient}>
-        <ListingDetailModal listingId={42} photoUrl="https://cdn.example/photo.jpg" onClose={onClose} />
+        <ListingDetailModal listingId={42} photoUrl={photoUrl} onClose={onClose} />
       </QueryClientProvider>,
     ),
   };
@@ -95,6 +95,48 @@ describe("ListingDetailModal", () => {
       expect(patchCall).toBeDefined();
       expect(patchCall?.[1]?.body).toBe(JSON.stringify({ status: "INACTIVE" }));
     });
+  });
+
+  // -------------------------------------------------------------------------
+  // photoUrl allowlist (issue #394)
+  // -------------------------------------------------------------------------
+
+  it("should_render_image_when_photo_url_is_from_allowed_source_domain", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse(DETAIL));
+
+    renderModal(vi.fn(), "https://cdn.onliner.by/photo.jpg");
+
+    await waitFor(() => expect(screen.getByText(DETAIL.title)).toBeInTheDocument());
+    expect(screen.getByRole("img")).toHaveAttribute("src", "https://cdn.onliner.by/photo.jpg");
+  });
+
+  it("should_not_render_image_when_photo_url_is_from_disallowed_domain", async () => {
+    // A malicious/compromised listing could set photoUrl to an attacker-controlled host —
+    // rendering it would let it act as a tracking pixel or oversized data: URI (issue #394)
+    vi.mocked(fetch).mockResolvedValue(jsonResponse(DETAIL));
+
+    renderModal(vi.fn(), "https://evil.example/tracker.png");
+
+    await waitFor(() => expect(screen.getByText(DETAIL.title)).toBeInTheDocument());
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+  });
+
+  it("should_not_render_image_when_photo_url_is_data_uri", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse(DETAIL));
+
+    renderModal(vi.fn(), "data:image/png;base64,iVBORw0KGgo=");
+
+    await waitFor(() => expect(screen.getByText(DETAIL.title)).toBeInTheDocument());
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+  });
+
+  it("should_not_render_image_when_photo_url_is_null", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse(DETAIL));
+
+    renderModal(vi.fn(), null);
+
+    await waitFor(() => expect(screen.getByText(DETAIL.title)).toBeInTheDocument());
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
   });
 
   it("should_call_on_close_when_backdrop_clicked", async () => {

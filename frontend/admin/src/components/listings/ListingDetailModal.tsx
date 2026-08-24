@@ -5,6 +5,7 @@ import {
   unlinkDuplicateGroup,
   updateListingStatus,
 } from "../../api/adminListings";
+import { isAllowedImageUrl } from "../../lib/isAllowedImageUrl";
 
 const STATUS_LABEL: Record<string, string> = {
   ACTIVE: "Активно",
@@ -68,7 +69,7 @@ export function ListingDetailModal({ listingId, photoUrl, onClose }: ListingDeta
 
         {listing && (
           <div className="space-y-4">
-            {photoUrl && (
+            {isAllowedImageUrl(photoUrl) && (
               <img src={photoUrl} alt={listing.title ?? ""} className="w-full rounded-md object-cover" />
             )}
 
