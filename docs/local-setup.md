@@ -37,7 +37,13 @@ Set environment variables before running (or export them in your shell):
 ```bash
 export TELEGRAM_BOT_TOKEN=your_bot_token
 export TELEGRAM_BOT_USERNAME=your_bot_username
+export DB_FLATIO_PASSWORD=flatio_local
 ```
+
+`DB_FLATIO_PASSWORD` has no default (issue #389) — it must match `POSTGRES_PASSWORD` in
+`docker/docker-compose.yml` (`flatio_local` for the containerized local Postgres started in
+step 1). `DB_FLATIO_URL`/`DB_FLATIO_USER` still default to `jdbc:postgresql://localhost:5432/flatio`
+and `flatio`, matching that same compose file, so only the password needs to be set explicitly.
 
 ### 3. Run the application
 

@@ -20,9 +20,6 @@ public record AdminSourceResponse(
     @Schema(description = "Whether the source's schedulers are allowed to run", example = "true")
     boolean enabled,
 
-    @Schema(description = "Configured interval between scheduled syncs, in minutes", example = "60")
-    int syncIntervalMinutes,
-
     @Schema(description = "Finish time of the most recent successful sync, null if never synced",
         example = "2026-08-14T09:00:00Z")
     Instant lastSyncAt,

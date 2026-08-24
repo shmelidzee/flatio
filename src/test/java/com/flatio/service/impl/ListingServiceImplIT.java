@@ -23,6 +23,7 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -80,6 +81,7 @@ class ListingServiceImplIT {
     when(currencyRateService.getUsdToByn()).thenReturn(Optional.empty());
     listingService = new ListingServiceImpl(
         listingRepository, priceHistoryRepository, sourceRepository, currencyRepository, listingMapper, currencyRateService);
+    ReflectionTestUtils.setField(listingService, "ftsLanguage", "russian");
   }
 
   // -------------------------------------------------------------------------
@@ -215,5 +217,99 @@ class ListingServiceImplIT {
 
     // When / Then — real Hibernate criteria resolution must not fail on a non-existent "cityRef"
     assertThatNoException().isThrownBy(() -> listingService.search(criteria, PageRequest.of(0, 10)));
+  }
+
+  // -------------------------------------------------------------------------
+  // buildSearchSpec — LIKE special characters in city are escaped (#388)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_match_city_literally_when_it_contains_like_wildcard_characters() {
+    // Given — one listing whose city literally contains "_", one whose city would also match
+    // "d_town" only if the underscore were left as an unescaped LIKE wildcard
+    var source = sourceRepository.findByCode("ONLINER").orElseThrow();
+    var currency = currencyRepository.findByCode("BYN").orElseThrow();
+    var country = countryRepository.findByCode("BY").orElseThrow();
+
+    var literalMatch = new Listing();
+    literalMatch.setExternalId("ext-city-escape-388-1");
+    literalMatch.setSource(source);
+    literalMatch.setTitle("Listing in literal city");
+    literalMatch.setDealType(DealType.RENT);
+    literalMatch.setPrice(BigDecimal.valueOf(500));
+    literalMatch.setCurrency(currency);
+    literalMatch.setCountry(country);
+    literalMatch.setStatus(ListingStatus.ACTIVE);
+    literalMatch.setCity("d_town");
+    literalMatch.setSourceUrl("https://onliner.by/ext-city-escape-388-1");
+    listingRepository.saveAndFlush(literalMatch);
+
+    var wildcardDecoy = new Listing();
+    wildcardDecoy.setExternalId("ext-city-escape-388-2");
+    wildcardDecoy.setSource(source);
+    wildcardDecoy.setTitle("Listing in a city that only an unescaped _ wildcard would match");
+    wildcardDecoy.setDealType(DealType.RENT);
+    wildcardDecoy.setPrice(BigDecimal.valueOf(500));
+    wildcardDecoy.setCurrency(currency);
+    wildcardDecoy.setCountry(country);
+    wildcardDecoy.setStatus(ListingStatus.ACTIVE);
+    wildcardDecoy.setCity("dxtown");
+    wildcardDecoy.setSourceUrl("https://onliner.by/ext-city-escape-388-2");
+    listingRepository.saveAndFlush(wildcardDecoy);
+
+    var criteria = new ListingSearchCriteria(
+        null, null, null, "d_town", null, null, null, null, null, null, null
+    );
+
+    // When
+    var result = listingService.search(criteria, PageRequest.of(0, 10));
+
+    // Then — only the literal "d_town" match, "dxtown" is correctly excluded
+    assertThat(result.getTotalElements()).isEqualTo(1);
+  }
+
+  @Test
+  void should_match_city_literally_in_full_text_search_path_when_it_contains_like_wildcard_characters() {
+    // Given — same escaping requirement as buildSearchSpec, but through the native-SQL
+    // fullTextSearch query (searchWithFts), triggered here by a non-blank criteria.query()
+    var source = sourceRepository.findByCode("ONLINER").orElseThrow();
+    var currency = currencyRepository.findByCode("BYN").orElseThrow();
+    var country = countryRepository.findByCode("BY").orElseThrow();
+
+    var literalMatch = new Listing();
+    literalMatch.setExternalId("ext-city-escape-388-fts-1");
+    literalMatch.setSource(source);
+    literalMatch.setTitle("Квартира в тестовом районе");
+    literalMatch.setDealType(DealType.RENT);
+    literalMatch.setPrice(BigDecimal.valueOf(500));
+    literalMatch.setCurrency(currency);
+    literalMatch.setCountry(country);
+    literalMatch.setStatus(ListingStatus.ACTIVE);
+    literalMatch.setCity("d_town");
+    literalMatch.setSourceUrl("https://onliner.by/ext-city-escape-388-fts-1");
+    listingRepository.saveAndFlush(literalMatch);
+
+    var wildcardDecoy = new Listing();
+    wildcardDecoy.setExternalId("ext-city-escape-388-fts-2");
+    wildcardDecoy.setSource(source);
+    wildcardDecoy.setTitle("Квартира в тестовом районе");
+    wildcardDecoy.setDealType(DealType.RENT);
+    wildcardDecoy.setPrice(BigDecimal.valueOf(500));
+    wildcardDecoy.setCurrency(currency);
+    wildcardDecoy.setCountry(country);
+    wildcardDecoy.setStatus(ListingStatus.ACTIVE);
+    wildcardDecoy.setCity("dxtown");
+    wildcardDecoy.setSourceUrl("https://onliner.by/ext-city-escape-388-fts-2");
+    listingRepository.saveAndFlush(wildcardDecoy);
+
+    var criteria = new ListingSearchCriteria(
+        null, null, null, "d_town", null, null, null, null, null, "квартира", null
+    );
+
+    // When
+    var result = listingService.search(criteria, PageRequest.of(0, 10));
+
+    // Then — only the literal "d_town" match, "dxtown" is correctly excluded
+    assertThat(result.getTotalElements()).isEqualTo(1);
   }
 }

@@ -108,7 +108,7 @@ class AdminSourceControllerTest {
   @Test
   void should_return_200_when_source_updated() throws Exception {
     // Given
-    var request = new AdminSourceUpdateRequest(false, 90);
+    var request = new AdminSourceUpdateRequest(false);
     when(adminSourceService.update(eq("kufar"), any(), eq(1L))).thenReturn(buildSourceResponse("kufar"));
 
     // When / Then
@@ -123,7 +123,7 @@ class AdminSourceControllerTest {
   @Test
   void should_return_404_when_updating_unknown_source() throws Exception {
     // Given
-    var request = new AdminSourceUpdateRequest(false, null);
+    var request = new AdminSourceUpdateRequest(false);
     when(adminSourceService.update(eq("unknown"), any(), eq(1L)))
         .thenThrow(new SourceNotFoundException("unknown"));
 
@@ -133,19 +133,6 @@ class AdminSourceControllerTest {
             .contentType(MediaType.APPLICATION_JSON)
             .content(objectMapper.writeValueAsString(request)))
         .andExpect(status().isNotFound());
-  }
-
-  @Test
-  void should_return_400_when_sync_interval_is_not_positive() throws Exception {
-    // Given — 0 is not a positive interval
-    var request = new AdminSourceUpdateRequest(true, 0);
-
-    // When / Then
-    mockMvc.perform(patch("/api/v1/admin/sources/kufar")
-            .with(csrf())
-            .contentType(MediaType.APPLICATION_JSON)
-            .content(objectMapper.writeValueAsString(request)))
-        .andExpect(status().isBadRequest());
   }
 
   // -------------------------------------------------------------------------
@@ -187,7 +174,7 @@ class AdminSourceControllerTest {
 
   private static AdminSourceResponse buildSourceResponse(String sourceId) {
     return new AdminSourceResponse(
-        sourceId, sourceId, "https://" + sourceId + ".by", "BY", true, 60,
+        sourceId, sourceId, "https://" + sourceId + ".by", "BY", true,
         Instant.parse("2026-08-14T09:00:00Z"), Instant.parse("2026-01-10T12:00:00Z")
     );
   }

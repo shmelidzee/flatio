@@ -2,6 +2,7 @@ package com.flatio.service.impl;
 
 import com.flatio.common.exception.ListingConcurrentModificationException;
 import com.flatio.common.exception.ListingNotFoundException;
+import com.flatio.common.util.LikePatternUtils;
 import com.flatio.domain.audit.AdminAuditObjectType;
 import com.flatio.domain.listing.Listing;
 import com.flatio.domain.listing.ListingStatus;
@@ -127,7 +128,8 @@ public class AdminListingServiceImpl implements AdminListingService {
         predicates.add(buildKeywordPredicate(root, cb, criteria.query()));
       }
       if (criteria.city() != null && !criteria.city().isBlank()) {
-        predicates.add(cb.like(cb.lower(root.get("city")), "%" + criteria.city().toLowerCase() + "%"));
+        predicates.add(cb.like(cb.lower(root.get("city")),
+            LikePatternUtils.containsPattern(criteria.city().toLowerCase()), LikePatternUtils.ESCAPE_CHAR));
       }
       if (criteria.sourceId() != null) {
         predicates.add(cb.equal(root.get("source").get("code"), criteria.sourceId()));
@@ -156,11 +158,12 @@ public class AdminListingServiceImpl implements AdminListingService {
    * @return a predicate matching any of the three columns
    */
   private Predicate buildKeywordPredicate(Root<Listing> root, CriteriaBuilder cb, String query) {
-    String pattern = "%" + query.toLowerCase() + "%";
+    String pattern = LikePatternUtils.containsPattern(query.toLowerCase());
+    char escape = LikePatternUtils.ESCAPE_CHAR;
     return cb.or(
-        cb.like(cb.lower(root.get("title")), pattern),
-        cb.like(cb.lower(cb.coalesce(root.get("description"), "")), pattern),
-        cb.like(cb.lower(cb.coalesce(root.get("address"), "")), pattern)
+        cb.like(cb.lower(root.get("title")), pattern, escape),
+        cb.like(cb.lower(cb.coalesce(root.get("description"), "")), pattern, escape),
+        cb.like(cb.lower(cb.coalesce(root.get("address"), "")), pattern, escape)
     );
   }
 

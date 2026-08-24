@@ -1,6 +1,7 @@
 package com.flatio.service.impl;
 
 import com.flatio.common.exception.ListingNotFoundException;
+import com.flatio.common.util.LikePatternUtils;
 import com.flatio.domain.currency.Currency;
 import com.flatio.domain.listing.Listing;
 import com.flatio.domain.listing.ListingStatus;
@@ -93,7 +94,7 @@ public class ListingServiceImpl implements ListingService {
     ListingStatus effectiveStatus = criteria.status() != null ? criteria.status() : ListingStatus.ACTIVE;
     String dealType = criteria.dealType() != null ? criteria.dealType().name() : null;
     String cityPattern = criteria.city() != null && !criteria.city().isBlank()
-        ? "%" + criteria.city().toLowerCase() + "%" : null;
+        ? LikePatternUtils.containsPattern(criteria.city().toLowerCase()) : null;
     Page<Listing> page = listingRepository.fullTextSearch(
         criteria.query(),
         ftsLanguage,
@@ -263,7 +264,8 @@ public class ListingServiceImpl implements ListingService {
       }
       predicates.addAll(buildPricePredicates(cb, root, criteria));
       if (criteria.city() != null && !criteria.city().isBlank()) {
-        predicates.add(cb.like(cb.lower(root.get("city")), "%" + criteria.city().toLowerCase() + "%"));
+        predicates.add(cb.like(cb.lower(root.get("city")),
+            LikePatternUtils.containsPattern(criteria.city().toLowerCase()), LikePatternUtils.ESCAPE_CHAR));
       }
       if (criteria.sourceId() != null) {
         predicates.add(cb.equal(root.get("source").get("code"), criteria.sourceId()));

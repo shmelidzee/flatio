@@ -6,7 +6,9 @@ spring:
   datasource:
     url: ${DB_FLATIO_URL:jdbc:postgresql://localhost:5432/flatio}
     username: ${DB_FLATIO_USER:flatio}
-    password: ${DB_FLATIO_PASSWORD:flatio_local}
+    # No fallback (issue #389): a misconfigured environment must fail to start rather than
+    # silently connect with a password published in this repository.
+    password: ${DB_FLATIO_PASSWORD}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:

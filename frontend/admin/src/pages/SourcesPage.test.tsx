@@ -24,8 +24,7 @@ const ONLINER_SOURCE = {
   url: "https://r.onliner.by",
   countryCode: "BY",
   enabled: true,
-  syncIntervalMinutes: 60,
-  lastSyncAt: "2026-08-17T11:48:00.000Z",
+  lastSyncAt: new Date().toISOString(),
   createdAt: "2026-01-10T12:00:00.000Z",
 };
 
@@ -74,13 +73,34 @@ describe("SourcesPage", () => {
   });
 
   it("should_render_health_badge_when_source_has_never_synced", async () => {
-    // issue #354 — sourceHealth() still uses syncIntervalMinutes internally, only the editable
-    // column was removed; a source with no lastSyncAt must still show "Нет данных"
     vi.mocked(fetch).mockResolvedValue(jsonResponse([{ ...ONLINER_SOURCE, lastSyncAt: undefined }]));
 
     renderPage();
 
     await waitFor(() => expect(screen.getByText("Нет данных")).toBeInTheDocument());
+  });
+
+  it("should_render_healthy_badge_when_source_synced_recently", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse([ONLINER_SOURCE]));
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText("Здоров")).toBeInTheDocument());
+  });
+
+  it("should_render_stale_badge_when_last_sync_is_older_than_threshold_and_interval_is_absent", async () => {
+    // issue #390 — syncIntervalMinutes no longer exists on the API response at all (removed in
+    // #387); a source that hasn't synced in days must not default to "Здоров" just because there
+    // is no configured interval to compare against
+    const staleSource = {
+      ...ONLINER_SOURCE,
+      lastSyncAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+    };
+    vi.mocked(fetch).mockResolvedValue(jsonResponse([staleSource]));
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText("Задержка")).toBeInTheDocument());
   });
 
   it("should_not_render_interval_column_when_sources_loaded", async () => {

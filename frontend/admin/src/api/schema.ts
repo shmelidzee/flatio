@@ -550,19 +550,13 @@ export interface components {
              */
             expiresIn?: number;
         };
-        /** @description Partial update for a source's enabled state and/or sync interval; omitted fields are left unchanged */
+        /** @description Partial update for a source's enabled state; omitted fields are left unchanged */
         AdminSourceUpdateRequest: {
             /**
              * @description When false, schedulers skip this source
              * @example false
              */
             enabled?: boolean;
-            /**
-             * Format: int32
-             * @description New interval between scheduled syncs, in minutes
-             * @example 90
-             */
-            syncIntervalMinutes?: number;
         };
         /** @description Data source status and configuration for the admin sources list */
         AdminSourceResponse: {
@@ -591,12 +585,6 @@ export interface components {
              * @example true
              */
             enabled?: boolean;
-            /**
-             * Format: int32
-             * @description Configured interval between scheduled syncs, in minutes
-             * @example 60
-             */
-            syncIntervalMinutes?: number;
             /**
              * Format: date-time
              * @description Finish time of the most recent successful sync, null if never synced
