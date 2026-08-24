@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import javax.imageio.ImageIO;
@@ -34,11 +35,13 @@ import org.telegram.telegrambots.meta.api.methods.send.SendDocument;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
+import org.telegram.telegrambots.meta.api.objects.ApiResponse;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.User;
 import org.telegram.telegrambots.meta.api.objects.message.Message;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
+import org.telegram.telegrambots.meta.exceptions.TelegramApiRequestException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -123,6 +126,63 @@ class SearchResultSenderTest {
     assertThat(photoCaptor.getValue().getPhoto().getAttachName()).isEqualTo(TEST_NO_PHOTO_URL);
     verify(photoProxyClient, never()).download(anyString(), eq(1L));
     verify(telegramClient).execute(any(SendMessage.class));
+  }
+
+  // -------------------------------------------------------------------------
+  // Blocked-by-user handling (issue #383)
+  // -------------------------------------------------------------------------
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_clear_wizard_and_session_when_user_blocked_bot() throws TelegramApiException {
+    // Given — real private chat: chatId equals the Telegram user ID
+    var listing = buildListing(1L, null, "https://realt.by/1");
+    when(wizard.getState(100L)).thenReturn(Optional.of(defaultState));
+    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingFormatter.buildCaption(listing)).thenReturn("caption");
+    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    lenient().when(telegramClient.execute(any(EditMessageText.class))).thenReturn(mock());
+    when(telegramClient.execute(any(SendPhoto.class))).thenThrow(buildBlockedException());
+
+    // When
+    searchResultSender.handle(buildCallback(100L, 100L, 10));
+
+    // Then — wizard state and the session just stored before the send are both cleared
+    verify(wizard).reset(100L);
+    var sessions = (Map<Long, SearchSession>) ReflectionTestUtils.getField(searchResultSender, "sessions");
+    assertThat(sessions).doesNotContainKey(100L);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_not_clear_state_when_send_fails_for_reason_other_than_blocked() throws TelegramApiException {
+    // Given — a non-403 failure (e.g. PHOTO_INVALID_DIMENSIONS or network error) must not be
+    // treated as a block
+    var listing = buildListing(1L, null, "https://realt.by/1");
+    when(wizard.getState(101L)).thenReturn(Optional.of(defaultState));
+    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingFormatter.buildCaption(listing)).thenReturn("caption");
+    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    lenient().when(telegramClient.execute(any(EditMessageText.class))).thenReturn(mock());
+    when(telegramClient.execute(any(SendPhoto.class)))
+        .thenThrow(new TelegramApiException("network error"));
+
+    // When
+    searchResultSender.handle(buildCallback(101L, 101L, 10));
+
+    // Then — not classified as a block, so wizard/session state is left untouched
+    verify(wizard, never()).reset(any());
+    var sessions = (Map<Long, SearchSession>) ReflectionTestUtils.getField(searchResultSender, "sessions");
+    assertThat(sessions).containsKey(101L);
+  }
+
+  private static TelegramApiRequestException buildBlockedException() {
+    var response = ApiResponse.builder()
+        .ok(false)
+        .errorCode(403)
+        .errorDescription("Forbidden: bot was blocked by the user")
+        .build();
+    return new TelegramApiRequestException("Error", response);
   }
 
   @Test

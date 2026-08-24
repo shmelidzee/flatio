@@ -4,21 +4,26 @@ import com.flatio.telegram.callback.FilterCallbackHandler;
 import com.flatio.telegram.command.HelpCommandHandler;
 import com.flatio.telegram.command.SearchCommandHandler;
 import com.flatio.telegram.command.StartCommandHandler;
+import com.flatio.telegram.state.SearchFilterWizard;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.objects.ApiResponse;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Update;
+import org.telegram.telegrambots.meta.api.objects.User;
 import org.telegram.telegrambots.meta.api.objects.message.Message;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
+import org.telegram.telegrambots.meta.exceptions.TelegramApiRequestException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 
 import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -129,6 +134,84 @@ class FlatioBotTest {
     verify(telegramClient).execute(menuMessage);
   }
 
+  // -------------------------------------------------------------------------
+  // Blocked-by-user handling (issue #383)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_clear_wizard_and_session_when_user_blocked_bot_during_start() throws TelegramApiException {
+    // Given
+    var telegramClient = mock(TelegramClient.class);
+    var startCommandHandler = mock(StartCommandHandler.class);
+    var searchResultSender = mock(SearchResultSender.class);
+    var wizard = mock(SearchFilterWizard.class);
+    when(startCommandHandler.handle(any())).thenReturn(mock(SendMessage.class));
+    doThrow(buildBlockedException()).when(telegramClient).execute(any(SendMessage.class));
+    var bot = new FlatioBot(
+        telegramClient, startCommandHandler, mock(HelpCommandHandler.class),
+        mock(SearchCommandHandler.class), mock(FilterCallbackHandler.class),
+        searchResultSender, wizard, executor
+    );
+    var update = buildTextUpdate(1, 777L, "/start");
+
+    // When
+    bot.handleUpdate(update);
+
+    // Then — state cleared for the blocked user instead of an error notification attempt
+    verify(wizard).reset(777L);
+    verify(searchResultSender).clearSession(777L);
+  }
+
+  @Test
+  void should_send_error_notification_when_send_fails_for_reason_other_than_blocked() throws TelegramApiException {
+    // Given — a non-403 failure (e.g. network error) must not be treated as a block
+    var telegramClient = mock(TelegramClient.class);
+    var startCommandHandler = mock(StartCommandHandler.class);
+    var searchResultSender = mock(SearchResultSender.class);
+    var wizard = mock(SearchFilterWizard.class);
+    when(startCommandHandler.handle(any())).thenReturn(mock(SendMessage.class));
+    doThrow(new TelegramApiException("network error")).when(telegramClient).execute(any(SendMessage.class));
+    var bot = new FlatioBot(
+        telegramClient, startCommandHandler, mock(HelpCommandHandler.class),
+        mock(SearchCommandHandler.class), mock(FilterCallbackHandler.class),
+        searchResultSender, wizard, executor
+    );
+    var update = buildTextUpdate(1, 778L, "/start");
+
+    // When
+    bot.handleUpdate(update);
+
+    // Then — not classified as a block, so wizard/session state is left untouched
+    verify(wizard, never()).reset(any());
+    verify(searchResultSender, never()).clearSession(any());
+  }
+
+  private static TelegramApiRequestException buildBlockedException() {
+    var response = ApiResponse.builder()
+        .ok(false)
+        .errorCode(403)
+        .errorDescription("Forbidden: bot was blocked by the user")
+        .build();
+    return new TelegramApiRequestException("Error", response);
+  }
+
+  private static Update buildTextUpdate(int updateId, long userId, String text) {
+    var user = mock(User.class);
+    when(user.getId()).thenReturn(userId);
+
+    var message = mock(Message.class);
+    when(message.hasText()).thenReturn(true);
+    when(message.getText()).thenReturn(text);
+    when(message.getFrom()).thenReturn(user);
+    when(message.getChatId()).thenReturn(userId);
+
+    var update = mock(Update.class);
+    when(update.getUpdateId()).thenReturn(updateId);
+    when(update.hasMessage()).thenReturn(true);
+    when(update.getMessage()).thenReturn(message);
+    return update;
+  }
+
   private static FlatioBot buildBot(
       TelegramClient telegramClient, SearchResultSender searchResultSender, ThreadPoolTaskExecutor executor) {
     return new FlatioBot(
@@ -138,6 +221,7 @@ class FlatioBotTest {
         mock(SearchCommandHandler.class),
         mock(FilterCallbackHandler.class),
         searchResultSender,
+        mock(SearchFilterWizard.class),
         executor
     );
   }
@@ -152,6 +236,7 @@ class FlatioBotTest {
         mock(SearchCommandHandler.class),
         mock(FilterCallbackHandler.class),
         searchResultSender,
+        mock(SearchFilterWizard.class),
         executor
     );
   }
