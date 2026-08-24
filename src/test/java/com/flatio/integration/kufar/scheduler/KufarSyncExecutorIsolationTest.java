@@ -13,6 +13,7 @@ import com.flatio.integration.realt.scheduler.RealtRoomSaleFullSyncJob;
 import com.flatio.integration.realt.scheduler.RealtSaleFullSyncJob;
 import com.flatio.repository.AdminAuditLogRepository;
 import com.flatio.repository.CityRepository;
+import com.flatio.repository.CurrencyRepository;
 import com.flatio.repository.ListingRepository;
 import com.flatio.repository.PriceHistoryRepository;
 import com.flatio.repository.SourceRepository;
@@ -70,6 +71,7 @@ import static org.mockito.Mockito.when;
         "telegram.bot.token=test_token:123",
         "telegram.bot.username=dummy_test_bot",
         "telegram.bot.webhook-url=https://test.example.com",
+        "telegram.bot.webhook-secret-token=test-secret",
         "JWT_SECRET_KEY=test-secret-key-for-kufar-executor-isolation-test-min-256-bits-long",
         // The real ScheduledAnnotationBeanPostProcessor registers KufarApartmentRentDeltaSyncJob
         // / FullSyncJob's actual @Scheduled cron triggers in this full context. Left at their
@@ -106,6 +108,9 @@ class KufarSyncExecutorIsolationTest {
 
   @MockBean
   private PriceHistoryRepository priceHistoryRepository;
+
+  @MockBean
+  private CurrencyRepository currencyRepository;
 
   @MockBean
   private UserSavedSearchRepository userSavedSearchRepository;

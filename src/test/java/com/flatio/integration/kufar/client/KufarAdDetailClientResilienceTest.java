@@ -2,6 +2,7 @@ package com.flatio.integration.kufar.client;
 
 import com.flatio.repository.AdminAuditLogRepository;
 import com.flatio.repository.CityRepository;
+import com.flatio.repository.CurrencyRepository;
 import com.flatio.repository.ListingRepository;
 import com.flatio.repository.PriceHistoryRepository;
 import com.flatio.repository.SourceRepository;
@@ -63,6 +64,7 @@ import static org.mockito.Mockito.when;
         "telegram.bot.token=test_token:123",
         "telegram.bot.username=dummy_test_bot",
         "telegram.bot.webhook-url=https://test.example.com",
+        "telegram.bot.webhook-secret-token=test-secret",
         "JWT_SECRET_KEY=test-secret-key-for-kufar-resilience-test-minimum-256-bits-long",
         // Issue #328: connector-kufar-detail is one RateLimiter instance shared by up to 6
         // concurrent Kufar sync jobs (limit-for-period=1). The production config
@@ -100,6 +102,9 @@ class KufarAdDetailClientResilienceTest {
 
   @MockBean
   private PriceHistoryRepository priceHistoryRepository;
+
+  @MockBean
+  private CurrencyRepository currencyRepository;
 
   @MockBean
   private UserSavedSearchRepository userSavedSearchRepository;
