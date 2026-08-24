@@ -10,6 +10,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalTime;
 import java.util.Set;
@@ -20,7 +21,7 @@ import java.util.Set;
 @Schema(description = "Create a subscription request")
 public record CreateSubscriptionRequest(
     @Schema(description = "Subscription display name", example = "2-комнатные в центре", requiredMode = REQUIRED)
-    @NotBlank String name,
+    @NotBlank @Size(max = 255) String name,
 
     @Schema(description = "Search filter to match listings against", requiredMode = REQUIRED)
     @NotNull @Valid SubscriptionSearchCriteria searchCriteria,

@@ -2,11 +2,12 @@ package com.flatio.telegram.state;
 
 import com.flatio.domain.listing.DealType;
 import com.flatio.config.SellPriceFilterProperties;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -14,12 +15,13 @@ import org.springframework.stereotype.Component;
 /**
  * In-memory wizard that guides users through search filter selection.
  *
- * <p>State is stored in a {@link ConcurrentHashMap} keyed by Telegram user ID.
- * MVP — survives within a single JVM instance only (no Redis/DB persistence).
+ * <p>State is stored in a Caffeine cache keyed by Telegram user ID, exposed as a {@link Map}
+ * view so the existing atomic {@code compute}-based read-modify-write calls below keep working
+ * unchanged. Entries expire {@value #STATE_TTL_MINUTES} minutes after last write and are bounded
+ * by {@link #MAX_STATES}, so an abandoned wizard no longer occupies memory for the lifetime of
+ * the JVM (issue #382).
  *
- * <p><b>MVP limitation:</b> state is never evicted automatically. Each active user
- * occupies a small entry for the lifetime of the JVM. Replace with Caffeine Cache
- * ({@code expireAfterWrite(30m)}) before production-scale deployment.
+ * <p>Survives within a single JVM instance only — no Redis/DB persistence.
  */
 @Component
 @Slf4j
@@ -34,6 +36,9 @@ public class SearchFilterWizard {
 
   private static final Set<String> ALLOWED_PROPERTY_TYPES = Set.of("APARTMENT", "HOUSE", "ROOM");
 
+  private static final long STATE_TTL_MINUTES = 30;
+  private static final long MAX_STATES = 10_000;
+
   // Rent price thresholds (BYN/month)
   static final BigDecimal RENT_PRICE_LOW_MAX = BigDecimal.valueOf(1_000);
   static final BigDecimal RENT_PRICE_MED_MIN = BigDecimal.valueOf(1_000);
@@ -44,7 +49,11 @@ public class SearchFilterWizard {
 
   private final SellPriceFilterProperties sellPriceProps;
 
-  private final Map<Long, SearchFilterState> states = new ConcurrentHashMap<>();
+  private final Map<Long, SearchFilterState> states = Caffeine.newBuilder()
+      .expireAfterWrite(Duration.ofMinutes(STATE_TTL_MINUTES))
+      .maximumSize(MAX_STATES)
+      .<Long, SearchFilterState>build()
+      .asMap();
 
   /**
    * Starts or resets the wizard for the given user.

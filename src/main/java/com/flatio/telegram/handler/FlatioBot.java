@@ -5,6 +5,7 @@ import com.flatio.telegram.command.HelpCommandHandler;
 import com.flatio.telegram.command.SearchCommandHandler;
 import com.flatio.telegram.command.StartCommandHandler;
 import com.flatio.telegram.state.SearchFilterWizard;
+import java.util.Arrays;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -14,6 +15,7 @@ import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
+import org.telegram.telegrambots.meta.exceptions.TelegramApiRequestException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 
 /**
@@ -48,12 +50,16 @@ public class FlatioBot {
   private static final String ACTION_MENU = SearchResultSender.ACTION_MENU;
   private static final String ERROR_TEXT = "Произошла ошибка, попробуйте позже";
 
+  /** Telegram error code returned when the user has blocked the bot. */
+  private static final int ERROR_CODE_BLOCKED = 403;
+
   private final TelegramClient telegramClient;
   private final StartCommandHandler startCommandHandler;
   private final HelpCommandHandler helpCommandHandler;
   private final SearchCommandHandler searchCommandHandler;
   private final FilterCallbackHandler filterCallbackHandler;
   private final SearchResultSender searchResultSender;
+  private final SearchFilterWizard wizard;
   private final ThreadPoolTaskExecutor telegramUpdateExecutor;
 
   /**
@@ -109,6 +115,14 @@ public class FlatioBot {
           .text(ERROR_TEXT)
           .build());
     } catch (TelegramApiException e) {
+      if (isBlockedByUser(e)) {
+        try {
+          handleBlockedByUser(Long.valueOf(chatId));
+        } catch (NumberFormatException nfe) {
+          log.debug("Bot blocked by user (non-numeric chatId, skipping state clear): chatId={}", chatId);
+        }
+        return;
+      }
       log.warn("Failed to send error message to user: chatId={}", chatId, e);
     }
   }
@@ -122,7 +136,7 @@ public class FlatioBot {
       try {
         telegramClient.execute(startCommandHandler.handle(update));
       } catch (TelegramApiException e) {
-        log.error("Failed to send /start reply: chatId={}", chatId, e);
+        logOrHandleBlocked(e, userId, "Failed to send /start reply: chatId={}", chatId);
       } catch (Exception e) {
         log.error("Unexpected error handling /start: chatId={}, updateId={}", chatId, update.getUpdateId(), e);
       }
@@ -130,7 +144,7 @@ public class FlatioBot {
       try {
         telegramClient.execute(searchCommandHandler.handle(userId, chatId));
       } catch (TelegramApiException e) {
-        log.error("Failed to send search wizard: chatId={}", chatId, e);
+        logOrHandleBlocked(e, userId, "Failed to send search wizard: chatId={}", chatId);
       } catch (Exception e) {
         log.error("Unexpected error handling /search: chatId={}, updateId={}", chatId, update.getUpdateId(), e);
       }
@@ -138,7 +152,7 @@ public class FlatioBot {
       try {
         telegramClient.execute(helpCommandHandler.handle(update));
       } catch (TelegramApiException e) {
-        log.error("Failed to send /help reply: chatId={}", chatId, e);
+        logOrHandleBlocked(e, userId, "Failed to send /help reply: chatId={}", chatId);
       }
     } else {
       handleFreeText(userId, chatId, text);
@@ -152,7 +166,7 @@ public class FlatioBot {
     try {
       telegramClient.execute(filterCallbackHandler.handleKeywordText(userId, chatId, text));
     } catch (TelegramApiException e) {
-      log.error("Failed to send DONE step after keyword input: chatId={}", chatId, e);
+      logOrHandleBlocked(e, userId, "Failed to send DONE step after keyword input: chatId={}", chatId);
     }
   }
 
@@ -170,25 +184,72 @@ public class FlatioBot {
       try {
         telegramClient.execute(helpCommandHandler.handleCallback(callbackQuery));
       } catch (TelegramApiException e) {
-        log.error("Failed to send help message: chatId={}", callbackQuery.getMessage().getChatId(), e);
+        logOrHandleBlocked(e, callbackQuery.getFrom().getId(),
+            "Failed to send help message: chatId={}", callbackQuery.getMessage().getChatId());
       }
     } else if (ACTION_MENU.equals(data)) {
       try {
         String chatId = String.valueOf(callbackQuery.getMessage().getChatId());
         telegramClient.execute(startCommandHandler.buildMenuMessage(chatId));
       } catch (TelegramApiException e) {
-        log.error("Failed to send main menu: chatId={}", callbackQuery.getMessage().getChatId(), e);
+        logOrHandleBlocked(e, callbackQuery.getFrom().getId(),
+            "Failed to send main menu: chatId={}", callbackQuery.getMessage().getChatId());
       }
     } else if (FilterCallbackHandler.ACTION_SEARCH.equals(data) || data.startsWith(FILTER_CALLBACK_PREFIX)) {
       try {
         telegramClient.execute(filterCallbackHandler.handle(callbackQuery));
       } catch (TelegramApiException e) {
-        log.error("Failed to edit filter wizard message: chatId={}",
-            callbackQuery.getMessage().getChatId(), e);
+        logOrHandleBlocked(e, callbackQuery.getFrom().getId(),
+            "Failed to edit filter wizard message: chatId={}", callbackQuery.getMessage().getChatId());
       } catch (Exception e) {
         log.error("Unexpected error handling filter callback: data={}", data, e);
       }
     }
+  }
+
+  /**
+   * Checks whether a {@link TelegramApiException} is Telegram's "bot was blocked by the user"
+   * error (HTTP 403), as opposed to a genuine delivery failure.
+   *
+   * @param e the exception caught while calling the Telegram API
+   * @return true if the user has blocked the bot
+   */
+  private boolean isBlockedByUser(TelegramApiException e) {
+    return e instanceof TelegramApiRequestException re
+        && Integer.valueOf(ERROR_CODE_BLOCKED).equals(re.getErrorCode());
+  }
+
+  /**
+   * Clears wizard and search-session state for a user who has blocked the bot (issue #383).
+   *
+   * <p>Logged at DEBUG, not ERROR/WARN — a user blocking the bot is routine behaviour, not an
+   * incident, and treating it as one drowns out genuine delivery failures in monitoring.
+   *
+   * @param telegramId Telegram user identifier, never null
+   */
+  private void handleBlockedByUser(Long telegramId) {
+    log.debug("Bot blocked by user, clearing wizard/session state: telegramId={}", telegramId);
+    wizard.reset(telegramId);
+    searchResultSender.clearSession(telegramId);
+  }
+
+  /**
+   * Routes a failed Telegram API call to blocked-user cleanup (issue #383) or, for any other
+   * failure, logs it at ERROR exactly as before.
+   *
+   * @param e            the exception caught while calling the Telegram API
+   * @param telegramId   the user the call was for, never null
+   * @param errorFormat  SLF4J-style format string for the non-blocked case
+   * @param errorArgs    arguments for {@code errorFormat}; {@code e} is appended automatically
+   */
+  private void logOrHandleBlocked(TelegramApiException e, Long telegramId, String errorFormat, Object... errorArgs) {
+    if (isBlockedByUser(e)) {
+      handleBlockedByUser(telegramId);
+      return;
+    }
+    Object[] args = Arrays.copyOf(errorArgs, errorArgs.length + 1);
+    args[errorArgs.length] = e;
+    log.error(errorFormat, args);
   }
 
   private void answerCallbackQuery(String callbackQueryId) {

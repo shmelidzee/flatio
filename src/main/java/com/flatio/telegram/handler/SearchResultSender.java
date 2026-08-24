@@ -13,6 +13,7 @@ import com.flatio.telegram.state.SearchSession;
 import com.flatio.telegram.state.SearchFilterWizard;
 import com.flatio.web.dto.ListingSearchCriteria;
 import com.flatio.web.dto.ListingSummaryResponse;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import java.awt.Image;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
@@ -29,7 +30,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -46,6 +46,7 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMa
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardRow;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
+import org.telegram.telegrambots.meta.exceptions.TelegramApiRequestException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 
 /**
@@ -79,6 +80,10 @@ public class SearchResultSender {
   private static final int PAGE_SIZE = 3;
   private static final long SESSION_TTL_MINUTES = 30;
   private static final Duration SESSION_TTL = Duration.ofMinutes(SESSION_TTL_MINUTES);
+  private static final long MAX_SESSIONS = 10_000;
+
+  /** Telegram error code returned when the user has blocked the bot. */
+  private static final int ERROR_CODE_BLOCKED = 403;
 
   /** JPEG quality factor applied during compression (0.0–1.0). */
   private static final float COMPRESS_QUALITY = 0.7f;
@@ -110,7 +115,14 @@ public class SearchResultSender {
   private final UserSavedSearchService userSavedSearchService;
   private final PhotoProxyClient photoProxyClient;
 
-  private final Map<Long, SearchSession> sessions = new ConcurrentHashMap<>();
+  // Caffeine, not a plain ConcurrentHashMap, so an abandoned session is actually evicted instead
+  // of occupying memory for the lifetime of the JVM (issue #382). expireAfterAccess mirrors the
+  // sliding 30-minute inactivity window this class already documented and enforced manually.
+  private final Map<Long, SearchSession> sessions = Caffeine.newBuilder()
+      .expireAfterAccess(SESSION_TTL)
+      .maximumSize(MAX_SESSIONS)
+      .<Long, SearchSession>build()
+      .asMap();
 
   /**
    * Executes the search flow for a {@code FILTER:SEARCH} callback.
@@ -361,7 +373,9 @@ public class SearchResultSender {
           .replyMarkup(card.keyboard())
           .build());
     } catch (TelegramApiException e) {
-      if (isInvalidDimensions(e)) {
+      if (isBlockedByUser(e)) {
+        handleBlockedByUser(card.chatId());
+      } else if (isInvalidDimensions(e)) {
         log.warn("Photo rejected: PHOTO_INVALID_DIMENSIONS, retrying with placeholder: listingId={}, url={}",
             card.listingId(), card.photoUrl());
         sendPlaceholderPhoto(card.chatId(), card.caption(), card.keyboard(), card.listingId());
@@ -387,6 +401,10 @@ public class SearchResultSender {
           .replyMarkup(keyboard)
           .build());
     } catch (TelegramApiException e) {
+      if (isBlockedByUser(e)) {
+        handleBlockedByUser(chatId);
+        return;
+      }
       log.warn("Failed to send placeholder photo, falling back to text: listingId={}", listingId, e);
       sendTextCard(chatId, caption, keyboard);
     }
@@ -402,6 +420,10 @@ public class SearchResultSender {
           .replyMarkup(card.keyboard())
           .build());
     } catch (TelegramApiException e) {
+      if (isBlockedByUser(e)) {
+        handleBlockedByUser(card.chatId());
+        return;
+      }
       log.warn("Failed to send binary document, falling back to text: listingId={}, url={}",
           card.listingId(), card.photoUrl(), e);
       sendTextCard(card.chatId(), card.caption(), card.keyboard());
@@ -430,6 +452,10 @@ public class SearchResultSender {
           .replyMarkup(keyboard)
           .build());
     } catch (TelegramApiException e) {
+      if (isBlockedByUser(e)) {
+        handleBlockedByUser(chatId);
+        return;
+      }
       log.error("Failed to send text card: chatId={}", chatId, e);
     }
   }
@@ -458,6 +484,10 @@ public class SearchResultSender {
           .replyMarkup(markupBuilder.build())
           .build());
     } catch (TelegramApiException e) {
+      if (isBlockedByUser(e)) {
+        handleBlockedByUser(chatId);
+        return;
+      }
       log.error("Failed to send navigation message: chatId={}", chatId, e);
     }
   }
@@ -474,6 +504,10 @@ public class SearchResultSender {
           .text(text)
           .build());
     } catch (TelegramApiException e) {
+      if (isBlockedByUser(e)) {
+        handleBlockedByUser(chatId);
+        return;
+      }
       log.warn("Failed to edit wizard message to searching state: chatId={}", chatId, e);
     }
   }
@@ -492,6 +526,10 @@ public class SearchResultSender {
           .replyMarkup(keyboard)
           .build());
     } catch (TelegramApiException e) {
+      if (isBlockedByUser(e)) {
+        handleBlockedByUser(chatId);
+        return;
+      }
       log.error("Failed to send no-results message: chatId={}", chatId, e);
     }
   }
@@ -503,19 +541,60 @@ public class SearchResultSender {
           .text(text)
           .build());
     } catch (TelegramApiException e) {
+      if (isBlockedByUser(e)) {
+        handleBlockedByUser(chatId);
+        return;
+      }
       log.error("Failed to send text message: chatId={}", chatId, e);
     }
   }
 
-  private SearchSession getActiveSession(Long telegramId) {
-    var session = sessions.get(telegramId);
-    if (session == null) {
-      return null;
-    }
-    if (session.getLastAccessedAt().plus(SESSION_TTL).isBefore(Instant.now())) {
+  /**
+   * Looks up the active session for a user, or null if one was never started or has expired.
+   *
+   * <p>Expiry itself is enforced by the {@link #sessions} cache's {@code expireAfterAccess}
+   * policy — a stale entry is already absent by the time this reads it, so no manual TTL check
+   * is needed here.
+   *
+   * @param telegramId Telegram user identifier, never null
+   * @return the active session, or null
+   */
+  /**
+   * Checks whether a {@link TelegramApiException} is Telegram's "bot was blocked by the user"
+   * error (HTTP 403), as opposed to a genuine delivery failure.
+   *
+   * @param e the exception caught while calling the Telegram API
+   * @return true if the user has blocked the bot
+   */
+  private boolean isBlockedByUser(TelegramApiException e) {
+    return e instanceof TelegramApiRequestException re
+        && Integer.valueOf(ERROR_CODE_BLOCKED).equals(re.getErrorCode());
+  }
+
+  /**
+   * Clears wizard and search-session state for a user who has blocked the bot (issue #383).
+   *
+   * <p>Logged at DEBUG, not ERROR/WARN — a user blocking the bot is routine behaviour, not an
+   * incident, and treating it as one drowns out genuine delivery failures in monitoring.
+   *
+   * @param chatId the chat the send failed for; in this bot's private 1:1 chats this equals the
+   *               Telegram user ID
+   */
+  private void handleBlockedByUser(String chatId) {
+    log.debug("Bot blocked by user, clearing wizard/session state: chatId={}", chatId);
+    try {
+      Long telegramId = Long.valueOf(chatId);
+      wizard.reset(telegramId);
       sessions.remove(telegramId);
-      log.debug("Search session expired: telegramId={}", telegramId);
-      return null;
+    } catch (NumberFormatException e) {
+      log.debug("Non-numeric chatId, skipping wizard/session cleanup: chatId={}", chatId);
+    }
+  }
+
+  private SearchSession getActiveSession(Long telegramId) {
+    SearchSession session = sessions.get(telegramId);
+    if (session == null) {
+      log.debug("Search session not found or expired: telegramId={}", telegramId);
     }
     return session;
   }
@@ -556,6 +635,19 @@ public class SearchResultSender {
         page.getNumberOfElements(), telegramId, page.getTotalPages());
     sendCards(chatId, page.getContent());
     sendNavigationMessage(chatId, 0, page.getTotalPages());
+  }
+
+  /**
+   * Removes the active search session for a user, if any.
+   *
+   * <p>Called by {@link FlatioBot} when a send to this user fails with the Telegram "bot was
+   * blocked by the user" error (issue #383) — the session is stale the moment the bot can no
+   * longer reach the user, so there is no reason to wait out the TTL.
+   *
+   * @param telegramId Telegram user identifier, never null
+   */
+  public void clearSession(Long telegramId) {
+    sessions.remove(telegramId);
   }
 
   private void autoSaveFilter(Long telegramId, SearchFilterState state) {

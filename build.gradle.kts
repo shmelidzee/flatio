@@ -35,6 +35,7 @@ val springdocVersion = "2.4.0"
 val logstashEncoderVersion = "7.4"
 val telegramBotsVersion = "9.5.0"
 val jjwtVersion = "0.12.6"
+val caffeineVersion = "3.1.8"
 
 dependencies {
   implementation("org.springframework.boot:spring-boot-starter-web")
@@ -60,6 +61,9 @@ dependencies {
   implementation("org.telegram:telegrambots-springboot-longpolling-starter:$telegramBotsVersion")
   implementation("org.telegram:telegrambots-springboot-webhook-starter:$telegramBotsVersion")
   implementation("org.telegram:telegrambots-client:$telegramBotsVersion")
+
+  // Bounds in-memory Telegram wizard/session state (issue #382)
+  implementation("com.github.ben-manes.caffeine:caffeine:$caffeineVersion")
 
   implementation("org.jsoup:jsoup:$jsoupVersion")
   implementation("org.mapstruct:mapstruct:$mapstructVersion")

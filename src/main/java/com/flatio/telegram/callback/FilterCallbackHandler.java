@@ -50,6 +50,7 @@ public class FilterCallbackHandler {
         .chatId(chatId)
         .messageId(messageId)
         .text(keyboardFactory.getStepText(state))
+        .parseMode("HTML")
         .replyMarkup(keyboardFactory.buildForStep(state))
         .build();
   }
@@ -70,6 +71,7 @@ public class FilterCallbackHandler {
     return SendMessage.builder()
         .chatId(chatId)
         .text(keyboardFactory.getStepText(state))
+        .parseMode("HTML")
         .replyMarkup(keyboardFactory.buildForStep(state))
         .build();
   }
@@ -104,6 +106,7 @@ public class FilterCallbackHandler {
     return SendMessage.builder()
         .chatId(chatId)
         .text(keyboardFactory.getStepText(state))
+        .parseMode("HTML")
         .replyMarkup(keyboardFactory.buildForStep(state))
         .build();
   }
