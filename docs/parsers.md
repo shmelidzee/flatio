@@ -245,7 +245,7 @@ resilience4j:
         exponential-backoff-multiplier: 2
   circuitbreaker:
     instances:
-      connector-realt:
+      connector-realt-apartment-rent:
         sliding-window-type: COUNT_BASED
         sliding-window-size: 5
         minimum-number-of-calls: 5
@@ -255,9 +255,9 @@ resilience4j:
 
 **Aspect order:** `@RateLimiter` (outermost) → `@CircuitBreaker` → `@Retry` (innermost with fallback).
 
-- **Rate limiter:** 1 request per 2 seconds.
+- **Rate limiter:** 1 request per 2 seconds — shared as `connector-realt` across all rent-category Realt connectors (`RealtConnector`, `RealtRoomConnector`, `RealtHouseRentConnector`), since rate limiting exists to be polite to the shared origin server regardless of category.
 - **Retry:** 3 attempts with exponential backoff 2s → 4s → 8s.
-- **Circuit breaker:** opens after 5 consecutive failures; stays open 60s.
+- **Circuit breaker:** opens after 5 consecutive failures; stays open 60s. Per-category instance (`connector-realt-apartment-rent` for this connector, issue #373) — a run of failures scraping one category (e.g. Realt changes the room-listing page markup) no longer opens the breaker for unrelated, healthy categories sharing the same origin.
 - **Fallback:** `fetchFallback(Exception e)` — returns `List.of()`.
 
 ### HTTP client (`RealtClientConfig`)
@@ -398,7 +398,7 @@ Fixtures: `src/test/resources/fixtures/realt/`
 **Category:** Apartment sale (`dealType=SELL`, `propertyType=APARTMENT`)  
 **Listings path:** `/sale/flats/` — **Object prefix:** `/sale-flat/object/`
 
-Shares `"realtSaleRestClient"` bean and `connector-realt-sale` Resilience4j (rate limiter 1 req/2s, retry × 3, circuit breaker).  
+Shares `"realtSaleRestClient"` bean and `connector-realt-sale` rate limiter/retry (1 req/2s, retry × 3) with the other sale connectors. Circuit breaker is per-category (`connector-realt-apartment-sale`, issue #373) — one category's failures no longer trip the breaker for the others sharing the same origin.  
 Uses `RealtHtmlParser` with `RealtPageContext(dealType=SELL, propertyType=APARTMENT, fallbackTitle="Квартира на Realt.by")`.
 
 **Schedulers:** `RealtSaleDeltaSyncJob` (every 15 min) + `RealtSaleFullSyncJob` (daily 05:00, startup trigger).
@@ -413,7 +413,7 @@ Uses `RealtHtmlParser` with `RealtPageContext(dealType=SELL, propertyType=APARTM
 **Category:** Room rent (`dealType=RENT`, `propertyType=ROOM`)  
 **Listings path:** `/rent/room-for-long/` — **Object prefix:** `/rent-room-for-long/object/`
 
-Shares `"realtRestClient"` bean and `connector-realt` Resilience4j (same instance as `RealtConnector`; same origin server).  
+Shares `"realtRestClient"` bean and `connector-realt` rate limiter/retry (same instance as `RealtConnector`; same origin server). Circuit breaker is per-category (`connector-realt-room-rent`, issue #373) — separate from `RealtConnector`'s `connector-realt-apartment-rent`, so failures in one category no longer open the breaker for the other.  
 Uses `RealtHtmlParser` with `RealtPageContext(dealType=RENT, propertyType=ROOM, fallbackTitle="Комната на Realt.by")`.
 
 **Schedulers:** `RealtRoomDeltaSyncJob` (every 5 min) + `RealtRoomFullSyncJob` (daily 06:00, startup trigger).
@@ -430,7 +430,7 @@ Uses `RealtHtmlParser` with `RealtPageContext(dealType=RENT, propertyType=ROOM, 
 
 > ⚠️ Object prefix was corrected from `/sale-room/object/` to `/sale-rooms/object/` (PR #285). Flyway V40 backfills existing records. Configurable via env var `REALT_ROOM_SALE_OBJECT_PATH_PREFIX`.
 
-Shares `"realtSaleRestClient"` bean and `connector-realt-sale` Resilience4j.  
+Shares `"realtSaleRestClient"` bean and `connector-realt-sale` rate limiter/retry. Circuit breaker is per-category (`connector-realt-room-sale`, issue #373).  
 Uses `RealtHtmlParser` with `RealtPageContext(dealType=SELL, propertyType=ROOM, fallbackTitle="Комната на Realt.by")`.
 
 **Schedulers:** `RealtRoomSaleDeltaSyncJob` (every 5 min) + `RealtRoomSaleFullSyncJob` (daily 07:00, startup trigger).
@@ -447,7 +447,7 @@ Uses `RealtHtmlParser` with `RealtPageContext(dealType=SELL, propertyType=ROOM, 
 
 > ⚠️ The path was changed from `/sale/houses/` to `/sale/cottages/` (PR #280) after realt.by restructured its URL scheme. Both paths are configurable via env vars `REALT_HOUSE_SALE_LISTINGS_PATH` / `REALT_HOUSE_SALE_OBJECT_PATH_PREFIX`.
 
-Shares `"realtSaleRestClient"` bean and `connector-realt-sale` Resilience4j.  
+Shares `"realtSaleRestClient"` bean and `connector-realt-sale` rate limiter/retry. Circuit breaker is per-category (`connector-realt-house-sale`, issue #373).  
 Uses `RealtHtmlParser` with `RealtPageContext(dealType=SELL, propertyType=HOUSE, fallbackTitle="Дом на Realt.by")`.
 
 **Schedulers:** `RealtHouseSaleDeltaSyncJob` (every 5 min) + `RealtHouseSaleFullSyncJob` (daily 08:00, startup trigger).

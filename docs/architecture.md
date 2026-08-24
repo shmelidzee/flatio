@@ -441,11 +441,16 @@ reconcile with the SPA design before it is built.
 
 - The issue text for #33 refers to a `DataSource` entity. The existing `Source` entity (already
   used by every connector's scheduler) already covers `sourceId`/`displayName`/`isEnabled`, so it
-  was extended with `syncIntervalMinutes` instead of introducing a duplicate entity.
-  `lastSyncAt` is derived from `SyncRunService` rather than stored, to avoid a second source of
-  truth. `syncIntervalMinutes` is stored and editable via the API but does not yet dynamically
-  reschedule the connector's cron trigger — the AC only requires the scheduler to honor
-  `isEnabled`, which it now does for all 28 connector jobs.
+  was extended instead of introducing a duplicate entity. `lastSyncAt` is derived from
+  `SyncRunService` rather than stored, to avoid a second source of truth. The entity was originally
+  also extended with `syncIntervalMinutes`, but no scheduler ever read it — actual sync cadence
+  comes from the static `flatio.sync.<source>.{delta,full}.cron` properties, not a per-source DB
+  value — so the field was dead weight that also broke `SourcesPage`'s health check (an
+  interval of `0`/undefined always evaluated as "healthy", issue #390). Removed entirely
+  (backend: `V55`; frontend: issue #354) rather than made functional — wiring it into the
+  scheduler would mean redesigning all 28 connector jobs around dynamic cron intervals, which is
+  disproportionate to a `low`-priority admin field and was outside every issue's AC (issues #387,
+  #390).
 - The issue text for #35 refers to a listing `status` value of `DUPLICATE`, but `ListingStatus`
   only has `ACTIVE` / `INACTIVE` / `REPOSTED` (confirmed against the design, which shows the same
   three status badges). Duplicate listings are instead identified by a shared `dedupHash` —
