@@ -6,6 +6,7 @@ import { fetchActiveListingsCount } from "../api/adminListings";
 import { fetchLatestSyncRuns, fetchRecentSyncRuns, fetchSources } from "../api/adminSources";
 import type { AdminSource } from "../api/adminSources";
 import { fetchUsers } from "../api/adminUsers";
+import { ApiError } from "../api/apiError";
 import { formatRelativeTime } from "../lib/formatRelativeTime";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -79,9 +80,9 @@ export function DashboardPage(): ReactElement {
   }, [latestRunsQuery.data]);
 
   const newUsersNotDeployed =
-    newUsersQuery.isError && newUsersQuery.error instanceof Error && newUsersQuery.error.message.includes("404");
+    newUsersQuery.isError && newUsersQuery.error instanceof ApiError && newUsersQuery.error.status === 404;
   const auditLogNotDeployed =
-    auditLogQuery.isError && auditLogQuery.error instanceof Error && auditLogQuery.error.message.includes("404");
+    auditLogQuery.isError && auditLogQuery.error instanceof ApiError && auditLogQuery.error.status === 404;
   const recentRuns = recentRunsQuery.data?.content ?? [];
   const newUsers = newUsersQuery.data?.content ?? [];
   const auditLogEntries = auditLogQuery.data?.content ?? [];
