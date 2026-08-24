@@ -89,6 +89,17 @@ describe("adminListings", () => {
     await expect(updateListingStatus(1, "INACTIVE")).rejects.toThrow("HTTP 404");
   });
 
+  it("should_throw_backend_message_when_update_listing_status_fails_with_error_response_body", async () => {
+    // issue #393 — ErrorResponse.message from the backend must be surfaced, not "HTTP 409"
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify({ message: "Объявление уже изменено другим админом" }), { status: 409 }),
+    );
+
+    await expect(updateListingStatus(1, "INACTIVE")).rejects.toThrow(
+      "Объявление уже изменено другим админом",
+    );
+  });
+
   it("should_send_delete_request_when_unlinking_duplicate_group", async () => {
     vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 200 }));
 
@@ -103,6 +114,15 @@ describe("adminListings", () => {
     vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 500 }));
 
     await expect(unlinkDuplicateGroup(7)).rejects.toThrow("HTTP 500");
+  });
+
+  it("should_throw_backend_message_when_unlink_duplicate_group_fails_with_error_response_body", async () => {
+    // issue #393
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify({ message: "Объявление не входит в группу дублей" }), { status: 400 }),
+    );
+
+    await expect(unlinkDuplicateGroup(7)).rejects.toThrow("Объявление не входит в группу дублей");
   });
 
   it("should_return_total_elements_when_fetching_active_listings_count", async () => {

@@ -17,44 +17,35 @@ const ROLE_LABEL: Record<UserRoleValue, string> = {
 };
 
 export function UsersPage(): ReactElement {
-  const queryClient = useQueryClient();
   const [filters, setFilters] = useState<AdminUserFilters>({});
   const [page, setPage] = useState(0);
+  const [updateError, setUpdateError] = useState<string | null>(null);
 
   const usersQuery = useQuery({
     queryKey: [...USERS_QUERY_KEY, filters, page],
     queryFn: () => fetchUsers(filters, page),
   });
 
-  const updateMutation = useMutation({
-    mutationFn: ({ id, patch }: { id: number; patch: AdminUserUpdate }) => updateUser(id, patch),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: USERS_QUERY_KEY });
-    },
-  });
-
-  const { isError: updateFailed, reset: resetUpdateError } = updateMutation;
-
   // The error banner otherwise stays on screen indefinitely (issue #352) — auto-dismiss it after
   // a timeout so a stale failure doesn't linger once the admin has moved on.
   useEffect(() => {
-    if (!updateFailed) {
+    if (!updateError) {
       return;
     }
-    const timer = window.setTimeout(() => resetUpdateError(), ERROR_BANNER_TIMEOUT_MS);
+    const timer = window.setTimeout(() => setUpdateError(null), ERROR_BANNER_TIMEOUT_MS);
     return () => window.clearTimeout(timer);
-  }, [updateFailed, resetUpdateError]);
+  }, [updateError]);
 
   function applyRoleFilter(role: string): void {
     setFilters((f) => ({ ...f, role: (role || undefined) as UserRoleValue | undefined }));
     setPage(0);
-    updateMutation.reset();
+    setUpdateError(null);
   }
 
   function applyActiveFilter(active: string): void {
     setFilters((f) => ({ ...f, active: active === "" ? undefined : active === "true" }));
     setPage(0);
-    updateMutation.reset();
+    setUpdateError(null);
   }
 
   const users = usersQuery.data?.content ?? [];
@@ -87,9 +78,9 @@ export function UsersPage(): ReactElement {
         </select>
       </div>
 
-      {updateMutation.isError && (
+      {updateError && (
         <p className="mt-3 text-sm text-red-400">
-          Не удалось обновить пользователя: {(updateMutation.error as Error).message}
+          Не удалось обновить пользователя: {updateError}
         </p>
       )}
 
@@ -120,13 +111,7 @@ export function UsersPage(): ReactElement {
             </thead>
             <tbody>
               {users.map((user) => (
-                <UserRow
-                  key={user.id}
-                  user={user}
-                  saving={updateMutation.isPending && updateMutation.variables?.id === user.id}
-                  onChangeRole={(role) => updateMutation.mutate({ id: user.id ?? 0, patch: { role } })}
-                  onToggleActive={() => updateMutation.mutate({ id: user.id ?? 0, patch: { active: !user.active } })}
-                />
+                <UserRow key={user.id} user={user} onError={setUpdateError} />
               ))}
             </tbody>
           </table>
@@ -160,12 +145,29 @@ export function UsersPage(): ReactElement {
 
 interface UserRowProps {
   user: AdminUser;
-  saving: boolean;
-  onChangeRole: (role: UserRoleValue) => void;
-  onToggleActive: () => void;
+  onError: (message: string) => void;
 }
 
-function UserRow({ user, saving, onChangeRole, onToggleActive }: UserRowProps): ReactElement {
+/**
+ * Each row owns its own {@code useMutation} instance rather than sharing one across the whole
+ * table (issue #391) — TanStack Query only tracks {@code isPending}/{@code variables} for the
+ * most recently invoked call of a given mutation, so a single shared mutation's "saving" state
+ * followed whichever row was edited last, not the row a given control actually belongs to.
+ * Errors still bubble up to the page-level banner via {@link UserRowProps#onError}.
+ */
+function UserRow({ user, onError }: UserRowProps): ReactElement {
+  const queryClient = useQueryClient();
+
+  const updateMutation = useMutation({
+    mutationFn: (patch: AdminUserUpdate) => updateUser(user.id ?? 0, patch),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: USERS_QUERY_KEY });
+    },
+    onError: (error) => {
+      onError(error instanceof Error ? error.message : String(error));
+    },
+  });
+
   return (
     <tr className="border-t border-surface-border">
       <td className="px-4 py-3 text-gray-200">{user.displayName}</td>
@@ -173,8 +175,8 @@ function UserRow({ user, saving, onChangeRole, onToggleActive }: UserRowProps): 
       <td className="px-4 py-3">
         <select
           value={user.role ?? "USER"}
-          disabled={saving}
-          onChange={(e) => onChangeRole(e.target.value as UserRoleValue)}
+          disabled={updateMutation.isPending}
+          onChange={(e) => updateMutation.mutate({ role: e.target.value as UserRoleValue })}
           className="rounded border border-surface-border bg-surface px-2 py-1 text-gray-200 disabled:opacity-50"
         >
           {ROLE_OPTIONS.map((role) => (
@@ -190,8 +192,8 @@ function UserRow({ user, saving, onChangeRole, onToggleActive }: UserRowProps): 
           role="switch"
           aria-checked={user.active}
           aria-label={user.active ? "Деактивировать пользователя" : "Активировать пользователя"}
-          disabled={saving}
-          onClick={onToggleActive}
+          disabled={updateMutation.isPending}
+          onClick={() => updateMutation.mutate({ active: !user.active })}
           className={`relative h-5 w-9 rounded-full transition-colors disabled:opacity-50 ${
             user.active ? "bg-accent" : "bg-surface-border"
           }`}

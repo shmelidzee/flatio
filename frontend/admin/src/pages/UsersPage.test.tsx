@@ -157,6 +157,31 @@ describe("UsersPage", () => {
     );
   });
 
+  it("should_keep_other_rows_enabled_when_one_row_toggle_is_pending", async () => {
+    // issue #391 — a mutation shared across the whole table disabled every row's controls while
+    // any single row's PATCH was in flight; each row must track its own pending state
+    const PETR = { ...IVAN, id: 2, displayName: "Пётр Сидоров", email: "petr@example.com" };
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ content: [IVAN, PETR], totalPages: 1, last: true }));
+    let resolvePatch: (response: Response) => void = () => {};
+    vi.mocked(fetch).mockImplementationOnce(
+      () => new Promise<Response>((resolve) => { resolvePatch = resolve; }),
+    );
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Иван Петров")).toBeInTheDocument());
+
+    const switches = screen.getAllByRole("switch");
+    fireEvent.click(switches[0]);
+
+    await waitFor(() => expect(switches[0]).toBeDisabled());
+    expect(switches[1]).not.toBeDisabled();
+
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ content: [{ ...IVAN, active: false }, PETR], totalPages: 1, last: true }));
+    resolvePatch(jsonResponse({ ...IVAN, active: false }));
+
+    await waitFor(() => expect(switches[0]).not.toBeDisabled());
+  });
+
   it("should_auto_dismiss_error_banner_after_timeout", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ content: [IVAN], totalPages: 1, last: true }));

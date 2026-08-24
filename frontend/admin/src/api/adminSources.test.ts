@@ -56,6 +56,17 @@ describe("adminSources", () => {
     await expect(updateSource("unknown", { enabled: false })).rejects.toThrow("HTTP 404");
   });
 
+  it("should_throw_backend_message_when_update_source_fails_with_error_response_body", async () => {
+    // issue #393 — ErrorResponse.message from the backend must be surfaced, not "HTTP 400"
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify({ message: "Источник уже отключён другим админом" }), { status: 400 }),
+    );
+
+    await expect(updateSource("onliner", { enabled: false })).rejects.toThrow(
+      "Источник уже отключён другим админом",
+    );
+  });
+
   it("should_request_paginated_sync_runs_for_source", async () => {
     vi.mocked(fetch).mockResolvedValue(
       new Response(JSON.stringify({ content: [], totalPages: 0 }), { status: 200 }),

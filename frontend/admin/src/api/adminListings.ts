@@ -1,5 +1,5 @@
 import { apiFetch } from "./client";
-import { ApiError } from "./apiError";
+import { ApiError, resolveErrorMessage } from "./apiError";
 import type { components } from "./schema";
 
 export type ListingSummary = components["schemas"]["ListingSummaryResponse"];
@@ -62,7 +62,7 @@ export async function updateListingStatus(id: number, status: ListingStatusValue
     body: JSON.stringify({ status }),
   });
   if (!response.ok) {
-    throw new ApiError(response.status, `Failed to update listing status: HTTP ${response.status}`);
+    throw new ApiError(response.status, await resolveErrorMessage(response, "update listing status"));
   }
   return (await response.json()) as ListingSummary;
 }
@@ -70,7 +70,7 @@ export async function updateListingStatus(id: number, status: ListingStatusValue
 export async function unlinkDuplicateGroup(id: number): Promise<void> {
   const response = await apiFetch(`/api/v1/admin/listings/${id}/duplicate-group`, { method: "DELETE" });
   if (!response.ok) {
-    throw new ApiError(response.status, `Failed to unlink duplicate group: HTTP ${response.status}`);
+    throw new ApiError(response.status, await resolveErrorMessage(response, "unlink duplicate group"));
   }
 }
 
