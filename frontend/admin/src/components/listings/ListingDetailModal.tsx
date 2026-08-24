@@ -105,6 +105,16 @@ export function ListingDetailModal({ listingId, photoUrl, onClose }: ListingDeta
             )}
 
             <div className="flex gap-2 pt-2">
+              {listing.sourceUrl && (
+                <a
+                  href={listing.sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded border border-surface-border px-3 py-1.5 text-gray-300 hover:text-white"
+                >
+                  Открыть на источнике
+                </a>
+              )}
               <button
                 type="button"
                 disabled={listing.status === "INACTIVE" || deactivateMutation.isPending}
