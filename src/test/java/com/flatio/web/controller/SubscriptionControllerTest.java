@@ -126,6 +126,22 @@ class SubscriptionControllerTest {
   }
 
   @Test
+  void should_return_400_when_create_name_exceeds_max_length() throws Exception {
+    // Given — name longer than the 255-char DB column limit (issue #385)
+    var invalidRequest = new CreateSubscriptionRequest(
+        "a".repeat(256), buildCriteria(), Set.of(TriggerType.NEW_LISTING), DeliveryMode.REALTIME,
+        SubscriptionChannelType.TELEGRAM, null, null, null
+    );
+
+    // When / Then — rejected by @Size validation before reaching the service/DB
+    mockMvc.perform(post("/api/v1/subscriptions")
+            .with(csrf())
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(invalidRequest)))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
   void should_return_400_when_create_triggers_is_empty() throws Exception {
     // Given — request with no triggers
     var invalidRequest = new CreateSubscriptionRequest(
@@ -223,6 +239,22 @@ class SubscriptionControllerTest {
     // Given
     var invalidRequest = new UpdateSubscriptionRequest(
         "", buildCriteria(), Set.of(TriggerType.NEW_LISTING), DeliveryMode.REALTIME,
+        SubscriptionChannelType.TELEGRAM, null, null, null
+    );
+
+    // When / Then
+    mockMvc.perform(put("/api/v1/subscriptions/5")
+            .with(csrf())
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(invalidRequest)))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void should_return_400_when_update_name_exceeds_max_length() throws Exception {
+    // Given — name longer than the 255-char DB column limit (issue #385)
+    var invalidRequest = new UpdateSubscriptionRequest(
+        "a".repeat(256), buildCriteria(), Set.of(TriggerType.NEW_LISTING), DeliveryMode.REALTIME,
         SubscriptionChannelType.TELEGRAM, null, null, null
     );
 
