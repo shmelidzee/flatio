@@ -52,6 +52,11 @@ public class UserServiceImpl implements UserService {
     }
   }
 
+  @Override
+  public Optional<User> findByTelegramId(Long telegramId) {
+    return userRepository.findByTelegramId(String.valueOf(telegramId));
+  }
+
   @Transactional
   User findOrCreateTransactional(Long telegramId, String username, String firstName) {
     String externalId = String.valueOf(telegramId);
@@ -75,11 +80,6 @@ public class UserServiceImpl implements UserService {
     log.debug("Concurrent user registration conflict, retrying findByTelegramId: telegramId={}", telegramId);
     return userRepository.findByTelegramId(String.valueOf(telegramId))
         .orElseThrow(() -> cause);
-  }
-
-  @Override
-  public Optional<User> findByTelegramId(Long telegramId) {
-    return userRepository.findByTelegramId(String.valueOf(telegramId));
   }
 
   private User refreshLastSeen(User user) {

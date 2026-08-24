@@ -42,6 +42,13 @@ public class UserSavedSearchServiceImpl implements UserSavedSearchService {
     }
   }
 
+  @Override
+  public Optional<SearchFilter> getByTelegramUserId(Long telegramUserId) {
+    return userSavedSearchRepository
+        .findByTelegramUserId(telegramUserId)
+        .map(this::toFilter);
+  }
+
   @Transactional
   void saveTransactional(Long telegramUserId, SearchFilter filter) {
     UserSavedSearch entity = userSavedSearchRepository
@@ -65,13 +72,6 @@ public class UserSavedSearchServiceImpl implements UserSavedSearchService {
   private void retryAfterConflict(Long telegramUserId, SearchFilter filter) {
     log.debug("Concurrent saved-search write conflict, retrying: telegramUserId={}", telegramUserId);
     self.saveTransactional(telegramUserId, filter);
-  }
-
-  @Override
-  public Optional<SearchFilter> getByTelegramUserId(Long telegramUserId) {
-    return userSavedSearchRepository
-        .findByTelegramUserId(telegramUserId)
-        .map(this::toFilter);
   }
 
   private void applyFilter(UserSavedSearch entity, SearchFilter filter) {
