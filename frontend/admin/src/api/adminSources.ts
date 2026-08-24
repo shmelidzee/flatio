@@ -1,5 +1,5 @@
 import { apiFetch } from "./client";
-import { ApiError } from "./apiError";
+import { ApiError, resolveErrorMessage } from "./apiError";
 import type { components } from "./schema";
 
 export type AdminSource = components["schemas"]["AdminSourceResponse"];
@@ -24,7 +24,7 @@ export async function updateSource(sourceId: string, patch: AdminSourceUpdate): 
     body: JSON.stringify(patch),
   });
   if (!response.ok) {
-    throw new ApiError(response.status, `Failed to update source: HTTP ${response.status}`);
+    throw new ApiError(response.status, await resolveErrorMessage(response, "update source"));
   }
   return (await response.json()) as AdminSource;
 }
