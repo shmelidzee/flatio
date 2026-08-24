@@ -9,14 +9,18 @@ import java.time.Instant;
 import java.util.Optional;
 
 import com.flatio.service.impl.UserServiceImpl;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -33,6 +37,14 @@ class UserServiceImplTest {
 
   @InjectMocks
   private UserServiceImpl userService;
+
+  @BeforeEach
+  void setUp() {
+    // findOrCreate delegates to findOrCreateTransactional via a self-injected AOP proxy
+    // reference (see class Javadoc); pointing it at the same instance preserves real behaviour
+    // in these unit tests, which do not exercise Spring's transactional proxying.
+    ReflectionTestUtils.setField(userService, "self", userService);
+  }
 
   // -------------------------------------------------------------------------
   // findOrCreate — new user
@@ -103,6 +115,44 @@ class UserServiceImplTest {
 
     // Then
     verify(userAuthProviderRepository, never()).save(any());
+  }
+
+  // -------------------------------------------------------------------------
+  // findOrCreate — concurrent registration conflict (issue #375)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_return_existing_user_when_concurrent_registration_conflict_occurs() {
+    // Given — first lookup finds nothing (race with another /start in flight), the auth-provider
+    // insert then fails on the unique (provider, external_id) constraint the other call already
+    // committed; a retried lookup now finds that row
+    var racedUser = buildUser(99L);
+    when(userRepository.findByTelegramId("555"))
+        .thenReturn(Optional.empty())
+        .thenReturn(Optional.of(racedUser));
+    when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+    when(userAuthProviderRepository.save(any(UserAuthProvider.class)))
+        .thenThrow(new DataIntegrityViolationException(
+            "duplicate key value violates unique constraint \"uq_provider_external_id\""));
+
+    // When
+    var result = userService.findOrCreate(555L, "raced", "Race");
+
+    // Then
+    assertThat(result.getId()).isEqualTo(99L);
+  }
+
+  @Test
+  void should_rethrow_when_conflict_retry_still_finds_no_user() {
+    // Given — insert fails but the row is still absent on retry (should not happen in practice)
+    when(userRepository.findByTelegramId("556")).thenReturn(Optional.empty());
+    when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+    when(userAuthProviderRepository.save(any(UserAuthProvider.class)))
+        .thenThrow(new DataIntegrityViolationException("constraint violation"));
+
+    // When / Then
+    assertThatThrownBy(() -> userService.findOrCreate(556L, "x", "X"))
+        .isInstanceOf(DataIntegrityViolationException.class);
   }
 
   // -------------------------------------------------------------------------

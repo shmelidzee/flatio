@@ -20,6 +20,8 @@ import com.flatio.domain.listing.PriceUnit;
 import com.flatio.service.domain.IngestOutcome;
 import com.flatio.service.impl.ListingIngestionServiceImpl;
 import com.flatio.integration.core.RawListingMapper;
+import java.sql.SQLException;
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -444,6 +446,28 @@ class ListingIngestionServiceImplTest {
   }
 
   @Test
+  void should_not_throw_and_skip_price_history_when_raw_price_is_null() {
+    // Given — source stopped sending a price for this listing (issue #378)
+    var raw = new RawListing(
+        "ext-nullprice-1", "Test apartment", null, "RENT", "APARTMENT",
+        null, "BYN", null, null,
+        2, 3, 9, BigDecimal.valueOf(55.5),
+        "Минск", BigDecimal.valueOf(53.9), BigDecimal.valueOf(27.5),
+        "Минск", "https://onliner.by/nullprice-1",
+        Instant.parse("2026-06-01T10:00:00Z"), List.of(), null, null, null
+    );
+    var existing = buildExistingListing("ext-nullprice-1", BigDecimal.valueOf(500));
+
+    when(currencyRepository.findByCode("BYN")).thenReturn(Optional.of(byn));
+    when(listingRepository.findByExternalIdAndSourceId("ext-nullprice-1", 1L)).thenReturn(Optional.of(existing));
+    when(dedupHashService.computeDedupHash(any(), any(), any(), any())).thenReturn("hash-nullprice-1");
+
+    // When / Then — must not throw NPE
+    assertThatNoException().isThrownBy(() -> ingestionService.ingest(raw, source));
+    verify(priceHistoryRepository, never()).save(any());
+  }
+
+  @Test
   void should_not_call_mapper_toEntity_on_update_path() {
     // Given — update uses existing entity, not the mapper
     var raw = buildRawListing("ext-014", BigDecimal.valueOf(500));
@@ -711,15 +735,16 @@ class ListingIngestionServiceImplTest {
   }
 
   // -------------------------------------------------------------------------
-  // ingestBatch — concurrent insert conflict handling (#241)
+  // ingestBatch — concurrent insert conflict handling (#241, narrowed in #379)
   // -------------------------------------------------------------------------
 
   @Test
   void should_not_count_error_when_concurrent_insert_conflict_is_resolved_on_retry() {
-    // Given — first call throws constraint violation (race), retry finds the record and updates it
+    // Given — first call throws the dedup unique constraint violation (race), retry finds the
+    // record and updates it
     var raw = buildRawListing("ext-conflict-1", BigDecimal.valueOf(500));
     when(self.ingest(raw, source))
-        .thenThrow(new DataIntegrityViolationException("duplicate key: uq_listing_external_source"))
+        .thenThrow(buildDedupConstraintViolation())
         .thenReturn(IngestOutcome.UPDATED);
 
     // When
@@ -733,10 +758,10 @@ class ListingIngestionServiceImplTest {
 
   @Test
   void should_count_error_when_retry_also_fails_after_conflict() {
-    // Given — first call throws constraint violation; retry also fails
+    // Given — first call throws the dedup constraint violation; retry also fails
     var raw = buildRawListing("ext-conflict-2", BigDecimal.valueOf(500));
     when(self.ingest(raw, source))
-        .thenThrow(new DataIntegrityViolationException("duplicate key"))
+        .thenThrow(buildDedupConstraintViolation())
         .thenThrow(new RuntimeException("DB unreachable"));
 
     // When
@@ -749,11 +774,11 @@ class ListingIngestionServiceImplTest {
 
   @Test
   void should_process_remaining_items_after_conflict_on_one_item() {
-    // Given — first item causes conflict (resolved by retry), second succeeds normally
+    // Given — first item causes a dedup conflict (resolved by retry), second succeeds normally
     var rawConflict = buildRawListing("ext-conflict-3", BigDecimal.valueOf(500));
     var rawNormal = buildRawListing("ext-normal-3", BigDecimal.valueOf(600));
     when(self.ingest(rawConflict, source))
-        .thenThrow(new DataIntegrityViolationException("duplicate key"))
+        .thenThrow(buildDedupConstraintViolation())
         .thenReturn(IngestOutcome.UPDATED);
     when(self.ingest(rawNormal, source)).thenReturn(IngestOutcome.CREATED);
 
@@ -764,6 +789,39 @@ class ListingIngestionServiceImplTest {
     assertThat(result.errors()).isZero();
     assertThat(result.updated()).isEqualTo(1);
     assertThat(result.added()).isEqualTo(1);
+  }
+
+  @Test
+  void should_not_retry_when_constraint_violation_is_not_the_dedup_unique_key() {
+    // Given — a NOT NULL or other constraint violation unrelated to the concurrent-insert race;
+    // retrying it would fail identically, so it must be counted as an error immediately
+    var raw = buildRawListing("ext-conflict-4", BigDecimal.valueOf(500));
+    var sqlException = new SQLException("null value in column \"price\" violates not-null constraint");
+    var cve = new ConstraintViolationException("not-null violation", sqlException, "listings_price_not_null");
+    when(self.ingest(raw, source)).thenThrow(new DataIntegrityViolationException("not-null violation", cve));
+
+    // When
+    var result = ingestionService.ingestBatch(List.of(raw), source);
+
+    // Then — no retry attempted, only the single initial call
+    verify(self, org.mockito.Mockito.times(1)).ingest(raw, source);
+    assertThat(result.errors()).isEqualTo(1);
+    assertThat(result.updated()).isZero();
+  }
+
+  @Test
+  void should_not_retry_when_data_integrity_violation_has_no_constraint_violation_cause() {
+    // Given — a DataIntegrityViolationException without a Hibernate ConstraintViolationException
+    // in its cause chain (e.g. thrown directly, not via a real DB constraint failure)
+    var raw = buildRawListing("ext-conflict-5", BigDecimal.valueOf(500));
+    when(self.ingest(raw, source)).thenThrow(new DataIntegrityViolationException("generic violation"));
+
+    // When
+    var result = ingestionService.ingestBatch(List.of(raw), source);
+
+    // Then — no retry attempted
+    verify(self, org.mockito.Mockito.times(1)).ingest(raw, source);
+    assertThat(result.errors()).isEqualTo(1);
   }
 
   // -------------------------------------------------------------------------
@@ -953,6 +1011,12 @@ class ListingIngestionServiceImplTest {
     listing.setTitle("Old title");
     listing.setSourceUrl("https://onliner.by/" + externalId);
     return listing;
+  }
+
+  private DataIntegrityViolationException buildDedupConstraintViolation() {
+    var sqlException = new SQLException("duplicate key value violates unique constraint \"uq_listing_external_source\"");
+    var cve = new ConstraintViolationException("dedup violation", sqlException, "uq_listing_external_source");
+    return new DataIntegrityViolationException("dedup violation", cve);
   }
 
   private Currency buildCurrency(String code) {

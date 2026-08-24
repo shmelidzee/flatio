@@ -25,8 +25,10 @@ import org.springframework.web.client.RestClient;
  * <p>Fetches SSR HTML from realt.by and delegates listing extraction to {@link RealtHtmlParser}.
  * All extracted listings have {@code dealType = RENT} and {@code propertyType = ROOM}.
  *
- * <p>Shares the {@code connector-realt} Resilience4j rate limiter and circuit breaker with
- * {@link RealtConnector} — both target the same origin server (realt.by).
+ * <p>Shares the {@code connector-realt} Resilience4j rate limiter with {@link RealtConnector} —
+ * both target the same origin server (realt.by). The circuit breaker is dedicated to this
+ * connector's category ({@code connector-realt-room-rent}) so a run of failures here cannot
+ * open the breaker for other rental categories (issue #373).
  */
 @Service
 @Slf4j
@@ -78,7 +80,7 @@ public class RealtRoomConnector implements ListingConnector {
    */
   @Override
   @RateLimiter(name = "connector-realt")
-  @CircuitBreaker(name = "connector-realt")
+  @CircuitBreaker(name = "connector-realt-room-rent")
   @Retry(name = "connector-realt", fallbackMethod = "fetchFallback")
   public List<RawListing> fetch() {
     return fetchAllInternal();
@@ -91,7 +93,7 @@ public class RealtRoomConnector implements ListingConnector {
    * @return list of recently published listings, never null, may be empty
    */
   @RateLimiter(name = "connector-realt")
-  @CircuitBreaker(name = "connector-realt")
+  @CircuitBreaker(name = "connector-realt-room-rent")
   @Retry(name = "connector-realt", fallbackMethod = "fetchDeltaFallback")
   public List<RawListing> fetchDelta(Instant since) {
     log.info("Delta fetch started: source={}, since={}", properties.sourceId(), since);

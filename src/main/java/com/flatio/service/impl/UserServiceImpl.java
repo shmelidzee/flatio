@@ -11,7 +11,11 @@ import java.util.Optional;
 import com.flatio.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -26,18 +30,56 @@ public class UserServiceImpl implements UserService {
   private final UserRepository userRepository;
   private final UserAuthProviderRepository userAuthProviderRepository;
 
+  /**
+   * Self-reference injected lazily to ensure the call from {@link #findOrCreate} goes through
+   * the Spring AOP proxy, which activates the {@code @Transactional} behaviour on
+   * {@link #findOrCreateTransactional}. This lets a failed transaction be rolled back and
+   * committed before {@link #findOrCreate} retries in a fresh transaction — required because a
+   * constraint violation aborts the whole PostgreSQL transaction, so retrying within the same
+   * transaction would fail immediately with "current transaction is aborted".
+   */
+  @Lazy
+  @Autowired
+  private UserServiceImpl self;
+
   @Override
-  @Transactional
+  @Transactional(propagation = Propagation.NOT_SUPPORTED)
   public User findOrCreate(Long telegramId, String username, String firstName) {
+    try {
+      return self.findOrCreateTransactional(telegramId, username, firstName);
+    } catch (DataIntegrityViolationException e) {
+      return retryAfterConflict(telegramId, e);
+    }
+  }
+
+  @Override
+  public Optional<User> findByTelegramId(Long telegramId) {
+    return userRepository.findByTelegramId(String.valueOf(telegramId));
+  }
+
+  @Transactional
+  User findOrCreateTransactional(Long telegramId, String username, String firstName) {
     String externalId = String.valueOf(telegramId);
     return userRepository.findByTelegramId(externalId)
         .map(user -> refreshLastSeen(user))
         .orElseGet(() -> register(telegramId, externalId, username, firstName));
   }
 
-  @Override
-  public Optional<User> findByTelegramId(Long telegramId) {
-    return userRepository.findByTelegramId(String.valueOf(telegramId));
+  /**
+   * Handles a concurrent registration race: two parallel {@code /start} calls for the same new
+   * Telegram user both see no existing row and both attempt to insert a
+   * {@code user_auth_provider} record, which is unique on {@code (provider, external_id)}. The
+   * loser's insert fails with {@link DataIntegrityViolationException} — its counterpart has
+   * already committed the row by then, so a fresh lookup returns it.
+   *
+   * @param telegramId the Telegram user ID being registered
+   * @param cause      the conflict that triggered this retry, rethrown if the row is still absent
+   * @return the user registered by the winning concurrent call
+   */
+  private User retryAfterConflict(Long telegramId, DataIntegrityViolationException cause) {
+    log.debug("Concurrent user registration conflict, retrying findByTelegramId: telegramId={}", telegramId);
+    return userRepository.findByTelegramId(String.valueOf(telegramId))
+        .orElseThrow(() -> cause);
   }
 
   private User refreshLastSeen(User user) {

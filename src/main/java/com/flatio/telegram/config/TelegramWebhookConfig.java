@@ -44,11 +44,13 @@ public class TelegramWebhookConfig {
    * Builds the webhook bot bean consumed by the webhook starter at startup.
    *
    * @return webhook bot wired to {@link FlatioBot}, never null
-   * @throws IllegalStateException if {@code TELEGRAM_WEBHOOK_URL} is not configured
+   * @throws IllegalStateException if {@code TELEGRAM_WEBHOOK_URL} or
+   *                                {@code TELEGRAM_WEBHOOK_SECRET_TOKEN} is not configured
    */
   @Bean
   public SpringTelegramWebhookBot flatioWebhookBot() {
     String webhookUrl = requireWebhookUrl();
+    requireWebhookSecretToken();
     String botPath = botConfig.token();
     return SpringTelegramWebhookBot.builder()
         .botPath(botPath)
@@ -70,21 +72,33 @@ public class TelegramWebhookConfig {
     return webhookUrl.endsWith("/") ? webhookUrl.substring(0, webhookUrl.length() - 1) : webhookUrl;
   }
 
+  /**
+   * Fails startup unless a webhook secret token is configured.
+   *
+   * <p>The webhook path is the bot token itself (see class Javadoc), which can leak into proxy
+   * or CDN access logs. Without a second-layer secret validated by {@link TelegramWebhookSecretFilter}
+   * on every inbound update, a leaked path alone would let an attacker forge Telegram updates
+   * (issue #374).
+   *
+   * @throws IllegalStateException if {@code TELEGRAM_WEBHOOK_SECRET_TOKEN} is not configured
+   */
+  private void requireWebhookSecretToken() {
+    String secretToken = botConfig.webhookSecretToken();
+    if (secretToken == null || secretToken.isBlank()) {
+      throw new IllegalStateException(
+          "Telegram webhook secret token is not configured. Set the TELEGRAM_WEBHOOK_SECRET_TOKEN "
+              + "environment variable — required outside the local profile to protect the webhook "
+              + "endpoint against forged updates.");
+    }
+  }
+
   private void registerWebhook(String webhookUrl, String botPath) {
     try {
       SetWebhook.SetWebhookBuilder builder = SetWebhook.builder()
-          .url(webhookUrl + "/" + botPath);
-      String secretToken = botConfig.webhookSecretToken();
-      if (secretToken != null && !secretToken.isBlank()) {
-        builder.secretToken(secretToken);
-      }
+          .url(webhookUrl + "/" + botPath)
+          .secretToken(botConfig.webhookSecretToken());
       telegramClient.execute(builder.build());
-      if (secretToken != null && !secretToken.isBlank()) {
-        log.info("Telegram webhook registered successfully (secret token configured)");
-      } else {
-        log.warn("Telegram webhook registered without secret token — "
-            + "set TELEGRAM_WEBHOOK_SECRET_TOKEN to enable second-layer protection");
-      }
+      log.info("Telegram webhook registered successfully (secret token configured)");
     } catch (TelegramApiException e) {
       log.error("Failed to register Telegram webhook", e);
     }

@@ -23,6 +23,7 @@ import com.flatio.service.domain.IngestOutcome;
 import com.flatio.integration.core.RawListingMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
@@ -38,6 +39,8 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class ListingIngestionServiceImpl implements ListingIngestionService {
 
+  private static final String LISTING_UNIQUE_CONSTRAINT_NAME = "uq_listing_external_source";
+
   private final ListingRepository listingRepository;
   private final PriceHistoryRepository priceHistoryRepository;
   private final CurrencyRepository currencyRepository;
@@ -45,7 +48,7 @@ public class ListingIngestionServiceImpl implements ListingIngestionService {
   private final DedupHashService dedupHashService;
 
   /**
-   * Self-reference injected lazily to ensure calls from {@link #ingestBatch} go through
+   * Self-reference injected lazily to ensure calls from {@link #ingestOne} go through
    * the Spring AOP proxy, which activates the {@code @Transactional} behaviour on {@link #ingest}.
    */
   @Lazy
@@ -77,35 +80,57 @@ public class ListingIngestionServiceImpl implements ListingIngestionService {
   @Override
   @Transactional(propagation = Propagation.NOT_SUPPORTED)
   public BatchIngestResult ingestBatch(List<RawListing> rawListings, Source source) {
-    int added = 0, updated = 0, errors = 0;
-
+    IngestCounters counters = new IngestCounters();
     for (RawListing raw : rawListings) {
-      try {
-        IngestOutcome outcome = self.ingest(raw, source);
-        if (outcome == IngestOutcome.CREATED) {
-          added++;
-        } else if (outcome == IngestOutcome.UPDATED) {
-          updated++;
-        }
-      } catch (DataIntegrityViolationException | OptimisticLockingFailureException e) {
-        // Concurrent INSERT (another sync job) or UPDATE (e.g. admin moderation) on the same
-        // listing — retry against the latest row state/version in a fresh transaction.
-        IngestOutcome retried = retryAfterConflict(raw, source);
-        if (retried != null) {
-          if (retried == IngestOutcome.UPDATED) updated++;
-        } else {
-          errors++;
-        }
-      } catch (Exception e) {
-        errors++;
-        log.error("Failed to ingest listing: externalId={}, source={}",
+      ingestOne(raw, source, counters);
+    }
+    log.info("Batch ingestion complete: source={}, added={}, updated={}, errors={}",
+        source.getCode(), counters.added, counters.updated, counters.errors);
+    return new BatchIngestResult(counters.added, counters.updated, counters.errors);
+  }
+
+  private void ingestOne(RawListing raw, Source source, IngestCounters counters) {
+    try {
+      counters.apply(self.ingest(raw, source));
+    } catch (DataIntegrityViolationException e) {
+      // Only a real concurrent INSERT race on the dedup unique constraint is retried — other
+      // constraint violations (e.g. NOT NULL) would fail identically on retry (issue #379).
+      if (isConcurrentInsertConflict(e)) {
+        counters.apply(retryAfterConflict(raw, source));
+      } else {
+        counters.errors++;
+        log.error("Non-retryable constraint violation ingesting listing: externalId={}, source={}",
             raw.externalId(), source.getCode(), e);
       }
+    } catch (OptimisticLockingFailureException e) {
+      // Concurrent UPDATE (e.g. admin moderation) on the same listing — retry against the
+      // latest row version in a fresh transaction.
+      counters.apply(retryAfterConflict(raw, source));
+    } catch (Exception e) {
+      counters.errors++;
+      log.error("Failed to ingest listing: externalId={}, source={}",
+          raw.externalId(), source.getCode(), e);
     }
+  }
 
-    log.info("Batch ingestion complete: source={}, added={}, updated={}, errors={}",
-        source.getCode(), added, updated, errors);
-    return new BatchIngestResult(added, updated, errors);
+  /**
+   * Distinguishes a genuine concurrent-insert race from any other constraint violation.
+   *
+   * <p>Walks the full cause chain rather than {@code getMostSpecificCause()}: Hibernate's
+   * {@link ConstraintViolationException} is typically the direct cause here, itself wrapping
+   * the raw {@link java.sql.SQLException} as its own cause — the most specific (deepest) cause
+   * would be that SQLException, not the constraint-bearing exception.
+   *
+   * @param e the violation caught while ingesting a listing
+   * @return true only if the violated constraint is the dedup unique key, safe to retry
+   */
+  private boolean isConcurrentInsertConflict(DataIntegrityViolationException e) {
+    for (Throwable cause = e.getCause(); cause != null; cause = cause.getCause()) {
+      if (cause instanceof ConstraintViolationException cve) {
+        return LISTING_UNIQUE_CONSTRAINT_NAME.equals(cve.getConstraintName());
+      }
+    }
+    return false;
   }
 
   private IngestOutcome retryAfterConflict(RawListing raw, Source source) {
@@ -117,6 +142,25 @@ public class ListingIngestionServiceImpl implements ListingIngestionService {
       log.error("Failed to ingest listing after conflict retry: externalId={}, source={}",
           raw.externalId(), source.getCode(), e);
       return null;
+    }
+  }
+
+  /**
+   * Mutable per-batch tally of {@link #ingestBatch} outcomes.
+   */
+  private static final class IngestCounters {
+    private int added;
+    private int updated;
+    private int errors;
+
+    void apply(IngestOutcome outcome) {
+      if (outcome == IngestOutcome.CREATED) {
+        added++;
+      } else if (outcome == IngestOutcome.UPDATED) {
+        updated++;
+      } else if (outcome == null) {
+        errors++;
+      }
     }
   }
 
@@ -178,6 +222,10 @@ public class ListingIngestionServiceImpl implements ListingIngestionService {
         return false;
       }
       return true;
+    }
+    if (raw.price() == null) {
+      log.warn("Source did not provide a price, cannot compare: externalId={}", existing.getExternalId());
+      return false;
     }
     return existing.getPrice().compareTo(raw.price()) != 0;
   }

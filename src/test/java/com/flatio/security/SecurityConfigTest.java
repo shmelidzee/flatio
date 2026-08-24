@@ -2,6 +2,7 @@ package com.flatio.security;
 
 import com.flatio.repository.AdminAuditLogRepository;
 import com.flatio.repository.CityRepository;
+import com.flatio.repository.CurrencyRepository;
 import com.flatio.repository.ListingRepository;
 import com.flatio.repository.PriceHistoryRepository;
 import com.flatio.repository.SourceRepository;
@@ -41,6 +42,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "telegram.bot.token=test_token:123",
         "telegram.bot.username=dummy_test_bot",
         "telegram.bot.webhook-url=https://test.example.com",
+        "telegram.bot.webhook-secret-token=test-secret",
         "JWT_SECRET_KEY=test-secret-key-for-security-config-test-minimum-256-bits-long"
     }
 )
@@ -66,6 +68,9 @@ class SecurityConfigTest {
   PriceHistoryRepository priceHistoryRepository;
 
   @MockBean
+  CurrencyRepository currencyRepository;
+
+  @MockBean
   UserSavedSearchRepository userSavedSearchRepository;
 
   @MockBean
@@ -85,10 +90,15 @@ class SecurityConfigTest {
 
   @Test
   void should_not_return_forbidden_when_posting_to_telegram_webhook_path_without_auth() throws Exception {
-    // Given / When — POST to "/<bot-token>" with no Authorization header, mirroring Telegram
+    // Given / When — POST to "/<bot-token>" with no Authorization header, mirroring Telegram.
+    // The X-Telegram-Bot-Api-Secret-Token header matches the "telegram.bot.webhook-secret-token"
+    // test property so TelegramWebhookSecretFilter lets the request through — this test verifies
+    // the SecurityConfig permitAll() rule, not the secret-token filter (issue #374).
     // Then — must not be rejected by Spring Security (403); any other status is the webhook
     // starter's own concern, not this test's
-    mockMvc.perform(post("/test_token:123").contentType("application/json").content("{}"))
+    mockMvc.perform(post("/test_token:123")
+            .header("X-Telegram-Bot-Api-Secret-Token", "test-secret")
+            .contentType("application/json").content("{}"))
         .andExpect(result -> {
           int status = result.getResponse().getStatus();
           if (status == 403) {

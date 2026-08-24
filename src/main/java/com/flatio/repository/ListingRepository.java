@@ -117,15 +117,22 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
   long countBySource(Source source);
 
   /**
-   * Finds listings that need reverse geocoding: coordinates are known but city is not yet set.
+   * Finds listings that need reverse geocoding: coordinates are known but city is not yet set,
+   * and the number of prior failed geocoding attempts has not reached {@code maxAttempts}.
    *
-   * <p>Used by the background geocoding job to enrich listings in batches.
+   * <p>Used by the background geocoding job to enrich listings in batches. Ordered by {@code id}
+   * for a deterministic, stable selection across runs — without an explicit order, repeated runs
+   * could arbitrarily re-select the same rows while never reaching others in the backlog.
+   * Excluding listings that exhausted {@code maxAttempts} stops a listing with persistently bad
+   * coordinates from occupying batch slots on every run indefinitely (issue #380).
    *
-   * @param pageable pagination configuration controlling batch size
+   * @param maxAttempts exclusive upper bound on {@code geocodingFailedAttempts}
+   * @param pageable    pagination configuration controlling batch size
    * @return page of listings needing geocoding, never null
    */
-  @Query("SELECT l FROM Listing l WHERE l.city IS NULL AND l.latitude IS NOT NULL")
-  List<Listing> findNeedingGeocoding(Pageable pageable);
+  @Query("SELECT l FROM Listing l WHERE l.city IS NULL AND l.latitude IS NOT NULL "
+      + "AND l.geocodingFailedAttempts < :maxAttempts ORDER BY l.id")
+  List<Listing> findNeedingGeocoding(@Param("maxAttempts") int maxAttempts, Pageable pageable);
 
   /**
    * Sets status to INACTIVE for all ACTIVE listings of the given source whose external ID
@@ -216,7 +223,7 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
                  l.area_kitchen_m2, l.address, l.latitude, l.longitude, l.country_id,
                  l.city, l.district, l.status, l.source_url, l.dedup_hash,
                  l.is_owner, l.is_negotiable, l.reposted_from, l.last_reposted_at,
-                 l.missed_syncs_count, l.published_at, l.created_at, l.updated_at,
+                 l.missed_syncs_count, l.geocoding_failed_attempts, l.published_at, l.created_at, l.updated_at,
                  l.photo_url, l.version
           FROM listings l
           LEFT JOIN source src_filter ON src_filter.code = CAST(:sourceCode AS varchar)

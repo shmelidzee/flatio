@@ -5,6 +5,7 @@ import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.core.ConsoleAppender;
 import com.flatio.repository.AdminAuditLogRepository;
 import com.flatio.repository.CityRepository;
+import com.flatio.repository.CurrencyRepository;
 import com.flatio.repository.ListingRepository;
 import com.flatio.repository.PriceHistoryRepository;
 import com.flatio.repository.SourceRepository;
@@ -46,9 +47,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
             "org.telegram.telegrambots.webhook.starter.TelegramBotStarterConfiguration",
         "telegram.bot.token=dummy-test-token",
         "telegram.bot.username=dummy_test_bot",
-        // prod profile activates TelegramWebhookConfig, which requires this to build its bean;
-        // the webhook starter's own auto-configuration is excluded above, so setWebhook is never called
+        // prod profile activates TelegramWebhookConfig, which requires both of these to build its
+        // bean; the webhook starter's own auto-configuration is excluded above, so setWebhook is
+        // never called
         "telegram.bot.webhook-url=https://test.example.com",
+        "telegram.bot.webhook-secret-token=test-secret",
         "JWT_SECRET_KEY=test-secret-key-for-logback-test-minimum-256-bits-long"
     }
 )
@@ -75,6 +78,9 @@ class LogbackProdProfileTest {
 
   @MockBean
   PriceHistoryRepository priceHistoryRepository;
+
+  @MockBean
+  CurrencyRepository currencyRepository;
 
   @MockBean
   UserSavedSearchRepository userSavedSearchRepository;
