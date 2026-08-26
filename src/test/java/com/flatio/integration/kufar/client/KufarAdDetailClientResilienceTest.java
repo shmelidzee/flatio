@@ -3,6 +3,7 @@ package com.flatio.integration.kufar.client;
 import com.flatio.repository.AdminAuditLogRepository;
 import com.flatio.repository.CityRepository;
 import com.flatio.repository.CurrencyRepository;
+import com.flatio.repository.FavoriteRepository;
 import com.flatio.repository.ListingRepository;
 import com.flatio.repository.NotificationRepository;
 import com.flatio.repository.PriceHistoryRepository;
@@ -124,6 +125,9 @@ class KufarAdDetailClientResilienceTest {
 
   @MockBean
   private AdminAuditLogRepository adminAuditLogRepository;
+
+  @MockBean
+  private FavoriteRepository favoriteRepository;
 
   @MockBean(name = "kufarAdDetailRestClient")
   private RestClient restClient;
