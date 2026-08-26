@@ -16,16 +16,13 @@ public record FavoriteResponse(
     @Schema(description = "Summary of the favorited listing")
     ListingSummaryResponse listing,
 
-    @Schema(description = "Listing price at the moment it was added to favorites", example = "75000.00",
-        nullable = true)
+    @Schema(description = "Listing price at the moment it was added to favorites", example = "75000.00")
     BigDecimal priceAtAdd,
 
-    @Schema(description = "Current listing price; null when the listing has no disclosed price", example = "72000.00",
-        nullable = true)
+    @Schema(description = "Current listing price", example = "72000.00")
     BigDecimal currentPrice,
 
-    @Schema(description = "currentPrice minus priceAtAdd; null when either price is unknown", example = "-3000.00",
-        nullable = true)
+    @Schema(description = "currentPrice minus priceAtAdd", example = "-3000.00", nullable = true)
     BigDecimal priceDelta,
 
     @Schema(description = "True when the current price differs from the price at the time it was added",
