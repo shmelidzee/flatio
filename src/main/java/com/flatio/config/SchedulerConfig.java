@@ -125,4 +125,32 @@ public class SchedulerConfig implements SchedulingConfigurer {
         executor.initialize();
         return executor;
     }
+
+    /**
+     * Dedicated thread pool for {@code NotificationTriggerServiceImpl#evaluate}.
+     *
+     * <p>{@code @Async("notificationTriggerExecutor")} on {@code evaluate} hands the batch of
+     * listing changes off to this pool immediately, so the calling sync job's thread returns
+     * without waiting for subscription matching and notification inserts to complete (M2.3.2).
+     * A small pool is enough: evaluation runs once per sync batch, not per listing, and each
+     * change is only ever queued from one sync job at a time.
+     *
+     * <p>On graceful shutdown, waits up to {@link #SHUTDOWN_AWAIT_TERMINATION_SECONDS} for an
+     * in-flight evaluation to finish rather than interrupting it mid-batch — see that constant's
+     * Javadoc for the timeout rationale.
+     *
+     * @return executor used by {@code @Async("notificationTriggerExecutor")}
+     */
+    @Bean(name = "notificationTriggerExecutor")
+    public TaskExecutor notificationTriggerExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(50);
+        executor.setThreadNamePrefix("flatio-notification-trigger-");
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(SHUTDOWN_AWAIT_TERMINATION_SECONDS);
+        executor.initialize();
+        return executor;
+    }
 }
