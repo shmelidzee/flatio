@@ -15,6 +15,7 @@ import com.flatio.repository.AdminAuditLogRepository;
 import com.flatio.repository.CityRepository;
 import com.flatio.repository.CurrencyRepository;
 import com.flatio.repository.ListingRepository;
+import com.flatio.repository.NotificationRepository;
 import com.flatio.repository.PriceHistoryRepository;
 import com.flatio.repository.SourceRepository;
 import com.flatio.repository.SubscriptionRepository;
@@ -123,6 +124,9 @@ class KufarSyncExecutorIsolationTest {
 
   @MockBean
   private SubscriptionRepository subscriptionRepository;
+
+  @MockBean
+  private NotificationRepository notificationRepository;
 
   @MockBean
   private AdminAuditLogRepository adminAuditLogRepository;
