@@ -1,6 +1,8 @@
 package com.flatio.web.controller;
 
 import com.flatio.common.exception.AdminAccessDeniedException;
+import com.flatio.common.exception.FavoriteLimitExceededException;
+import com.flatio.common.exception.FavoriteNotFoundException;
 import com.flatio.common.exception.InvalidTelegramAuthException;
 import com.flatio.common.exception.ListingConcurrentModificationException;
 import com.flatio.common.exception.ListingNotFoundException;
@@ -69,6 +71,20 @@ public class GlobalExceptionHandler {
       SubscriptionLimitExceededException ex, HttpServletRequest request
   ) {
     log.warn("Subscription limit exceeded on {}: {}", request.getRequestURI(), ex.getMessage());
+    return buildError(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage(), request.getRequestURI(), List.of());
+  }
+
+  @ExceptionHandler(FavoriteNotFoundException.class)
+  @ResponseStatus(HttpStatus.NOT_FOUND)
+  public ErrorResponse handleFavoriteNotFound(FavoriteNotFoundException ex, HttpServletRequest request) {
+    log.warn("Resource not found on {}: {}", request.getRequestURI(), ex.getMessage());
+    return buildError(HttpStatus.NOT_FOUND, ex.getMessage(), request.getRequestURI(), List.of());
+  }
+
+  @ExceptionHandler(FavoriteLimitExceededException.class)
+  @ResponseStatus(HttpStatus.UNPROCESSABLE_ENTITY)
+  public ErrorResponse handleFavoriteLimitExceeded(FavoriteLimitExceededException ex, HttpServletRequest request) {
+    log.warn("Favorites limit exceeded on {}: {}", request.getRequestURI(), ex.getMessage());
     return buildError(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage(), request.getRequestURI(), List.of());
   }
 
