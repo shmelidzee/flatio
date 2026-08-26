@@ -8,6 +8,39 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Fixed
+- **PR #409 — Устранён конфликт маршрутов `GET /admin` с Telegram-вебхуком (issue #361)**
+  - `telegrambots-springboot-webhook-starter` регистрирует `@PostMapping("/{botPath}")` —
+    wildcard-паттерн на один сегмент пути, совпадающий с любым путём вида `/что-угодно`, включая
+    `/admin`, независимо от значения `TELEGRAM_BOT_TOKEN`. Единый на всё приложение
+    `RequestMappingHandlerMapping` находил совпадение по пути в этом паттерне раньше, чем
+    resource-хендлер admin SPA (тот зарегистрирован на отдельном, менее приоритетном
+    `HandlerMapping`), а метод не совпадал (только `POST`) — `GET /admin` падал в
+    `HttpRequestMethodNotSupportedException`
+  - Добавлен `AdminSpaRedirectController` с литеральным `@GetMapping("/admin")` → редирект на
+    `/admin/`. Для `GET`-запроса вебхук-маппинг (`POST`-only) больше не становится кандидатом на
+    совпадение, конфликт не возникает; `POST /admin` по-прежнему уходит в вебхук-хендлер без
+    изменений
+- **PR #408 — `GET /admin` возвращал 500 вместо 405 при несовпадении метода (issue #361, расследование)**
+  - `GlobalExceptionHandler` не имел обработчика `HttpRequestMethodNotSupportedException` — любой
+    запрос, находящий маршрут по пути, но не по методу (включая `GET /admin` до фикса #409),
+    падал в generic `Exception`-хендлер и возвращал непрозрачный `500 Internal Server Error`.
+    Добавлен `@ExceptionHandler(HttpRequestMethodNotSupportedException.class)` → `405 Method Not
+    Allowed` для любого будущего подобного случая в проекте
+  - Issue #397 закрыт без кода — уже устранён побочным эффектом PR #405 (#391 перенёс мутацию в
+    `UserRow`, заодно убрав проблемную строку `(updateMutation.error as Error).message`)
+- **PR #407 — Аудит: дедупликация редиректа на 401, ссылка на источник в карточке, утечка памяти в UserStatusCache (issues #395, #396, #399)**
+  - **#395** — параллельные `useQuery` на `DashboardPage` при истёкшем токене независимо вызывали
+    `clearToken()`/редирект на `/admin/login`, из-за чего на долю секунды успевали промелькнуть
+    несколько сообщений об ошибке. Добавлен module-level флаг `redirectingToLogin` — редиректит
+    только первый параллельный 401
+  - **#396** — `sourceUrl` уже возвращался API, но нигде не рендерился во фронтенде — модераторы не
+    могли проверить оригинал объявления без ручного поиска. Добавлена ссылка «Открыть на
+    источнике» в `ListingDetailModal`
+  - **#399** — `UserStatusCache` хранил записи в обычном `ConcurrentHashMap` без фоновой очистки
+    (просроченная запись вычищалась только при повторном обращении к тому же `userId`) — карта
+    росла неограниченно в течение времени жизни приложения. Переведён на Caffeine с
+    `expireAfterWrite` и фоновой эвикцией по таймеру; немедленная эвикция при admin-действии
+    (issue #365) не регрессирует
 - **PR #405 — Аудит admin-фронтенда: race condition в toggle-кнопках, allowlist фото объявлений (issues #391–#394)**
   - **#391** — `SourcesPage`/`UsersPage` использовали один `useMutation` на всю таблицу; TanStack
     Query отслеживает `isPending`/`variables` только для последнего вызванного `mutate()`, поэтому

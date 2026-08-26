@@ -362,6 +362,20 @@ The webhook `SecurityFilterChain` is registered with `@Order(1)` in
 chain for the webhook path. In the `local` profile, long-polling is used and the webhook
 security config is inactive.
 
+**Known limitation — the webhook route matches any single path segment (issue #361).**
+`telegrambots-springboot-webhook-starter` registers the webhook handler as
+`@PostMapping("/{botPath}")` — a wildcard on one path segment, not a literal route scoped to the
+configured token. At the Spring MVC routing level this matches `POST` to *any* single-segment
+path, including one that happens to collide with another route (e.g. `/admin`); the actual token
+value is only checked inside the handler, not by the router. A `GET` request to such a colliding
+path finds this mapping by path but not by method, and previously fell through
+`GlobalExceptionHandler`'s generic exception branch as an opaque `500` instead of the correct
+`405 Method Not Allowed` — fixed by an explicit `@ExceptionHandler(HttpRequestMethodNotSupportedException.class)`.
+`GET /admin` specifically is additionally routed by `AdminSpaRedirectController`
+(`@GetMapping("/admin")` → redirect to `/admin/`), so for that one path the collision no longer
+surfaces at all: the literal `GET` mapping wins over the wildcard `POST`-only one before either
+exception path is reached.
+
 ### CORS
 
 Allowed origins are configured via `flatio.cors.allowed-origins`
