@@ -2,6 +2,7 @@ package com.flatio.repository;
 
 import com.flatio.domain.subscription.Subscription;
 import com.flatio.domain.user.User;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -17,6 +18,17 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, Long
    * @return page of subscriptions, never null
    */
   Page<Subscription> findByUser(User user, Pageable pageable);
+
+  /**
+   * Returns all active subscriptions, regardless of owner.
+   *
+   * <p>Used by {@code NotificationTriggerServiceImpl} to evaluate every enabled subscription
+   * against a batch of listing changes; paused subscriptions ({@code isActive = false}) are
+   * excluded from evaluation entirely.
+   *
+   * @return list of active subscriptions, never null, may be empty
+   */
+  List<Subscription> findByActiveTrue();
 
   /**
    * Finds a subscription by ID, scoped to the given owner.
