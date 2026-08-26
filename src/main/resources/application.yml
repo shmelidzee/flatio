@@ -277,6 +277,12 @@ flatio:
     limits:
       user-max-active: ${SUBSCRIPTION_LIMIT_USER_MAX_ACTIVE:3}
       pro-max-active: ${SUBSCRIPTION_LIMIT_PRO_MAX_ACTIVE:20}
+  favorites:
+    limits:
+      user-max-favorites: ${FAVORITES_LIMIT_USER_MAX:100}
+      # Empty value binds to null (Spring's relaxed binding treats an empty string as "no value"),
+      # which FavoriteLimitProperties/FavoriteServiceImpl treat as unlimited for the PRO/ADMIN tariff.
+      pro-max-favorites: ${FAVORITES_LIMIT_PRO_MAX:}
   health:
     freshness:
       threshold-minutes: ${FLATIO_HEALTH_FRESHNESS_THRESHOLD_MINUTES:30}
