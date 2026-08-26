@@ -12,6 +12,7 @@ import com.flatio.integration.realt.scheduler.RealtRoomFullSyncJob;
 import com.flatio.integration.realt.scheduler.RealtRoomSaleFullSyncJob;
 import com.flatio.integration.realt.scheduler.RealtSaleFullSyncJob;
 import com.flatio.repository.AdminAuditLogRepository;
+import com.flatio.repository.BlacklistEntryRepository;
 import com.flatio.repository.CityRepository;
 import com.flatio.repository.CurrencyRepository;
 import com.flatio.repository.FavoriteRepository;
@@ -134,6 +135,9 @@ class KufarSyncExecutorIsolationTest {
 
   @MockBean
   private FavoriteRepository favoriteRepository;
+
+  @MockBean
+  private BlacklistEntryRepository blacklistEntryRepository;
 
   @MockBean(name = "kufarAdDetailRestClient")
   private RestClient restClient;

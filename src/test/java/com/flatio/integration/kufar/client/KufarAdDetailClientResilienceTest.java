@@ -1,6 +1,7 @@
 package com.flatio.integration.kufar.client;
 
 import com.flatio.repository.AdminAuditLogRepository;
+import com.flatio.repository.BlacklistEntryRepository;
 import com.flatio.repository.CityRepository;
 import com.flatio.repository.CurrencyRepository;
 import com.flatio.repository.FavoriteRepository;
@@ -128,6 +129,9 @@ class KufarAdDetailClientResilienceTest {
 
   @MockBean
   private FavoriteRepository favoriteRepository;
+
+  @MockBean
+  private BlacklistEntryRepository blacklistEntryRepository;
 
   @MockBean(name = "kufarAdDetailRestClient")
   private RestClient restClient;
