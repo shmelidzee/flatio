@@ -49,7 +49,7 @@ class NominatimClientTest {
         .limitForPeriod(1_000)
         .timeoutDuration(Duration.ofSeconds(5))
         .build();
-    var properties = new NominatimProperties("https://nominatim.test", "TestAgent/1.0", "ru");
+    var properties = new NominatimProperties("https://nominatim.test", "TestAgent/1.0", "ru", "д. ");
     nominatimClient = new NominatimClient(restClient, RateLimiterRegistry.of(rateLimiterConfig), properties);
   }
 
@@ -112,6 +112,28 @@ class NominatimClientTest {
     // Then
     assertThat(result).isPresent();
     assertThat(result.get()).isEqualTo("д. Ратомка");
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_use_configured_village_prefix_instead_of_hardcoded_value() {
+    // Given — a client built with a non-default nominatim.village-prefix (issue #425)
+    var rateLimiterConfig = RateLimiterConfig.custom()
+        .limitRefreshPeriod(Duration.ofMillis(1))
+        .limitForPeriod(1_000)
+        .timeoutDuration(Duration.ofSeconds(5))
+        .build();
+    var properties = new NominatimProperties("https://nominatim.test", "TestAgent/1.0", "en", "v. ");
+    var clientWithCustomPrefix =
+        new NominatimClient(restClient, RateLimiterRegistry.of(rateLimiterConfig), properties);
+    var address = new NominatimReverseResponse.NominatimAddress(null, null, "Kopishche", null, null, null);
+    mockApiResponse(new NominatimReverseResponse("Kopishche", address));
+
+    // When
+    var result = clientWithCustomPrefix.reverseGeocode(new BigDecimal("53.800"), new BigDecimal("27.700"));
+
+    // Then — configured prefix used, not the Russian "д. "
+    assertThat(result).isPresent().contains("v. Kopishche");
   }
 
   @Test
