@@ -7,6 +7,40 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **PR #431 — Чёрный список: entity + CRUD (объявления, источники, стоп-слова) (issue #413)**
+  - `com.flatio.domain.blacklist.BlacklistEntry` (Flyway `V60`/`V61`) — единая полиморфная модель:
+    `type` (`LISTING`/`SOURCE`/`KEYWORD`) + строковая `value`, `UNIQUE(user_id, type, value)`
+  - `POST/GET(фильтр по `type`)/DELETE /api/v1/blacklist` — CRUD с ownership-изоляцией (тот же
+    паттерн, что у Favorites, #412); повторное добавление существующей записи — no-op
+  - Тарифный лимит только на `KEYWORD` (`flatio.blacklist.limits.*`, USER=20/PRO=∞ по умолчанию);
+    `LISTING`/`SOURCE` не лимитируются
+  - `SOURCE.value` резолвится и хранится по `code` источника (`sourceRepository.findByCode`), не
+    по числовому `Source.id` — тот нигде не отдаётся клиентам (найдено и исправлено при ревью PR)
+  - Применение исключений к выдаче (поиск/подписки/уведомления) — отдельный issue M2.4.4
+  - `docs/api.md` — раздел «Blacklist»
+- **PR #429/#430 — Избранное: entity + CRUD (issue #412)**
+  - `com.flatio.domain.favorite.Favorite` (Flyway `V58`/`V59`) — `UNIQUE(user_id, listing_id)`
+  - `POST /api/v1/favorites`, `GET /api/v1/favorites` (сортировка по дате добавления, текущей цене
+    или изменению цены), `DELETE /api/v1/favorites/{listingId}`
+  - `FavoriteResponse` вычисляет индикаторы изменения против текущего состояния объявления:
+    `priceDelta`/`priceChanged`, `listingInactive`
+  - Тарифный лимит числа избранных (`flatio.favorites.limits.*`, USER=100/PRO=∞ по умолчанию)
+  - При ревью после мёржа: `GET /api/v1/favorites` получил `JOIN FETCH` на `listing` (устранён
+    N+1), уточнена nullability `priceDelta`/`priceAtAdd` в Javadoc/`@Schema`
+  - `docs/api.md` — раздел «Favorites»
+- **PR #427/#428 — Движок уведомлений по подпискам: entity + оценка изменений объявлений (issue #48)**
+  - `com.flatio.domain.notification.Notification` (Flyway `V56`/`V57`) — уведомление о совпадении
+    объявления с подпиской пользователя (`status`: `PENDING`/`SENT`/`FAILED`)
+  - `NotificationTriggerService.evaluate(List<ListingChange>)` — асинхронно (отдельный executor
+    `notificationTriggerExecutor`) сопоставляет пачку изменений объявлений (новое/изменение
+    цены/снятие с публикации) со всеми активными подписками по критериям поиска и типу триггера,
+    создаёт `Notification` без дублей
+  - Ошибка разбора `search_criteria` одной подписки или сбой создания одного уведомления не
+    прерывает оценку остальных подписок/объявлений в пачке (изоляция ошибок)
+  - Чисто внутренний слой — публичного REST API не добавляет; отправка уведомлений
+    (Telegram-доставка `PENDING` → `SENT`) — отдельный будущий issue
+
 ### Fixed
 - **PR #409 — Устранён конфликт маршрутов `GET /admin` с Telegram-вебхуком (issue #361)**
   - `telegrambots-springboot-webhook-starter` регистрирует `@PostMapping("/{botPath}")` —
