@@ -4,6 +4,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.core.ConsoleAppender;
 import com.flatio.repository.AdminAuditLogRepository;
+import com.flatio.repository.BlacklistEntryRepository;
 import com.flatio.repository.CityRepository;
 import com.flatio.repository.CurrencyRepository;
 import com.flatio.repository.FavoriteRepository;
@@ -104,6 +105,9 @@ class LogbackProdProfileTest {
 
   @MockBean
   FavoriteRepository favoriteRepository;
+
+  @MockBean
+  BlacklistEntryRepository blacklistEntryRepository;
 
   @Autowired
   private ApplicationContext applicationContext;

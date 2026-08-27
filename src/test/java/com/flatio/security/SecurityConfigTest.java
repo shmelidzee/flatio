@@ -1,6 +1,7 @@
 package com.flatio.security;
 
 import com.flatio.repository.AdminAuditLogRepository;
+import com.flatio.repository.BlacklistEntryRepository;
 import com.flatio.repository.CityRepository;
 import com.flatio.repository.CurrencyRepository;
 import com.flatio.repository.FavoriteRepository;
@@ -92,6 +93,9 @@ class SecurityConfigTest {
 
   @MockBean
   FavoriteRepository favoriteRepository;
+
+  @MockBean
+  BlacklistEntryRepository blacklistEntryRepository;
 
   @Autowired
   private MockMvc mockMvc;

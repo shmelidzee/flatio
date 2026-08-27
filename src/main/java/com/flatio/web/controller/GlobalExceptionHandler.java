@@ -1,6 +1,9 @@
 package com.flatio.web.controller;
 
 import com.flatio.common.exception.AdminAccessDeniedException;
+import com.flatio.common.exception.BlacklistEntryNotFoundException;
+import com.flatio.common.exception.BlacklistInvalidValueException;
+import com.flatio.common.exception.BlacklistKeywordLimitExceededException;
 import com.flatio.common.exception.FavoriteLimitExceededException;
 import com.flatio.common.exception.FavoriteNotFoundException;
 import com.flatio.common.exception.InvalidTelegramAuthException;
@@ -86,6 +89,29 @@ public class GlobalExceptionHandler {
   public ErrorResponse handleFavoriteLimitExceeded(FavoriteLimitExceededException ex, HttpServletRequest request) {
     log.warn("Favorites limit exceeded on {}: {}", request.getRequestURI(), ex.getMessage());
     return buildError(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage(), request.getRequestURI(), List.of());
+  }
+
+  @ExceptionHandler(BlacklistEntryNotFoundException.class)
+  @ResponseStatus(HttpStatus.NOT_FOUND)
+  public ErrorResponse handleBlacklistEntryNotFound(BlacklistEntryNotFoundException ex, HttpServletRequest request) {
+    log.warn("Resource not found on {}: {}", request.getRequestURI(), ex.getMessage());
+    return buildError(HttpStatus.NOT_FOUND, ex.getMessage(), request.getRequestURI(), List.of());
+  }
+
+  @ExceptionHandler(BlacklistKeywordLimitExceededException.class)
+  @ResponseStatus(HttpStatus.UNPROCESSABLE_ENTITY)
+  public ErrorResponse handleBlacklistKeywordLimitExceeded(
+      BlacklistKeywordLimitExceededException ex, HttpServletRequest request
+  ) {
+    log.warn("Blacklist keyword limit exceeded on {}: {}", request.getRequestURI(), ex.getMessage());
+    return buildError(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage(), request.getRequestURI(), List.of());
+  }
+
+  @ExceptionHandler(BlacklistInvalidValueException.class)
+  @ResponseStatus(HttpStatus.BAD_REQUEST)
+  public ErrorResponse handleBlacklistInvalidValue(BlacklistInvalidValueException ex, HttpServletRequest request) {
+    log.warn("Invalid blacklist value on {}: {}", request.getRequestURI(), ex.getMessage());
+    return buildError(HttpStatus.BAD_REQUEST, ex.getMessage(), request.getRequestURI(), List.of());
   }
 
   @ExceptionHandler(InvalidTelegramAuthException.class)

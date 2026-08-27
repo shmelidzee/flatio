@@ -283,6 +283,12 @@ flatio:
       # Empty value binds to null (Spring's relaxed binding treats an empty string as "no value"),
       # which FavoriteLimitProperties/FavoriteServiceImpl treat as unlimited for the PRO/ADMIN tariff.
       pro-max-favorites: ${FAVORITES_LIMIT_PRO_MAX:}
+  blacklist:
+    limits:
+      user-max-keywords: ${BLACKLIST_LIMIT_USER_MAX_KEYWORDS:20}
+      # Empty value binds to null (Spring's relaxed binding treats an empty string as "no value"),
+      # which BlacklistLimitProperties/BlacklistServiceImpl treat as unlimited for the PRO/ADMIN tariff.
+      pro-max-keywords: ${BLACKLIST_LIMIT_PRO_MAX_KEYWORDS:}
   health:
     freshness:
       threshold-minutes: ${FLATIO_HEALTH_FRESHNESS_THRESHOLD_MINUTES:30}
