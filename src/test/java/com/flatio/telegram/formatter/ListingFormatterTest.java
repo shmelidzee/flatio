@@ -1,8 +1,11 @@
 package com.flatio.telegram.formatter;
 
+import com.flatio.domain.listing.ListingStatus;
+import com.flatio.web.dto.ListingResponse;
 import com.flatio.web.dto.ListingSummaryResponse;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -1109,6 +1112,103 @@ class ListingFormatterTest {
 
     // Then — non-Kufar sources omit the fallback label entirely
     assertThat(caption).doesNotContain("Адрес не указан");
+  }
+
+  // -------------------------------------------------------------------------
+  // buildDeepLinkCaption (issue #418)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_format_deep_link_caption_with_price_and_address() {
+    // Given
+    var listing = buildListingResponse(60L, BigDecimal.valueOf(500), null, "USD",
+        "Советский район, Минск", null, ListingStatus.ACTIVE);
+
+    // When
+    var caption = listingFormatter.buildDeepLinkCaption(listing);
+
+    // Then
+    assertThat(caption).contains("$500");
+    assertThat(caption).contains("Советский район, Минск");
+    assertThat(caption).doesNotContain("неактуально");
+  }
+
+  @Test
+  void should_show_negotiable_label_in_deep_link_caption_when_price_label_present() {
+    // Given — priceLabel is only non-null when the seller did not disclose a price
+    var listing = buildListingResponse(61L, null, "Договорная", "BYN", null, null, ListingStatus.ACTIVE);
+
+    // When
+    var caption = listingFormatter.buildDeepLinkCaption(listing);
+
+    // Then
+    assertThat(caption).contains("Договорная");
+  }
+
+  @Test
+  void should_show_inactive_label_in_deep_link_caption_when_status_not_active() {
+    // Given — listing deactivated (unpublished by source) since the deep link was shared
+    var listing = buildListingResponse(62L, BigDecimal.valueOf(500), null, "USD",
+        null, null, ListingStatus.INACTIVE);
+
+    // When
+    var caption = listingFormatter.buildDeepLinkCaption(listing);
+
+    // Then
+    assertThat(caption).contains("неактуально");
+  }
+
+  @Test
+  void should_not_show_inactive_label_in_deep_link_caption_when_status_active() {
+    // Given
+    var listing = buildListingResponse(63L, BigDecimal.valueOf(500), null, "USD",
+        null, null, ListingStatus.ACTIVE);
+
+    // When
+    var caption = listingFormatter.buildDeepLinkCaption(listing);
+
+    // Then
+    assertThat(caption).doesNotContain("неактуально");
+  }
+
+  @Test
+  void should_include_room_prefix_in_deep_link_caption_when_rooms_present() {
+    // Given
+    var listing = buildListingResponse(64L, BigDecimal.valueOf(1_200), null, "BYN",
+        null, 2, ListingStatus.ACTIVE);
+
+    // When
+    var caption = listingFormatter.buildDeepLinkCaption(listing);
+
+    // Then
+    assertThat(caption).startsWith("2-комнатная за");
+  }
+
+  @Test
+  void should_hard_clamp_deep_link_caption_when_it_exceeds_limit() {
+    // Given — address of 1050 chars forces caption over the 1024-char limit
+    String longAddress = "а".repeat(1050);
+    var listing = buildListingResponse(65L, BigDecimal.valueOf(500), null, "USD",
+        longAddress, null, ListingStatus.ACTIVE);
+
+    // When
+    var caption = listingFormatter.buildDeepLinkCaption(listing);
+
+    // Then
+    assertThat(caption.length()).isLessThanOrEqualTo(1024);
+    assertThat(caption).endsWith("…");
+  }
+
+  private ListingResponse buildListingResponse(Long id, BigDecimal price, String priceLabel, String currency,
+      String address, Integer rooms, ListingStatus status) {
+    return new ListingResponse(
+        id, "ext-" + id, "realt", "Квартира", null, null,
+        null, null, price, priceLabel, currency,
+        rooms, null, null, null, address,
+        null, null, null, null, false,
+        false, status, "https://realt.by/" + id, null, null,
+        List.of(), false
+    );
   }
 
   // -------------------------------------------------------------------------
