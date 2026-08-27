@@ -1,5 +1,7 @@
 package com.flatio.telegram.handler;
 
+import com.flatio.common.util.ImageUrlValidator;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -41,7 +43,9 @@ class PhotoProxyClientTest {
   @BeforeEach
   @SuppressWarnings("unchecked")
   void setUp() {
-    photoProxyClient = new PhotoProxyClient(restClient);
+    // Full domain set, matching how the single shared ImageUrlValidator bean is wired in production.
+    photoProxyClient = new PhotoProxyClient(restClient,
+        new ImageUrlValidator(Set.of("onliner.by", "kufar.by", "realt.by")));
     // lenient: the not-allowlisted-host tests below short-circuit before restClient is touched
     lenient().when(restClient.get()).thenReturn(uriSpec);
     lenient().doReturn(headersSpec).when(uriSpec).uri(anyString());
