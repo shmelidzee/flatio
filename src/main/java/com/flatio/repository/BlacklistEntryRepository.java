@@ -3,6 +3,8 @@ package com.flatio.repository;
 import com.flatio.domain.blacklist.BlacklistEntry;
 import com.flatio.domain.blacklist.BlacklistEntryType;
 import com.flatio.domain.user.User;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -71,4 +73,16 @@ public interface BlacklistEntryRepository extends JpaRepository<BlacklistEntry, 
    * @return number of matching entries
    */
   long countByUserAndType(User user, BlacklistEntryType type);
+
+  /**
+   * Finds all blacklist entries owned by any of the given users.
+   *
+   * <p>Used by {@code NotificationTriggerServiceImpl} to batch-preload every evaluable
+   * subscription's owner's blacklist in one query per {@code evaluate} run (issue #414), instead
+   * of one query per distinct user.
+   *
+   * @param users the owners to fetch entries for
+   * @return all matching blacklist entries, never null, may be empty
+   */
+  List<BlacklistEntry> findByUserIn(Collection<User> users);
 }
