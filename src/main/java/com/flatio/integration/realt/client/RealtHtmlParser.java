@@ -108,21 +108,27 @@ public class RealtHtmlParser {
     Instant publishedAt = parseInstant(obj.path("createdAt").textValue(), externalId);
     Boolean isOwner = extractIsOwner(obj);
 
-    return new RawListing(
-        externalId, title, null,
-        context.dealType(), context.propertyType(),
-        price, currency, priceUsd, priceByn,
-        jsonIntOrNull(obj, "rooms"),
-        jsonIntOrNull(obj, "storey"),
-        jsonIntOrNull(obj, "storeys"),
-        jsonBigDecimalOrNull(obj, "areaTotal"),
-        address, null, null, city,
-        context.baseUrl() + context.objectPathPrefix() + externalId + "/",
-        publishedAt,
-        extractPhotos(obj),
-        isOwner, null,
-        isNegotiable
-    );
+    return RawListing.builder()
+        .externalId(externalId)
+        .title(title)
+        .dealType(context.dealType())
+        .propertyType(context.propertyType())
+        .price(price)
+        .currency(currency)
+        .priceUsd(priceUsd)
+        .priceByn(priceByn)
+        .rooms(jsonIntOrNull(obj, "rooms"))
+        .floorNumber(jsonIntOrNull(obj, "storey"))
+        .floorsTotal(jsonIntOrNull(obj, "storeys"))
+        .areaTotalM2(jsonBigDecimalOrNull(obj, "areaTotal"))
+        .address(address)
+        .city(city)
+        .sourceUrl(context.baseUrl() + context.objectPathPrefix() + externalId + "/")
+        .publishedAt(publishedAt)
+        .photoUrls(extractPhotos(obj))
+        .isOwner(isOwner)
+        .isNegotiable(isNegotiable)
+        .build();
   }
 
   private BigDecimal computePriceByn(BigDecimal price, String currency, String externalId, String sourceId) {

@@ -250,31 +250,25 @@ public class OnlinerSaleConnector implements ListingConnector {
     Instant publishedAt = apartment.createdAt() != null ? apartment.createdAt().toInstant() : null;
     Boolean isOwner = apartment.seller() != null ? "owner".equals(apartment.seller().type()) : null;
 
-    return new RawListing(
-        String.valueOf(apartment.id()),
-        buildTitle(address),
-        null,
-        DEAL_TYPE_SELL,
-        PROPERTY_TYPE_APARTMENT,
-        price,
-        "BYN",
-        priceUsd,
-        null,
-        apartment.numberOfRooms(),
-        null,
-        null,
-        null,
-        address,
-        lat,
-        lon,
-        city,
-        apartment.url(),
-        publishedAt,
-        photos,
-        isOwner,
-        null,
-        isNegotiable
-    );
+    return RawListing.builder()
+        .externalId(String.valueOf(apartment.id()))
+        .title(buildTitle(address))
+        .dealType(DEAL_TYPE_SELL)
+        .propertyType(PROPERTY_TYPE_APARTMENT)
+        .price(price)
+        .currency("BYN")
+        .priceUsd(priceUsd)
+        .rooms(apartment.numberOfRooms())
+        .address(address)
+        .latitude(lat)
+        .longitude(lon)
+        .city(city)
+        .sourceUrl(apartment.url())
+        .publishedAt(publishedAt)
+        .photoUrls(photos)
+        .isOwner(isOwner)
+        .isNegotiable(isNegotiable)
+        .build();
   }
 
   /**

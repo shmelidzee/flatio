@@ -3,6 +3,7 @@ package com.flatio.integration.core;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import lombok.Builder;
 
 /**
  * Raw listing data fetched from an external source.
@@ -11,6 +12,11 @@ import java.util.List;
  * Field values reflect what the source provides; optional fields may be null.
  * The service is responsible for validation, mapping, and persistence.
  *
+ * <p>Construct via {@link #builder()} (issue #422) — the canonical constructor has 23
+ * same-typed-neighbor parameters (e.g. {@code floorNumber}/{@code floorsTotal},
+ * {@code latitude}/{@code longitude}) where a positional copy-paste error compiles silently.
+ * The builder's named setters remove that risk at connector call sites.
+ *
  * @param priceUnit optional price-unit hint from the connector; may be {@code null}.
  *                  The ingestion service always derives the persisted value from {@code dealType}
  *                  ({@code RENT}→{@code PER_MONTH}, {@code RENT_DAILY}→{@code PER_DAY},
@@ -18,6 +24,7 @@ import java.util.List;
  *                  {@code OnlinerConnector}. It is kept as an extension point for future
  *                  connectors (e.g. Realt, Kufar) that may provide the unit directly.
  */
+@Builder
 public record RawListing(
     String externalId,
     String title,
