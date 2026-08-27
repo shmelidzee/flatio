@@ -1,10 +1,12 @@
 package com.flatio.telegram.formatter;
 
+import com.flatio.telegram.config.SourceDisplayProperties;
 import com.flatio.web.dto.ListingSummaryResponse;
 import java.math.BigDecimal;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
@@ -32,9 +34,14 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
  *   <li>When price is in BYN only: {@code Y BYN}.</li>
  *   <li>Other currencies: {@code amount CURRENCY}.</li>
  * </ul>
+ *
+ * <p>Per-source display name and the "address not specified" label are read from
+ * {@link SourceDisplayProperties} (issue #423) — adding a new source is a configuration change,
+ * not a code change here.
  */
 @Component
 @Slf4j
+@RequiredArgsConstructor
 public class ListingFormatter {
 
   private static final int CAPTION_MAX_LENGTH = 1024;
@@ -42,6 +49,8 @@ public class ListingFormatter {
   private static final String LABEL_ADDRESS_UNKNOWN = "Адрес не указан";
   private static final DateTimeFormatter PUBLISHED_FORMATTER =
       DateTimeFormatter.ofPattern("HH:mm, dd.MM.yyyy").withZone(ZoneId.of("Europe/Minsk"));
+
+  private final SourceDisplayProperties sourceDisplayProperties;
 
   /**
    * Builds the HTML caption for a listing card.
@@ -112,13 +121,15 @@ public class ListingFormatter {
     String address = formatLocation(listing.address(), listing.district(), listing.city());
     if (!address.isEmpty()) {
       sb.append("\n").append(escapeHtml(address));
-    } else if (isKufarSource(listing.sourceId())) {
+    } else if (isAddressUnknownLabelEnabled(listing.sourceId())) {
       sb.append("\n").append(LABEL_ADDRESS_UNKNOWN);
     }
   }
 
-  private boolean isKufarSource(String sourceId) {
-    return sourceId != null && sourceId.toUpperCase(Locale.ROOT).startsWith("KUFAR");
+  private boolean isAddressUnknownLabelEnabled(String sourceId) {
+    return sourceDisplayProperties.findBySourceId(sourceId)
+        .map(SourceDisplayProperties.Entry::isAddressUnknownLabelEnabled)
+        .orElse(false);
   }
 
   private String buildRoomTypePrefix(Integer rooms, String propertyType) {
@@ -144,27 +155,20 @@ public class ListingFormatter {
   /**
    * Resolves a human-readable display name for the given source identifier.
    *
-   * <p>Uses prefix matching (case-insensitive) so that all connectors for the same platform
-   * (e.g. {@code REALT_FLAT_RENT}, {@code REALT_HOUSE_SALE}) map to the same display name.
+   * <p>Looked up from {@link SourceDisplayProperties} by prefix match (case-insensitive) so that
+   * all connectors for the same platform (e.g. {@code REALT_FLAT_RENT}, {@code REALT_HOUSE_SALE})
+   * map to the same display name.
    *
    * @param sourceId the internal connector source ID, may be null
-   * @return human-readable platform name, or capitalised sourceId for unknown sources, never null
+   * @return human-readable platform name, or capitalised sourceId for unconfigured sources, never null
    */
   private String resolveSourceDisplayName(String sourceId) {
     if (sourceId == null || sourceId.isBlank()) {
       return "";
     }
-    String upper = sourceId.toUpperCase(Locale.ROOT);
-    if (upper.startsWith("REALT")) {
-      return "Realt";
-    }
-    if (upper.startsWith("ONLINER")) {
-      return "Onliner";
-    }
-    if (upper.startsWith("KUFAR")) {
-      return "Kufar";
-    }
-    return capitalize(sourceId);
+    return sourceDisplayProperties.findBySourceId(sourceId)
+        .map(SourceDisplayProperties.Entry::getDisplayName)
+        .orElseGet(() -> capitalize(sourceId));
   }
 
   /**

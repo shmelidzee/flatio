@@ -1,17 +1,16 @@
 package com.flatio.telegram.formatter;
 
+import com.flatio.telegram.config.SourceDisplayProperties;
 import com.flatio.web.dto.ListingSummaryResponse;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
 
-@ExtendWith(MockitoExtension.class)
 class ListingFormatterTest {
 
   /**
@@ -20,8 +19,35 @@ class ListingFormatterTest {
    */
   private static final char NBSP = ' ';
 
-  @InjectMocks
   private ListingFormatter listingFormatter;
+
+  @BeforeEach
+  void setUp() {
+    listingFormatter = new ListingFormatter(buildSourceDisplayProperties());
+  }
+
+  /**
+   * Mirrors the {@code telegram.source-display.sources} defaults in application.yml
+   * (issue #423) so these tests exercise the same prefix → badge mapping as production.
+   */
+  private static SourceDisplayProperties buildSourceDisplayProperties() {
+    var properties = new SourceDisplayProperties();
+    properties.setSources(List.of(
+        buildEntry("REALT", "Realt", false),
+        buildEntry("ONLINER", "Onliner", false),
+        buildEntry("KUFAR", "Kufar", true)
+    ));
+    return properties;
+  }
+
+  private static SourceDisplayProperties.Entry buildEntry(
+      String prefix, String displayName, boolean addressUnknownLabelEnabled) {
+    var entry = new SourceDisplayProperties.Entry();
+    entry.setPrefix(prefix);
+    entry.setDisplayName(displayName);
+    entry.setAddressUnknownLabelEnabled(addressUnknownLabelEnabled);
+    return entry;
+  }
 
   // -------------------------------------------------------------------------
   // buildCaption — zone 1: first line format (issue #175)
