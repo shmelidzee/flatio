@@ -60,8 +60,12 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
  * <p>Photo cards are sent via {@code sendPhoto}. A configurable placeholder image
  * ({@code telegram.bot.no-photo-url}) is used whenever the listing has no photo URL, or the
  * real photo could not be downloaded, or Telegram rejects the real photo with
- * {@code PHOTO_INVALID_DIMENSIONS}. If the placeholder itself also fails to send, the card falls
- * back to a plain text message so the user always receives the listing details.
+ * {@code PHOTO_INVALID_DIMENSIONS}. On {@code IMAGE_PROCESS_FAILED} the photo is first re-encoded
+ * as a baseline sRGB JPEG and resent once (issue #444 — Kufar CDN bytes occasionally use a color
+ * profile or encoding Telegram's image processor rejects but Java's decoder reads fine); only if
+ * that retry also fails does the card fall back to the placeholder. If the placeholder itself also
+ * fails to send, the card falls back to a plain text message so the user always receives the
+ * listing details.
  */
 @Component
 @Slf4j
@@ -87,6 +91,13 @@ public class SearchResultSender {
 
   /** JPEG quality factor applied during compression (0.0–1.0). */
   private static final float COMPRESS_QUALITY = 0.7f;
+
+  /**
+   * JPEG quality factor used when re-encoding a photo after Telegram rejects it with
+   * {@code IMAGE_PROCESS_FAILED}. Kept high — the goal here is format normalization, not size
+   * reduction, which {@link #handleOversizedPhoto} already handles separately.
+   */
+  private static final float NORMALIZE_QUALITY = 0.9f;
 
   private static final String SEARCHING_TEXT = "🔍 Ищу объявления...";
   private static final String NO_RESULTS_TEXT =
@@ -367,6 +378,10 @@ public class SearchResultSender {
   }
 
   private void sendPhotoBytes(PhotoCard card) {
+    sendPhotoBytes(card, false);
+  }
+
+  private void sendPhotoBytes(PhotoCard card, boolean isRetryAfterNormalize) {
     try {
       telegramClient.execute(SendPhoto.builder()
           .chatId(card.chatId())
@@ -376,22 +391,80 @@ public class SearchResultSender {
           .replyMarkup(card.keyboard())
           .build());
     } catch (TelegramApiException e) {
-      if (isBlockedByUser(e)) {
-        handleBlockedByUser(card.chatId());
-      } else if (isInvalidDimensions(e)) {
-        log.warn("Photo rejected: PHOTO_INVALID_DIMENSIONS, retrying with placeholder: listingId={}, url={}",
-            card.listingId(), card.photoUrl());
-        sendPlaceholderPhoto(card.chatId(), card.caption(), card.keyboard(), card.listingId());
-      } else {
-        log.warn("Failed to send binary photo, falling back to text: listingId={}, url={}",
-            card.listingId(), card.photoUrl(), e);
-        sendTextCard(card.chatId(), card.caption(), card.keyboard());
+      handleSendPhotoFailure(card, e, isRetryAfterNormalize);
+    }
+  }
+
+  private void handleSendPhotoFailure(PhotoCard card, TelegramApiException e, boolean isRetryAfterNormalize) {
+    if (isBlockedByUser(e)) {
+      handleBlockedByUser(card.chatId());
+    } else if (isInvalidDimensions(e)) {
+      log.warn("Photo rejected: PHOTO_INVALID_DIMENSIONS, retrying with placeholder: listingId={}, url={}",
+          card.listingId(), card.photoUrl());
+      sendPlaceholderPhoto(card.chatId(), card.caption(), card.keyboard(), card.listingId());
+    } else if (isImageProcessFailed(e) && !isRetryAfterNormalize) {
+      retryWithNormalizedImage(card);
+    } else if (isImageProcessFailed(e)) {
+      log.warn("Photo rejected after re-encode: IMAGE_PROCESS_FAILED, using placeholder: listingId={}, url={}",
+          card.listingId(), card.photoUrl());
+      sendPlaceholderPhoto(card.chatId(), card.caption(), card.keyboard(), card.listingId());
+    } else {
+      log.warn("Failed to send binary photo, falling back to text: listingId={}, url={}",
+          card.listingId(), card.photoUrl(), e);
+      sendTextCard(card.chatId(), card.caption(), card.keyboard());
+    }
+  }
+
+  /**
+   * Re-encodes the photo as a baseline sRGB JPEG and resends it once (issue #444). Falls back to
+   * the placeholder immediately when the bytes cannot be decoded at all, since a retry would fail
+   * the same way.
+   *
+   * @param card the photo card whose bytes were rejected with {@code IMAGE_PROCESS_FAILED}
+   */
+  private void retryWithNormalizedImage(PhotoCard card) {
+    Optional<byte[]> normalized = normalizeForTelegram(card.bytes(), card.listingId());
+    if (normalized.isEmpty()) {
+      log.warn("Photo rejected: IMAGE_PROCESS_FAILED, re-encode unsupported, using placeholder: "
+          + "listingId={}, url={}", card.listingId(), card.photoUrl());
+      sendPlaceholderPhoto(card.chatId(), card.caption(), card.keyboard(), card.listingId());
+      return;
+    }
+    log.debug("Photo rejected: IMAGE_PROCESS_FAILED, retrying with re-encoded JPEG: listingId={}",
+        card.listingId());
+    sendPhotoBytes(new PhotoCard(card.chatId(), card.listingId(), normalized.get(),
+        card.filename(), card.caption(), card.keyboard(), card.photoUrl()), true);
+  }
+
+  /**
+   * Decodes and re-encodes image bytes as a plain baseline RGB JPEG, dropping any source color
+   * profile or encoding quirk (e.g. CMYK JPEG) that Telegram's image processor may reject.
+   *
+   * @param original  raw image bytes, never null
+   * @param listingId used only for debug logging
+   * @return re-encoded JPEG bytes, or empty if the input is not a decodable image format
+   */
+  private Optional<byte[]> normalizeForTelegram(byte[] original, Long listingId) {
+    try {
+      BufferedImage img = ImageIO.read(new ByteArrayInputStream(original));
+      if (img == null) {
+        return Optional.empty();
       }
+      var rgb = new BufferedImage(img.getWidth(), img.getHeight(), BufferedImage.TYPE_INT_RGB);
+      rgb.createGraphics().drawImage(img, 0, 0, null);
+      return Optional.of(encodeJpeg(rgb, NORMALIZE_QUALITY));
+    } catch (Exception e) {
+      log.debug("Photo normalization error: listingId={}, error={}", listingId, e.getMessage());
+      return Optional.empty();
     }
   }
 
   private boolean isInvalidDimensions(TelegramApiException e) {
     return e.getMessage() != null && e.getMessage().contains("PHOTO_INVALID_DIMENSIONS");
+  }
+
+  private boolean isImageProcessFailed(TelegramApiException e) {
+    return e.getMessage() != null && e.getMessage().contains("IMAGE_PROCESS_FAILED");
   }
 
   private void sendPlaceholderPhoto(String chatId, String caption, InlineKeyboardMarkup keyboard, Long listingId) {
