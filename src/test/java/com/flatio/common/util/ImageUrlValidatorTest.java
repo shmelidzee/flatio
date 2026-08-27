@@ -190,4 +190,101 @@ class ImageUrlValidatorTest {
     var derivedValidator = new ImageUrlValidator(environment);
     assertThat(derivedValidator.isAllowedImageUrl("https://content.onliner.by/photo.jpg")).isTrue();
   }
+
+  // -------------------------------------------------------------------------
+  // Loopback/private-address guard (issue #450)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_not_derive_localhost_into_allowlist_when_connector_base_url_points_there() {
+    // Given — the exact scenario from issue #450: a local override (e.g. application-local.yml)
+    // points a connector at a dev stub server, alongside a normal, legitimate source
+    var environment = new MockEnvironment();
+    environment.setProperty("connector.onliner.base-url", "http://localhost:8089");
+    environment.setProperty("connector.kufar.base-url", "https://api.kufar.by");
+
+    // When
+    var derivedValidator = new ImageUrlValidator(environment);
+
+    // Then — localhost never enters the allowlist; the legitimate source is unaffected
+    assertThat(derivedValidator.isAllowedImageUrl("https://localhost/photo.jpg")).isFalse();
+    assertThat(derivedValidator.isAllowedImageUrl("https://img01.kufar.by/photo.jpg")).isTrue();
+  }
+
+  @Test
+  void should_not_derive_loopback_ip_into_allowlist_from_connector_base_url() {
+    // Given
+    var environment = new MockEnvironment();
+    environment.setProperty("connector.test.base-url", "http://127.0.0.1:9000");
+
+    // When
+    var derivedValidator = new ImageUrlValidator(environment);
+
+    // Then
+    assertThat(derivedValidator.isAllowedImageUrl("https://127.0.0.1/photo.jpg")).isFalse();
+  }
+
+  @Test
+  void should_not_derive_link_local_cloud_metadata_address_into_allowlist() {
+    // Given — SSRF vector: cloud metadata endpoint configured (accidentally or maliciously) as a
+    // connector base-url
+    var environment = new MockEnvironment();
+    environment.setProperty("connector.test.base-url", "http://169.254.169.254/");
+
+    // When
+    var derivedValidator = new ImageUrlValidator(environment);
+
+    // Then
+    assertThat(derivedValidator.isAllowedImageUrl("https://169.254.169.254/latest/meta-data/")).isFalse();
+  }
+
+  @Test
+  void should_not_derive_private_network_address_into_allowlist() {
+    // Given — RFC1918 private range
+    var environment = new MockEnvironment();
+    environment.setProperty("connector.test.base-url", "http://192.168.1.10:8080");
+
+    // When
+    var derivedValidator = new ImageUrlValidator(environment);
+
+    // Then
+    assertThat(derivedValidator.isAllowedImageUrl("https://192.168.1.10/photo.jpg")).isFalse();
+  }
+
+  @Test
+  void should_reject_localhost_url_even_when_explicitly_present_in_allowlist() {
+    // Given — defense-in-depth: even if "localhost" somehow ended up in the allowlist (e.g. via
+    // the explicit Set<String> constructor), isAllowedImageUrl must still refuse it at match time
+    var validatorWithLocalhost = new ImageUrlValidator(Set.of("localhost"));
+
+    // When
+    boolean result = validatorWithLocalhost.isAllowedImageUrl("https://localhost/photo.jpg");
+
+    // Then
+    assertThat(result).isFalse();
+  }
+
+  @Test
+  void should_reject_private_ip_url_even_when_explicitly_present_in_allowlist() {
+    // Given — defense-in-depth, same as above but for a private IP literal
+    var validatorWithPrivateIp = new ImageUrlValidator(Set.of("10.0.0.5"));
+
+    // When
+    boolean result = validatorWithPrivateIp.isAllowedImageUrl("https://10.0.0.5/photo.jpg");
+
+    // Then
+    assertThat(result).isFalse();
+  }
+
+  @Test
+  void should_reject_ipv6_loopback_literal() {
+    // Given
+    var validatorWithIpv6Loopback = new ImageUrlValidator(Set.of("::1"));
+
+    // When
+    boolean result = validatorWithIpv6Loopback.isAllowedImageUrl("https://[::1]/photo.jpg");
+
+    // Then
+    assertThat(result).isFalse();
+  }
 }

@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.zip.CRC32;
 import javax.imageio.ImageIO;
 import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.BeforeEach;
@@ -323,6 +324,36 @@ class SearchResultSenderTest {
   }
 
   @Test
+  void should_send_placeholder_when_image_process_failed_and_photo_exceeds_pixel_limit()
+      throws TelegramApiException, IOException {
+    // Given — issue #446: photo bytes are a decompression-bomb shape (huge declared dimensions);
+    // Telegram rejects the first attempt with IMAGE_PROCESS_FAILED
+    byte[] bombPng = buildOversizedDimensionPng(20_000, 20_000);
+    ReflectionTestUtils.setField(searchResultSender, "maxSendPhotoBytes", (long) bombPng.length);
+    var listing = buildListing(73L, "https://rms.kufar.by/bomb.png", "https://kufar.by/73");
+    when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
+    when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing));
+    when(listingFormatter.buildCaption(listing)).thenReturn("caption");
+    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(photoProxyClient.download(anyString(), eq(73L))).thenReturn(Optional.of(bombPng));
+    lenient().when(telegramClient.execute(any(EditMessageText.class))).thenReturn(mock());
+    lenient().when(telegramClient.execute(any(SendMessage.class))).thenReturn(mock());
+    when(telegramClient.execute(any(SendPhoto.class)))
+        .thenThrow(new TelegramApiException(IMAGE_PROCESS_FAILED_MESSAGE))
+        .thenReturn(null);
+
+    // When
+    searchResultSender.handle(buildCallback(1L, 100L, 10));
+
+    // Then — the pixel-limit guard rejects the re-encode before it would allocate a huge buffer;
+    // retry is skipped and the placeholder is sent instead, same as an undecodable photo
+    ArgumentCaptor<SendPhoto> photoCaptor = ArgumentCaptor.forClass(SendPhoto.class);
+    verify(telegramClient, times(2)).execute(photoCaptor.capture());
+    assertThat(photoCaptor.getAllValues().get(1).getPhoto().getAttachName()).isEqualTo(TEST_NO_PHOTO_URL);
+    verify(telegramClient, times(1)).execute(any(SendMessage.class));
+  }
+
+  @Test
   void should_send_placeholder_when_image_process_failed_persists_after_retry()
       throws TelegramApiException, IOException {
     // Given — decodable JPEG, but Telegram rejects both the original and the re-encoded retry
@@ -356,6 +387,49 @@ class SearchResultSenderTest {
     var baos = new ByteArrayOutputStream();
     ImageIO.write(img, "jpeg", baos);
     return baos.toByteArray();
+  }
+
+  /**
+   * Builds a real, ImageIO-decodable PNG (tiny actual pixel data) whose IHDR chunk is patched to
+   * declare {@code fakeWidth}x{@code fakeHeight} — the classic decompression-bomb shape: a small
+   * file with an enormous declared size. {@code ImageReader.getWidth/getHeight} report the
+   * patched IHDR value without needing the (untouched, still tiny) IDAT payload to match it.
+   */
+  private static byte[] buildOversizedDimensionPng(int fakeWidth, int fakeHeight) throws IOException {
+    var img = new BufferedImage(4, 4, BufferedImage.TYPE_INT_RGB);
+    var baos = new ByteArrayOutputStream();
+    ImageIO.write(img, "png", baos);
+    byte[] png = baos.toByteArray();
+
+    int typeIndex = indexOf(png, "IHDR".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+    int dataIndex = typeIndex + 4;
+    writeBigEndianInt(png, dataIndex, fakeWidth);
+    writeBigEndianInt(png, dataIndex + 4, fakeHeight);
+
+    var crc = new CRC32();
+    crc.update(png, typeIndex, 4 + 13); // "IHDR" + 13 bytes of chunk data
+    writeBigEndianInt(png, dataIndex + 13, (int) crc.getValue());
+    return png;
+  }
+
+  private static int indexOf(byte[] haystack, byte[] needle) {
+    outer:
+    for (int i = 0; i <= haystack.length - needle.length; i++) {
+      for (int j = 0; j < needle.length; j++) {
+        if (haystack[i + j] != needle[j]) {
+          continue outer;
+        }
+      }
+      return i;
+    }
+    throw new IllegalStateException("Needle not found in PNG fixture");
+  }
+
+  private static void writeBigEndianInt(byte[] data, int offset, int value) {
+    data[offset] = (byte) (value >>> 24);
+    data[offset + 1] = (byte) (value >>> 16);
+    data[offset + 2] = (byte) (value >>> 8);
+    data[offset + 3] = (byte) value;
   }
 
   @Test
@@ -434,6 +508,20 @@ class SearchResultSenderTest {
     Optional<byte[]> result = searchResultSender.compressPhoto(notImage, 99L);
 
     // Then — graceful failure, no exception
+    assertThat(result).isEmpty();
+  }
+
+  @Test
+  void should_return_empty_when_declared_pixel_count_exceeds_decode_limit() throws IOException {
+    // Given — issue #446: small file, PNG header claims a huge width/height (decompression-bomb
+    // shape). The real embedded pixel data is tiny — this only works if the pixel-count check
+    // reads the header without decoding, exactly what it's meant to prove.
+    byte[] bombPng = buildOversizedDimensionPng(20_000, 20_000);
+
+    // When
+    Optional<byte[]> result = searchResultSender.compressPhoto(bombPng, 99L);
+
+    // Then — rejected before any pixel buffer is allocated
     assertThat(result).isEmpty();
   }
 
