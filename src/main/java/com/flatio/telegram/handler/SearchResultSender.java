@@ -23,10 +23,13 @@ import java.time.Duration;
 import java.time.Instant;
 import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
 import javax.imageio.ImageWriteParam;
 import javax.imageio.ImageWriter;
+import javax.imageio.stream.ImageInputStream;
 import javax.imageio.stream.ImageOutputStream;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -98,6 +101,17 @@ public class SearchResultSender {
    * reduction, which {@link #handleOversizedPhoto} already handles separately.
    */
   private static final float NORMALIZE_QUALITY = 0.9f;
+
+  /**
+   * Upper bound on a decoded image's pixel count (issue #446). Checked from the format header
+   * via {@link ImageReader#getWidth}/{@link ImageReader#getHeight} before any full decode — a
+   * small file can declare enormous dimensions (a classic decompression-bomb pattern), which
+   * would otherwise let {@link #compressPhoto} or {@link #normalizeForTelegram} allocate a huge
+   * pixel buffer from an externally-sourced photo. ~50 megapixels comfortably covers any real
+   * listing photo (a 6000×5000 DSLR shot is already only 30 MP) while keeping the worst-case
+   * {@code BufferedImage} allocation (4 bytes/pixel) around 200 MB.
+   */
+  private static final long MAX_DECODE_PIXELS = 50_000_000L;
 
   private static final String SEARCHING_TEXT = "🔍 Ищу объявления...";
   private static final String NO_RESULTS_TEXT =
@@ -320,6 +334,9 @@ public class SearchResultSender {
    * @return compressed bytes within limit, or empty if compression was insufficient
    */
   Optional<byte[]> compressPhoto(byte[] original, Long listingId) {
+    if (!isWithinDecodeLimits(original, listingId)) {
+      return Optional.empty();
+    }
     try {
       BufferedImage img = ImageIO.read(new ByteArrayInputStream(original));
       if (img == null) {
@@ -355,6 +372,43 @@ public class SearchResultSender {
     } catch (Exception e) {
       log.debug("Photo compression error: listingId={}, error={}", listingId, e.getMessage());
       return Optional.empty();
+    }
+  }
+
+  /**
+   * Checks an image's declared pixel dimensions from its format header, without decoding pixel
+   * data (issue #446) — protects {@link #compressPhoto} and {@link #normalizeForTelegram} from a
+   * decompression-bomb photo (small file, enormous claimed dimensions).
+   *
+   * @param bytes     raw image bytes, never null
+   * @param listingId used only for logging
+   * @return true if the format is recognized and its pixel count is within {@link #MAX_DECODE_PIXELS}
+   */
+  private boolean isWithinDecodeLimits(byte[] bytes, Long listingId) {
+    try (ImageInputStream iis = ImageIO.createImageInputStream(new ByteArrayInputStream(bytes))) {
+      if (iis == null) {
+        return false;
+      }
+      Iterator<ImageReader> readers = ImageIO.getImageReaders(iis);
+      if (!readers.hasNext()) {
+        return false;
+      }
+      ImageReader reader = readers.next();
+      try {
+        reader.setInput(iis, true, true);
+        long pixels = (long) reader.getWidth(0) * reader.getHeight(0);
+        if (pixels > MAX_DECODE_PIXELS) {
+          log.warn("Photo exceeds decode pixel limit, skipping: pixels={}, limit={}, listingId={}",
+              pixels, MAX_DECODE_PIXELS, listingId);
+          return false;
+        }
+        return true;
+      } finally {
+        reader.dispose();
+      }
+    } catch (Exception e) {
+      log.debug("Failed to read image dimensions: listingId={}, error={}", listingId, e.getMessage());
+      return false;
     }
   }
 
@@ -445,6 +499,9 @@ public class SearchResultSender {
    * @return re-encoded JPEG bytes, or empty if the input is not a decodable image format
    */
   private Optional<byte[]> normalizeForTelegram(byte[] original, Long listingId) {
+    if (!isWithinDecodeLimits(original, listingId)) {
+      return Optional.empty();
+    }
     try {
       BufferedImage img = ImageIO.read(new ByteArrayInputStream(original));
       if (img == null) {
