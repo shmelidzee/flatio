@@ -23,12 +23,13 @@ import org.hibernate.annotations.CreationTimestamp;
  * entire source, or a stop-word.
  *
  * <p>{@code value} is a polymorphic column whose meaning depends on {@code type}: the numeric ID
- * of a {@link com.flatio.domain.listing.Listing} for {@code LISTING}, the numeric ID of a
- * {@link com.flatio.domain.source.Source} for {@code SOURCE}, or a free-text stop-word for
- * {@code KEYWORD}. It is stored as a string (rather than a foreign key) because a single column
- * cannot reference two different target tables depending on the row's type, and a stop-word has
- * no target entity at all. Uniqueness of {@code (user, type, value)} is enforced by a database
- * constraint, so a blacklist entry is never duplicated.
+ * of a {@link com.flatio.domain.listing.Listing} for {@code LISTING}, the {@code code} of a
+ * {@link com.flatio.domain.source.Source} for {@code SOURCE} (its numeric ID is never exposed to
+ * clients), or a free-text stop-word for {@code KEYWORD}. It is stored as a string (rather than a
+ * foreign key) because a single column cannot reference two different target tables depending on
+ * the row's type, and a stop-word has no target entity at all. Uniqueness of
+ * {@code (user, type, value)} is enforced by a database constraint, so a blacklist entry is never
+ * duplicated.
  */
 @Entity
 @Table(

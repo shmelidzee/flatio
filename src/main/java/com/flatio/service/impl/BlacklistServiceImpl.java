@@ -100,9 +100,11 @@ public class BlacklistServiceImpl implements BlacklistService {
   /**
    * Validates and canonicalizes a request's raw value against the format required by its type.
    *
-   * <p>LISTING/SOURCE values must parse as an existing entity's numeric ID; the canonical decimal
-   * form is stored so equivalent inputs (e.g. leading zeros) are deduplicated. KEYWORD values must
-   * be a non-blank string within the length limit.
+   * <p>LISTING values must parse as an existing listing's numeric ID; the canonical decimal form
+   * is stored so equivalent inputs (e.g. leading zeros) are deduplicated. SOURCE values must match
+   * an existing source's {@code code} (the same identifier exposed to clients elsewhere in the
+   * API), since {@code Source.id} is never exposed to clients. KEYWORD values must be a non-blank
+   * string within the length limit.
    */
   private String normalizeValue(BlacklistEntryType type, String rawValue) {
     String trimmed = rawValue.trim();
@@ -122,11 +124,9 @@ public class BlacklistServiceImpl implements BlacklistService {
   }
 
   private String normalizeSourceValue(String trimmed) {
-    Long sourceId = parseId(BlacklistEntryType.SOURCE, trimmed);
-    if (!sourceRepository.existsById(sourceId)) {
-      throw new SourceNotFoundException(trimmed);
-    }
-    return sourceId.toString();
+    return sourceRepository.findByCode(trimmed)
+        .orElseThrow(() -> new SourceNotFoundException(trimmed))
+        .getCode();
   }
 
   private String normalizeKeywordValue(String trimmed) {

@@ -8,6 +8,7 @@ import com.flatio.common.exception.SourceNotFoundException;
 import com.flatio.config.BlacklistLimitProperties;
 import com.flatio.domain.blacklist.BlacklistEntry;
 import com.flatio.domain.blacklist.BlacklistEntryType;
+import com.flatio.domain.source.Source;
 import com.flatio.domain.user.User;
 import com.flatio.domain.user.UserRole;
 import com.flatio.repository.BlacklistEntryRepository;
@@ -99,12 +100,13 @@ class BlacklistServiceImplTest {
   void should_create_entry_when_type_is_source_and_source_exists() {
     // Given
     var user = buildUser(1L, UserRole.USER);
-    var request = new CreateBlacklistEntryRequest(BlacklistEntryType.SOURCE, "5");
+    var source = buildSource("onliner");
+    var request = new CreateBlacklistEntryRequest(BlacklistEntryType.SOURCE, "onliner");
     var response = mock(BlacklistEntryResponse.class);
     var savedCaptor = ArgumentCaptor.forClass(BlacklistEntry.class);
     when(userRepository.findById(1L)).thenReturn(Optional.of(user));
-    when(sourceRepository.existsById(5L)).thenReturn(true);
-    when(blacklistEntryRepository.findByUserAndTypeAndValue(user, BlacklistEntryType.SOURCE, "5"))
+    when(sourceRepository.findByCode("onliner")).thenReturn(Optional.of(source));
+    when(blacklistEntryRepository.findByUserAndTypeAndValue(user, BlacklistEntryType.SOURCE, "onliner"))
         .thenReturn(Optional.empty());
     when(blacklistEntryRepository.save(savedCaptor.capture())).thenAnswer(invocation -> invocation.getArgument(0));
     when(blacklistEntryMapper.toResponse(any(BlacklistEntry.class))).thenReturn(response);
@@ -115,7 +117,7 @@ class BlacklistServiceImplTest {
     // Then
     assertThat(result).isSameAs(response);
     assertThat(savedCaptor.getValue().getType()).isEqualTo(BlacklistEntryType.SOURCE);
-    assertThat(savedCaptor.getValue().getValue()).isEqualTo("5");
+    assertThat(savedCaptor.getValue().getValue()).isEqualTo("onliner");
   }
 
   @Test
@@ -157,21 +159,6 @@ class BlacklistServiceImplTest {
         .isInstanceOf(BlacklistInvalidValueException.class)
         .hasMessageContaining("abc");
     verify(listingRepository, never()).existsById(any());
-    verify(blacklistEntryRepository, never()).save(any());
-  }
-
-  @Test
-  void should_throw_invalid_value_when_source_value_is_not_numeric() {
-    // Given
-    var user = buildUser(1L, UserRole.USER);
-    var request = new CreateBlacklistEntryRequest(BlacklistEntryType.SOURCE, "not-a-number");
-    when(userRepository.findById(1L)).thenReturn(Optional.of(user));
-
-    // When / Then
-    assertThatThrownBy(() -> blacklistService.create(1L, request))
-        .isInstanceOf(BlacklistInvalidValueException.class)
-        .hasMessageContaining("not-a-number");
-    verify(sourceRepository, never()).existsById(any());
     verify(blacklistEntryRepository, never()).save(any());
   }
 
@@ -222,17 +209,17 @@ class BlacklistServiceImplTest {
   }
 
   @Test
-  void should_throw_source_not_found_when_source_id_does_not_exist() {
+  void should_throw_source_not_found_when_source_code_does_not_exist() {
     // Given
     var user = buildUser(1L, UserRole.USER);
-    var request = new CreateBlacklistEntryRequest(BlacklistEntryType.SOURCE, "99");
+    var request = new CreateBlacklistEntryRequest(BlacklistEntryType.SOURCE, "unknown-source");
     when(userRepository.findById(1L)).thenReturn(Optional.of(user));
-    when(sourceRepository.existsById(99L)).thenReturn(false);
+    when(sourceRepository.findByCode("unknown-source")).thenReturn(Optional.empty());
 
     // When / Then
     assertThatThrownBy(() -> blacklistService.create(1L, request))
         .isInstanceOf(SourceNotFoundException.class)
-        .hasMessageContaining("99");
+        .hasMessageContaining("unknown-source");
     verify(blacklistEntryRepository, never()).save(any());
   }
 
@@ -318,10 +305,11 @@ class BlacklistServiceImplTest {
   void should_not_check_keyword_limit_when_type_is_source_regardless_of_entry_count() {
     // Given — SOURCE entries are never tariff-limited, however many the user already has
     var user = buildUser(1L, UserRole.USER);
-    var request = new CreateBlacklistEntryRequest(BlacklistEntryType.SOURCE, "5");
+    var source = buildSource("onliner");
+    var request = new CreateBlacklistEntryRequest(BlacklistEntryType.SOURCE, "onliner");
     when(userRepository.findById(1L)).thenReturn(Optional.of(user));
-    when(sourceRepository.existsById(5L)).thenReturn(true);
-    when(blacklistEntryRepository.findByUserAndTypeAndValue(user, BlacklistEntryType.SOURCE, "5"))
+    when(sourceRepository.findByCode("onliner")).thenReturn(Optional.of(source));
+    when(blacklistEntryRepository.findByUserAndTypeAndValue(user, BlacklistEntryType.SOURCE, "onliner"))
         .thenReturn(Optional.empty());
     when(blacklistEntryRepository.save(any(BlacklistEntry.class))).thenAnswer(invocation -> invocation.getArgument(0));
     when(blacklistEntryMapper.toResponse(any(BlacklistEntry.class))).thenReturn(mock(BlacklistEntryResponse.class));
@@ -448,5 +436,11 @@ class BlacklistServiceImplTest {
     user.setActive(true);
     user.setRole(role);
     return user;
+  }
+
+  private Source buildSource(String code) {
+    var source = new Source();
+    source.setCode(code);
+    return source;
   }
 }

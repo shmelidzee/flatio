@@ -15,7 +15,7 @@ public record BlacklistEntryResponse(
     @Schema(description = "Kind of item blacklisted", example = "KEYWORD")
     BlacklistEntryType type,
 
-    @Schema(description = "Listing ID (LISTING), source ID (SOURCE), or stop-word (KEYWORD)", example = "novostroyka")
+    @Schema(description = "Listing ID (LISTING), source code (SOURCE), or stop-word (KEYWORD)", example = "novostroyka")
     String value,
 
     @Schema(description = "Date and time the entry was added", example = "2026-01-15T11:00:00Z")
