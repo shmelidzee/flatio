@@ -93,12 +93,12 @@ com.flatio
 │       └── scheduler/   # OnlinerDeltaSyncJob (every 10 min), OnlinerFullSyncJob (daily 02:00)
 ├── telegram/            # Telegram Bot
 │   ├── handler/         # FlatioBot — диспетчер апдейтов (глобальный try-catch, параллельный dispatch через TelegramExecutorConfig); SearchResultSender — отправка карточек с валидацией URL и photo/text fallback
-│   ├── command/         # StartCommandHandler — /start; HelpCommandHandler — /help и action:help callback
+│   ├── command/         # StartCommandHandler — /start (+ deep link `/start listing_<id>` → карточка объявления по ссылке, issue #418); HelpCommandHandler — /help и action:help callback
 │   ├── callback/        # FilterCallbackHandler — обработка callback FILTER:*
 │   ├── keyboard/        # FilterKeyboardFactory — InlineKeyboardMarkup для шагов wizard
 │   ├── state/           # FSM и пользовательские сценарии: FilterStep (enum шагов), SearchFilterState (in-memory состояние), SearchFilterWizard (управление переходами); SearchSession (пагинация результатов, TTL 30 мин)
-│   ├── formatter/       # ListingFormatter — форматирование ListingSummaryResponse в HTML-caption и InlineKeyboardMarkup
-│   └── config/          # BotConfig (@ConfigurationProperties) + BotConfiguration (@EnableConfigurationProperties); BotCommandsRegistrar (@PostConstruct, регистрирует /start, /search, /help); TelegramStartupValidator (@PostConstruct, валидирует токен и вебхук)
+│   ├── formatter/       # ListingFormatter — форматирование ListingSummaryResponse (поиск) и ListingResponse (deep link, issue #418) в HTML-caption и InlineKeyboardMarkup; имя источника и флаг «адрес не указан» читаются из SourceDisplayProperties (issue #423), не хардкожены
+│   └── config/          # BotConfig (@ConfigurationProperties) + BotConfiguration (@EnableConfigurationProperties); BotCommandsRegistrar (@PostConstruct, регистрирует /start, /search, /help); TelegramStartupValidator (@PostConstruct, валидирует токен и вебхук); SourceDisplayProperties (@ConfigurationProperties, telegram.source-display.sources — per-источник display name + address-unknown флаг, issue #423)
 ├── scheduler/           # Generic scheduled tasks (currently empty; source-specific jobs live in integration/)
 ├── security/            # JWT authentication
 │   ├── JwtService       # Token generation and validation (HMAC-SHA256)
@@ -272,8 +272,12 @@ public interface ListingConnector {
 }
 ```
 
-Raw listing data is transferred via `com.flatio.integration.core.RawListing` (Java Record, 18 fields).
-Optional fields are nullable; the service layer is responsible for validation and mapping to domain types.
+Raw listing data is transferred via `com.flatio.integration.core.RawListing` (Java Record, 23
+fields). Optional fields are nullable; the service layer is responsible for validation and mapping
+to domain types. Construct via `RawListing.builder()` (issue #422) — the canonical constructor's
+positional arguments include several same-typed neighbors (`floorNumber`/`floorsTotal`,
+`latitude`/`longitude`) where a transposed pair compiles silently; the builder's named setters
+remove that risk at each connector's call site.
 
 Requirements for all connector implementations:
 - Rate limiting via Resilience4j (`@RateLimiter`)

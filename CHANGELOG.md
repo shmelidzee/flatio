@@ -7,6 +7,81 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Security
+- **PR #453 — Защита от decompression-bomb фото и loopback/приватных записей в SSRF allowlist (issues #446, #450)**
+  - **#446** — `SearchResultSender.compressPhoto()`/`normalizeForTelegram()` декодировали фото через
+    `ImageIO.read()` без проверки заявленных размеров: маленький файл с огромными заявленными
+    width/height мог заставить JVM аллоцировать сотни МБ под пиксельный буфер (найдено при
+    security-ревью PR #445). Новый `isWithinDecodeLimits()` читает ширину/высоту через
+    `ImageReader.getWidth/getHeight` **до** полного декодирования и отклоняет фото свыше 50 млн
+    пикселей — то же поведение, что и «не удалось декодировать» (плейсхолдер/документ, не исключение)
+  - **#450** — `ImageUrlValidator` мог вывести `localhost`/loopback/приватный IP в SSRF allowlist,
+    если `connector.*.base-url` когда-либо указывал бы на такой хост (например, из гитигнорённого
+    `application-local.yml` для локального стенда — найдено при ревью PR #449). Новый
+    `isDisallowedHost()` (loopback, link-local включая cloud-metadata `169.254.169.254`, RFC1918
+    приватные диапазоны, multicast) применён в двух местах: при выводе allowlist из конфига и
+    повторно в `isAllowedImageUrl()` как defense-in-depth
+
+### Added
+- **PR #451 — Telegram deep link на карточку объявления (issue #418)**
+  - `t.me/<bot_username>?start=listing_<id>` открывает карточку конкретного объявления, в том числе
+    для пользователя без активной сессии — `StartCommandHandler` парсит payload после `/start `,
+    резолвит id через уже существующий `ListingService.findById()`
+  - Регистрация пользователя выполняется всегда, до ветвления на payload — тот же принцип, что и у
+    обычного `/start` (см. OQ-25)
+  - Деактивированное объявление (`status != ACTIVE`) показывается с меткой «❗️Объявление
+    неактуально» вместо ошибки; нечисловой или несуществующий id — единое graceful-сообщение, бот
+    не падает
+  - Новый `ListingFormatter.buildDeepLinkCaption(ListingResponse)` переиспользует существующие
+    приватные хелперы форматирования цены/адреса. Карточка без фото — `ListingResponse` не хранит
+    `photoUrl` (только `ListingSummaryResponse` из поиска); решение не расширять периметр
+    SSRF/photo-загрузки ради этого low-priority опционального пункта роадмапа зафиксировано в PR
+
+### Fixed
+- **PR #445 — Фото Kufar снова отправляются как изображение при `IMAGE_PROCESS_FAILED` (issue #444)**
+  - `SearchResultSender` уходил в текстовый fallback на любую ошибку `SendPhoto` кроме
+    `PHOTO_INVALID_DIMENSIONS`; `IMAGE_PROCESS_FAILED` такой обработки не имела
+  - При `IMAGE_PROCESS_FAILED` фото один раз перекодируется в baseline sRGB JPEG
+    (`normalizeForTelegram`) и переотправляется — устраняет вероятную причину (нестандартный
+    цветовой профиль/кодирование с CDN Kufar, которое Telegram отклоняет, а `ImageIO` читает
+    нормально); если ретрай тоже не проходит или байты вообще не декодируются — используется тот
+    же плейсхолдер, что и для `PHOTO_INVALID_DIMENSIONS`, не голый текст
+- **PR #443 — Санитизация control-символов перед всей валидацией значения записи чёрного списка (issue #433)**
+  - `BlacklistServiceImpl` санитизировал control-символы (`\r`/`\n`/`\t` и т.д.) только для типа
+    `KEYWORD`; для `LISTING`/`SOURCE` value уходило в валидацию и хранилище как есть — вектор log
+    injection через `\n` в значении, если оно впоследствии попадает в лог
+  - Новый `ControlCharacterUtils` — единая санитизация, применяется одинаково перед валидацией всех
+    трёх типов записи чёрного списка
+
+### Changed
+- **PR #447 — `RawListing.builder()` вместо 23-позиционного конструктора (issue #422)**
+  - `RawListing` — record с 23 компонентами, конструировался по позиции в 4 разных коннекторах;
+    среди соседних полей одного типа (`floorNumber`/`floorsTotal`, `latitude`/`longitude`)
+    перестановка аргументов при copy-paste скомпилировалась бы без единой ошибки
+  - Добавлен Lombok `@Builder` прямо на record через canonical constructor; все 4 точки создания
+    (`OnlinerConnector`, `OnlinerSaleConnector`, `KufarApiClient`, `RealtHtmlParser`) переведены на
+    именованные builder-методы
+- **PR #448 — Имя источника и флаг «Адрес не указан» в `ListingFormatter` вынесены в конфиг (issue #423)**
+  - `ListingFormatter` хардкодил `startsWith("REALT"/"ONLINER"/"KUFAR")` прямо в Telegram-слое —
+    нарушение правила «нет привязки к конкретному источнику вне `integration.{source}`»
+  - Новый `SourceDisplayProperties` (`com.flatio.telegram.config`) биндится к
+    `telegram.source-display.sources` в `application.yml`; добавление нового источника — теперь
+    конфигурационное изменение, не правка Java-кода
+- **PR #449 — SSRF allowlist фото выводится из `connector.*.base-url`, а не хардкодится (issue #424)**
+  - `ImageUrlValidator.ALLOWED_HOST_SUFFIXES` был статическим полем в `common.util`, вне слоя
+    интеграций — при добавлении источника легко забыть отредактировать этот файл
+  - `ImageUrlValidator` стал Spring-компонентом; при старте сканирует все
+    `connector.*.base-url`/`photo-cdn-base-url` в конфиге и выводит registrable-домен каждого —
+    тот же набор доменов, что был захардкожен, но теперь связан с уже обязательной конфигурацией
+    коннектора, а не дублирует её вручную
+- **PR #452 — Рефакторинг длинных методов; префикс деревни у Nominatim вынесен в конфиг (issue #425)**
+  - `toRawListing()` в обоих Onliner-коннекторах разбит на `resolvePrice()` + сборку record
+    (аналогично `RealtHtmlParser`); `AdminListingServiceImpl.buildSearchSpec()` и оба
+    `OnlinerDeltaSyncJob`/`OnlinerSaleDeltaSyncJob.runDeltaSync()` разбиты на приватные методы по
+    логическим блокам — без изменения поведения
+  - `NominatimClient.VILLAGE_PREFIX` (`"д. "`) вынесен в `nominatim.village-prefix` — расширение на
+    нерусскоязычный рынок больше не требует правки кода геокодинга
+
 ### Added
 - **PR #440 — ExchangeRate: курсы НБ РБ + пересчёт цены в валюту пользователя (issue #415)**
   - `com.flatio.domain.currency.ExchangeRate` (Flyway `V62`/`V63`) — дневной снапшот курса,
