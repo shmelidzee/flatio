@@ -4,6 +4,7 @@ import com.flatio.repository.AdminAuditLogRepository;
 import com.flatio.repository.BlacklistEntryRepository;
 import com.flatio.repository.CityRepository;
 import com.flatio.repository.CurrencyRepository;
+import com.flatio.repository.ExchangeRateRepository;
 import com.flatio.repository.FavoriteRepository;
 import com.flatio.repository.ListingRepository;
 import com.flatio.repository.NotificationRepository;
@@ -132,6 +133,9 @@ class KufarAdDetailClientResilienceTest {
 
   @MockBean
   private BlacklistEntryRepository blacklistEntryRepository;
+
+  @MockBean
+  private ExchangeRateRepository exchangeRateRepository;
 
   @MockBean(name = "kufarAdDetailRestClient")
   private RestClient restClient;

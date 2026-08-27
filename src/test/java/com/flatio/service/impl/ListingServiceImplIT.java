@@ -128,7 +128,7 @@ class ListingServiceImplIT {
     );
 
     // When
-    var result = listingService.search(criteria, PageRequest.of(0, 10), null);
+    var result = listingService.search(criteria, PageRequest.of(0, 10), null, null);
 
     // Then — USD listing without BYN conversion bypasses the BYN price filter
     assertThat(result.getTotalElements()).isEqualTo(1);
@@ -160,7 +160,7 @@ class ListingServiceImplIT {
     );
 
     // When
-    var result = listingService.search(criteria, PageRequest.of(0, 10), null);
+    var result = listingService.search(criteria, PageRequest.of(0, 10), null, null);
 
     // Then — BYN listing at 300 is correctly excluded (300 < priceMin 500)
     assertThat(result.getTotalElements()).isZero();
@@ -192,7 +192,7 @@ class ListingServiceImplIT {
     );
 
     // When
-    var result = listingService.search(criteria, PageRequest.of(0, 10), null);
+    var result = listingService.search(criteria, PageRequest.of(0, 10), null, null);
 
     // Then — BYN listing at 800 is correctly included (500 ≤ 800 ≤ 1000)
     assertThat(result.getTotalElements()).isEqualTo(1);
@@ -227,7 +227,7 @@ class ListingServiceImplIT {
     );
 
     // When / Then — real Hibernate criteria resolution must not fail on a non-existent "cityRef"
-    assertThatNoException().isThrownBy(() -> listingService.search(criteria, PageRequest.of(0, 10), null));
+    assertThatNoException().isThrownBy(() -> listingService.search(criteria, PageRequest.of(0, 10), null, null));
   }
 
   // -------------------------------------------------------------------------
@@ -273,7 +273,7 @@ class ListingServiceImplIT {
     );
 
     // When
-    var result = listingService.search(criteria, PageRequest.of(0, 10), null);
+    var result = listingService.search(criteria, PageRequest.of(0, 10), null, null);
 
     // Then — only the literal "d_town" match, "dxtown" is correctly excluded
     assertThat(result.getTotalElements()).isEqualTo(1);
@@ -318,7 +318,7 @@ class ListingServiceImplIT {
     );
 
     // When
-    var result = listingService.search(criteria, PageRequest.of(0, 10), null);
+    var result = listingService.search(criteria, PageRequest.of(0, 10), null, null);
 
     // Then — only the literal "d_town" match, "dxtown" is correctly excluded
     assertThat(result.getTotalElements()).isEqualTo(1);
@@ -338,7 +338,7 @@ class ListingServiceImplIT {
     var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
 
     // When
-    var result = listingService.search(criteria, PageRequest.of(0, 10), user.getId());
+    var result = listingService.search(criteria, PageRequest.of(0, 10), user.getId(), null);
 
     // Then
     assertThat(result.getTotalElements()).isZero();
@@ -354,7 +354,7 @@ class ListingServiceImplIT {
     var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
 
     // When
-    var result = listingService.search(criteria, PageRequest.of(0, 10), user.getId());
+    var result = listingService.search(criteria, PageRequest.of(0, 10), user.getId(), null);
 
     // Then
     assertThat(result.getTotalElements()).isZero();
@@ -371,7 +371,7 @@ class ListingServiceImplIT {
     var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
 
     // When
-    var result = listingService.search(criteria, PageRequest.of(0, 10), user.getId());
+    var result = listingService.search(criteria, PageRequest.of(0, 10), user.getId(), null);
 
     // Then
     assertThat(result.getTotalElements()).isZero();
@@ -389,7 +389,7 @@ class ListingServiceImplIT {
     var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
 
     // When
-    var result = listingService.search(criteria, PageRequest.of(0, 10), user.getId());
+    var result = listingService.search(criteria, PageRequest.of(0, 10), user.getId(), null);
 
     // Then
     assertThat(result.getTotalElements()).isZero();
@@ -406,7 +406,7 @@ class ListingServiceImplIT {
     var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
 
     // When — the caller (owner) has no blacklist entry for this listing
-    var result = listingService.search(criteria, PageRequest.of(0, 10), owner.getId());
+    var result = listingService.search(criteria, PageRequest.of(0, 10), owner.getId(), null);
 
     // Then
     assertThat(result.getTotalElements()).isEqualTo(1);
@@ -422,7 +422,7 @@ class ListingServiceImplIT {
     var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
 
     // When
-    var result = listingService.search(criteria, PageRequest.of(0, 10), null);
+    var result = listingService.search(criteria, PageRequest.of(0, 10), null, null);
 
     // Then
     assertThat(result.getTotalElements()).isEqualTo(1);
@@ -442,7 +442,7 @@ class ListingServiceImplIT {
         null, null, null, null, null, null, null, null, null, "уникальнаяфразадлятеста", null);
 
     // When
-    var result = listingService.search(criteria, PageRequest.of(0, 10), user.getId());
+    var result = listingService.search(criteria, PageRequest.of(0, 10), user.getId(), null);
 
     // Then
     assertThat(result.getTotalElements()).isZero();

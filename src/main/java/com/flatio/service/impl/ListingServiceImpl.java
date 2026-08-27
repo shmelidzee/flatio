@@ -70,7 +70,7 @@ public class ListingServiceImpl implements ListingService {
   private final CurrencyRateService currencyRateService;
 
   @Override
-  public ListingResponse findById(Long id) {
+  public ListingResponse findById(Long id, String targetCurrency) {
     Listing listing = listingRepository.findById(id)
         .orElseThrow(() -> new ListingNotFoundException(id));
     List<PriceHistory> history = priceHistoryRepository.findByListingOrderByRecordedAtDesc(listing);
@@ -79,22 +79,24 @@ public class ListingServiceImpl implements ListingService {
         .toList();
     boolean hasDuplicates = listing.getDedupHash() != null
         && listingRepository.existsByDedupHashAndIdNot(listing.getDedupHash(), listing.getId());
-    return listingMapper.toResponse(listing, historyEntries, hasDuplicates);
+    ListingResponse response = listingMapper.toResponse(listing, historyEntries, hasDuplicates);
+    return applyDisplayCurrency(response, targetCurrency);
   }
 
   @Override
-  public Page<ListingSummaryResponse> search(ListingSearchCriteria criteria, Pageable pageable, Long userId) {
+  public Page<ListingSummaryResponse> search(ListingSearchCriteria criteria, Pageable pageable, Long userId,
+      String targetCurrency) {
     log.debug("Searching listings with criteria={}, userId={}", criteria, userId);
     BigDecimal usdToByn = currencyRateService.getUsdToByn().orElse(null);
     if (criteria.query() != null && !criteria.query().isBlank()) {
-      return searchWithFts(criteria, pageable, usdToByn, userId);
+      return searchWithFts(criteria, pageable, usdToByn, userId, targetCurrency);
     }
     return listingRepository.findAll(buildSearchSpec(criteria, userId), pageable)
-        .map(l -> enrichWithPriceUsd(listingMapper.toSummaryResponse(l), usdToByn));
+        .map(l -> applyDisplayCurrency(enrichWithPriceUsd(listingMapper.toSummaryResponse(l), usdToByn), targetCurrency));
   }
 
   private Page<ListingSummaryResponse> searchWithFts(ListingSearchCriteria criteria, Pageable pageable,
-      BigDecimal usdToByn, Long userId) {
+      BigDecimal usdToByn, Long userId, String targetCurrency) {
     ListingStatus effectiveStatus = criteria.status() != null ? criteria.status() : ListingStatus.ACTIVE;
     String dealType = criteria.dealType() != null ? criteria.dealType().name() : null;
     String cityPattern = criteria.city() != null && !criteria.city().isBlank()
@@ -115,7 +117,60 @@ public class ListingServiceImpl implements ListingService {
         toNativePageable(pageable)
     );
     primeSourceAndCurrencyCache(page.getContent());
-    return page.map(l -> enrichWithPriceUsd(listingMapper.toSummaryResponse(l), usdToByn));
+    return page.map(l -> applyDisplayCurrency(enrichWithPriceUsd(listingMapper.toSummaryResponse(l), usdToByn), targetCurrency));
+  }
+
+  /**
+   * Converts a summary response's stored price into {@code targetCurrency} (BYN when null),
+   * issue #415. Read-time only — never touches the stored price/currency.
+   *
+   * @param response       the summary response to enrich, never null
+   * @param targetCurrency ISO currency code to convert into, or null for BYN
+   * @return the response with {@code displayPrice}/{@code displayCurrency} populated, or with
+   *     both null when the listing has no price (isNegotiable) or the required rate is unavailable
+   */
+  private ListingSummaryResponse applyDisplayCurrency(ListingSummaryResponse response, String targetCurrency) {
+    String target = targetCurrency != null ? targetCurrency : CurrencyRateService.BYN;
+    BigDecimal displayPrice = resolveDisplayPrice(response.price(), response.currency(),
+        Boolean.TRUE.equals(response.isNegotiable()), target);
+    return new ListingSummaryResponse(
+        response.id(), response.title(), response.price(), response.currency(),
+        response.priceUsd(), response.priceByn(), response.rooms(), response.propertyType(),
+        response.areaTotalM2(), response.city(), response.district(), response.address(),
+        response.sourceId(), response.publishedAt(), response.photoUrl(), response.sourceUrl(),
+        response.isNegotiable(), displayPrice, target
+    );
+  }
+
+  /**
+   * Converts a full listing response's stored price into {@code targetCurrency} (BYN when null),
+   * issue #415. Read-time only — never touches the stored price/currency.
+   *
+   * @param response       the listing response to enrich, never null
+   * @param targetCurrency ISO currency code to convert into, or null for BYN
+   * @return the response with {@code displayPrice}/{@code displayCurrency} populated, or with
+   *     both null when the listing has no price (isNegotiable) or the required rate is unavailable
+   */
+  private ListingResponse applyDisplayCurrency(ListingResponse response, String targetCurrency) {
+    String target = targetCurrency != null ? targetCurrency : CurrencyRateService.BYN;
+    BigDecimal displayPrice = resolveDisplayPrice(response.price(), response.currency(),
+        Boolean.TRUE.equals(response.isNegotiable()), target);
+    return new ListingResponse(
+        response.id(), response.externalId(), response.sourceId(), response.title(), response.description(),
+        response.dealType(), response.priceUnit(), response.propertyType(), response.price(), response.priceLabel(),
+        response.currency(), response.rooms(), response.floorNumber(), response.floorsTotal(),
+        response.areaTotalM2(), response.address(), response.city(), response.district(), response.latitude(),
+        response.longitude(), response.isOwner(), response.isNegotiable(), response.status(), response.sourceUrl(),
+        response.publishedAt(), response.createdAt(), response.priceHistory(), response.hasDuplicates(),
+        displayPrice, target
+    );
+  }
+
+  private BigDecimal resolveDisplayPrice(BigDecimal price, String currency, boolean isNegotiable, String targetCurrency) {
+    if (isNegotiable || price == null) {
+      return null;
+    }
+    return currencyRateService.convert(price, currency, targetCurrency).orElse(null);
   }
 
   /**

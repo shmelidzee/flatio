@@ -6,6 +6,9 @@ import java.time.Instant;
 
 @Schema(description = "Summary view of a real estate listing for list displays")
 public record ListingSummaryResponse(
+    // NOTE: field order below is the canonical constructor. A compatibility constructor at the
+    // bottom of this record accepts the pre-#415 argument list (without displayPrice/
+    // displayCurrency) unchanged, so existing call sites do not need to be touched.
     @Schema(description = "Internal listing identifier", example = "42")
     Long id,
 
@@ -59,5 +62,30 @@ public record ListingSummaryResponse(
 
     @Schema(description = "True when the seller did not specify a price; display as 'Договорная'",
         example = "false")
-    Boolean isNegotiable
-) {}
+    Boolean isNegotiable,
+
+    @Schema(description = "Price converted into displayCurrency (issue #415); null if the "
+        + "required exchange rate is unavailable or the listing has no price (isNegotiable)",
+        example = "27500.00", nullable = true)
+    BigDecimal displayPrice,
+
+    @Schema(description = "Currency displayPrice is expressed in — the caller's requested "
+        + "targetCurrency, or BYN by default; the original stored price/currency above are "
+        + "unaffected", example = "BYN", nullable = true)
+    String displayCurrency
+) {
+
+  /**
+   * Compatibility constructor matching this record's shape before issue #415 added
+   * {@code displayPrice}/{@code displayCurrency} — defaults both to null so existing call sites
+   * that only care about the original stored price/currency do not need to change.
+   */
+  public ListingSummaryResponse(
+      Long id, String title, BigDecimal price, String currency, BigDecimal priceUsd, BigDecimal priceByn,
+      Integer rooms, String propertyType, BigDecimal areaTotalM2, String city, String district, String address,
+      String sourceId, Instant publishedAt, String photoUrl, String sourceUrl, Boolean isNegotiable
+  ) {
+    this(id, title, price, currency, priceUsd, priceByn, rooms, propertyType, areaTotalM2, city, district,
+        address, sourceId, publishedAt, photoUrl, sourceUrl, isNegotiable, null, null);
+  }
+}

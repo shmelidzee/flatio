@@ -152,7 +152,7 @@ public class SearchResultSender {
         Sort.by(Sort.Order.desc("publishedAt").with(Sort.NullHandling.NULLS_LAST)));
     // userId=null: the bot flow only has the caller's Telegram ID here, not their internal user
     // ID — blacklist exclusion (issue #414) is scoped to the REST search API for now.
-    var page = listingService.search(criteria, pageable, null);
+    var page = listingService.search(criteria, pageable, null, null);
 
     if (page.isEmpty()) {
       log.debug("No results found: telegramId={}, criteria={}", telegramId, criteria);
@@ -194,7 +194,7 @@ public class SearchResultSender {
     var pageable = PageRequest.of(newPage, PAGE_SIZE,
         Sort.by(Sort.Order.desc("publishedAt").with(Sort.NullHandling.NULLS_LAST)));
     // userId=null — see handle() above for why the bot flow does not resolve one here.
-    var page = listingService.search(session.getCriteria(), pageable, null);
+    var page = listingService.search(session.getCriteria(), pageable, null, null);
 
     if (page.isEmpty()) {
       sendNoResultsMessage(chatId);
@@ -626,7 +626,7 @@ public class SearchResultSender {
     var pageable = PageRequest.of(0, PAGE_SIZE,
         Sort.by(Sort.Order.desc("publishedAt").with(Sort.NullHandling.NULLS_LAST)));
     // userId=null — see handle() above for why the bot flow does not resolve one here.
-    var page = listingService.search(criteria, pageable, null);
+    var page = listingService.search(criteria, pageable, null, null);
 
     if (page.isEmpty()) {
       log.debug("No results for last-search: telegramId={}", telegramId);

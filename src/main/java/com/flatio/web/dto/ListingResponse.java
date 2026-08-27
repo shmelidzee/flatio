@@ -100,5 +100,34 @@ public record ListingResponse(
 
     @Schema(description = "True if at least one other listing shares this listing's deduplication hash",
         example = "false")
-    Boolean hasDuplicates
-) {}
+    Boolean hasDuplicates,
+
+    @Schema(description = "Price converted into displayCurrency (issue #415); null if the "
+        + "required exchange rate is unavailable or the listing has no price (isNegotiable)",
+        example = "27500.00", nullable = true)
+    BigDecimal displayPrice,
+
+    @Schema(description = "Currency displayPrice is expressed in — the caller's requested "
+        + "targetCurrency, or BYN by default; the original stored price/currency above are "
+        + "unaffected", example = "BYN", nullable = true)
+    String displayCurrency
+) {
+
+  /**
+   * Compatibility constructor matching this record's shape before issue #415 added
+   * {@code displayPrice}/{@code displayCurrency} — defaults both to null so existing call sites
+   * that only care about the original stored price/currency do not need to change.
+   */
+  public ListingResponse(
+      Long id, String externalId, String sourceId, String title, String description, DealType dealType,
+      PriceUnit priceUnit, String propertyType, BigDecimal price, String priceLabel, String currency,
+      Integer rooms, Integer floorNumber, Integer floorsTotal, BigDecimal areaTotalM2, String address,
+      String city, String district, BigDecimal latitude, BigDecimal longitude, Boolean isOwner,
+      Boolean isNegotiable, ListingStatus status, String sourceUrl, Instant publishedAt, Instant createdAt,
+      List<PriceHistoryEntry> priceHistory, Boolean hasDuplicates
+  ) {
+    this(id, externalId, sourceId, title, description, dealType, priceUnit, propertyType, price, priceLabel,
+        currency, rooms, floorNumber, floorsTotal, areaTotalM2, address, city, district, latitude, longitude,
+        isOwner, isNegotiable, status, sourceUrl, publishedAt, createdAt, priceHistory, hasDuplicates, null, null);
+  }
+}
