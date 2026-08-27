@@ -39,13 +39,21 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
 
   /**
    * Finds notifications ready to be (re)delivered over Telegram: belonging to a REALTIME
-   * subscription, still {@code PENDING}, or {@code FAILED} and old enough to retry.
+   * subscription of an active user, still {@code PENDING}, or {@code FAILED} and old enough to
+   * retry.
    *
    * <p>Restricted to {@code deliveryMode = REALTIME} at the query level — not just filtered in
    * the caller — so that DIGEST/DAILY notifications (unsendable until issue #410 exists) never
    * occupy a batch slot ahead of a REALTIME one. Without this, a backlog of DIGEST/DAILY
    * {@code PENDING} rows (oldest-first) would eventually starve REALTIME delivery entirely once
    * that backlog exceeds the page size.
+   *
+   * <p>Likewise restricted to {@code s.user.active = true} at the query level (issue #438):
+   * deactivating a user (see {@code AdminUserServiceImpl#update}) must stop Telegram delivery the
+   * same way it already revokes JWT access (issue #365), without deleting the pending row —
+   * excluding it here (rather than deleting or filtering post-fetch) means a reactivated user's
+   * backlog is picked up automatically by the next run, and a deactivated user's backlog never
+   * displaces an active user's notification from a batch slot.
    *
    * <p>Batches {@code subscription}, {@code subscription.user}, {@code listing}, its
    * {@code source} and {@code currency} in one query via {@code JOIN FETCH} — {@code
@@ -63,11 +71,12 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
    */
   @Query("SELECT n FROM Notification n "
       + "JOIN FETCH n.subscription s "
-      + "JOIN FETCH s.user "
+      + "JOIN FETCH s.user u "
       + "JOIN FETCH n.listing l "
       + "JOIN FETCH l.source "
       + "JOIN FETCH l.currency "
       + "WHERE s.deliveryMode = :deliveryMode "
+      + "AND u.active = true "
       + "AND (n.status = :pending OR (n.status = :failed AND n.updatedAt <= :retryBefore)) "
       + "ORDER BY n.createdAt ASC")
   List<Notification> findSendable(
