@@ -143,9 +143,43 @@ class BlacklistServiceImplTest {
     assertThat(savedCaptor.getValue().getValue()).isEqualTo("novostroyka");
   }
 
+  @Test
+  void should_strip_control_characters_when_creating_keyword_entry() {
+    // Given — issue #433: CR/LF embedded in a keyword must not reach storage/logs as-is
+    var user = buildUser(1L, UserRole.USER);
+    var request = new CreateBlacklistEntryRequest(BlacklistEntryType.KEYWORD, "novo\r\nstroyka");
+    var response = mock(BlacklistEntryResponse.class);
+    var savedCaptor = ArgumentCaptor.forClass(BlacklistEntry.class);
+    when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+    when(blacklistEntryRepository.findByUserAndTypeAndValue(user, BlacklistEntryType.KEYWORD, "novostroyka"))
+        .thenReturn(Optional.empty());
+    when(blacklistEntryRepository.countByUserAndType(user, BlacklistEntryType.KEYWORD)).thenReturn(0L);
+    when(blacklistEntryRepository.save(savedCaptor.capture())).thenAnswer(invocation -> invocation.getArgument(0));
+    when(blacklistEntryMapper.toResponse(any(BlacklistEntry.class))).thenReturn(response);
+
+    // When
+    blacklistService.create(1L, request);
+
+    // Then
+    assertThat(savedCaptor.getValue().getValue()).isEqualTo("novostroyka");
+  }
+
   // -------------------------------------------------------------------------
   // create — invalid value format
   // -------------------------------------------------------------------------
+
+  @Test
+  void should_throw_invalid_value_when_keyword_is_only_control_characters() {
+    // Given — becomes empty once control characters are stripped
+    var user = buildUser(1L, UserRole.USER);
+    var request = new CreateBlacklistEntryRequest(BlacklistEntryType.KEYWORD, "\r\n\t");
+    when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+
+    // When / Then
+    assertThatThrownBy(() -> blacklistService.create(1L, request))
+        .isInstanceOf(BlacklistInvalidValueException.class);
+    verify(blacklistEntryRepository, never()).save(any());
+  }
 
   @Test
   void should_throw_invalid_value_when_listing_value_is_not_numeric() {
@@ -160,6 +194,21 @@ class BlacklistServiceImplTest {
         .hasMessageContaining("abc");
     verify(listingRepository, never()).existsById(any());
     verify(blacklistEntryRepository, never()).save(any());
+  }
+
+  @Test
+  void should_strip_control_characters_before_reporting_invalid_listing_value() {
+    // Given — issue #433: the exception message must not carry raw \r/\n into the log line
+    var user = buildUser(1L, UserRole.USER);
+    var request = new CreateBlacklistEntryRequest(BlacklistEntryType.LISTING, "ab\r\nc");
+    when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+
+    // When / Then
+    assertThatThrownBy(() -> blacklistService.create(1L, request))
+        .isInstanceOf(BlacklistInvalidValueException.class)
+        .hasMessageContaining("abc")
+        .hasMessageNotContaining("\r")
+        .hasMessageNotContaining("\n");
   }
 
   @Test
@@ -221,6 +270,22 @@ class BlacklistServiceImplTest {
         .isInstanceOf(SourceNotFoundException.class)
         .hasMessageContaining("unknown-source");
     verify(blacklistEntryRepository, never()).save(any());
+  }
+
+  @Test
+  void should_strip_control_characters_before_reporting_source_not_found() {
+    // Given — issue #433: the exception message must not carry raw \r/\n into the log line
+    var user = buildUser(1L, UserRole.USER);
+    var request = new CreateBlacklistEntryRequest(BlacklistEntryType.SOURCE, "unkno\r\nwn");
+    when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+    when(sourceRepository.findByCode("unknown")).thenReturn(Optional.empty());
+
+    // When / Then
+    assertThatThrownBy(() -> blacklistService.create(1L, request))
+        .isInstanceOf(SourceNotFoundException.class)
+        .hasMessageContaining("unknown")
+        .hasMessageNotContaining("\r")
+        .hasMessageNotContaining("\n");
   }
 
   // -------------------------------------------------------------------------
