@@ -22,7 +22,10 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -158,5 +161,18 @@ class SecurityConfigTest {
                 "/api/v1/auth/telegram-login-widget was rejected by Spring Security with 403 Forbidden");
           }
         });
+  }
+
+  @Test
+  void should_allow_patch_method_in_cors_preflight_response() throws Exception {
+    // Given / When — CORS preflight (OPTIONS) for a cross-origin PATCH request, mirroring a
+    // browser client on another origin calling SubscriptionController#pause (issue #421)
+    // Then — Access-Control-Allow-Methods must include PATCH, otherwise the browser blocks the
+    // real PATCH request before it ever reaches Spring Security or the JWT filter
+    mockMvc.perform(options("/api/v1/subscriptions/1/pause")
+            .header("Origin", "http://localhost:3000")
+            .header("Access-Control-Request-Method", "PATCH"))
+        .andExpect(status().isOk())
+        .andExpect(header().string("Access-Control-Allow-Methods", containsString("PATCH")));
   }
 }
