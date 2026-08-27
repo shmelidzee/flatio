@@ -30,9 +30,12 @@ import org.springframework.web.client.RestClient;
 public class PhotoProxyClient {
 
   private final RestClient restClient;
+  private final ImageUrlValidator imageUrlValidator;
 
-  public PhotoProxyClient(@Qualifier("photoDownloadRestClient") RestClient restClient) {
+  public PhotoProxyClient(@Qualifier("photoDownloadRestClient") RestClient restClient,
+      ImageUrlValidator imageUrlValidator) {
     this.restClient = restClient;
+    this.imageUrlValidator = imageUrlValidator;
   }
 
   /**
@@ -47,7 +50,7 @@ public class PhotoProxyClient {
    * @return downloaded bytes wrapped in {@link Optional}, or empty on any failure
    */
   public Optional<byte[]> download(String url, Long listingId) {
-    if (!ImageUrlValidator.isAllowedImageUrl(url)) {
+    if (!imageUrlValidator.isAllowedImageUrl(url)) {
       log.warn("Refusing to download photo from a non-allowlisted host: listingId={}, url={}", listingId, url);
       return Optional.empty();
     }

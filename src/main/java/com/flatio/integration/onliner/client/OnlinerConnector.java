@@ -68,11 +68,13 @@ public class OnlinerConnector implements ListingConnector {
 
   private final RestClient restClient;
   private final OnlinerProperties properties;
+  private final ImageUrlValidator imageUrlValidator;
 
   public OnlinerConnector(@Qualifier("onlinerRestClient") RestClient restClient,
-      OnlinerProperties properties) {
+      OnlinerProperties properties, ImageUrlValidator imageUrlValidator) {
     this.restClient = restClient;
     this.properties = properties;
+    this.imageUrlValidator = imageUrlValidator;
   }
 
   @Override
@@ -394,7 +396,7 @@ public class OnlinerConnector implements ListingConnector {
   }
 
   private String validateOrReject(String url) {
-    if (ImageUrlValidator.isAllowedImageUrl(url)) {
+    if (imageUrlValidator.isAllowedImageUrl(url)) {
       return url;
     }
     log.warn("Rejecting photo URL outside the allowed CDN hosts: url={}", url);

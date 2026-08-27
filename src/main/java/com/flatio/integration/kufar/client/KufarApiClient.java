@@ -81,12 +81,14 @@ public class KufarApiClient {
   private final RestClient restClient;
   private final KufarProperties properties;
   private final KufarAdDetailClient adDetailClient;
+  private final ImageUrlValidator imageUrlValidator;
 
   public KufarApiClient(@Qualifier("kufarRestClient") RestClient restClient,
-      KufarProperties properties, KufarAdDetailClient adDetailClient) {
+      KufarProperties properties, KufarAdDetailClient adDetailClient, ImageUrlValidator imageUrlValidator) {
     this.restClient = restClient;
     this.properties = properties;
     this.adDetailClient = adDetailClient;
+    this.imageUrlValidator = imageUrlValidator;
   }
 
   /**
@@ -394,7 +396,7 @@ public class KufarApiClient {
    */
   private String toFullPhotoUrl(String cdnBase, String path) {
     if (path.startsWith("http")) {
-      if (ImageUrlValidator.isAllowedImageUrl(path)) {
+      if (imageUrlValidator.isAllowedImageUrl(path)) {
         return path;
       }
       log.warn("Rejecting photo URL outside the allowed CDN hosts: url={}", path);
