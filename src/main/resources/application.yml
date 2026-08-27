@@ -294,6 +294,12 @@ flatio:
       threshold-minutes: ${FLATIO_HEALTH_FRESHNESS_THRESHOLD_MINUTES:30}
       watchdog:
         cron: ${FLATIO_HEALTH_FRESHNESS_WATCHDOG_CRON:0 */15 * * * *}
+  notifications:
+    realtime:
+      cron: ${FLATIO_NOTIFICATIONS_REALTIME_CRON:0 * * * * *}
+      batch-size: ${FLATIO_NOTIFICATIONS_REALTIME_BATCH_SIZE:50}
+      max-per-hour: ${FLATIO_NOTIFICATIONS_REALTIME_MAX_PER_HOUR:10}
+      retry-delay-minutes: ${FLATIO_NOTIFICATIONS_REALTIME_RETRY_DELAY_MINUTES:5}
 
 resilience4j:
   ratelimiter:
