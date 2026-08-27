@@ -17,11 +17,17 @@ public interface ListingService {
    * <p>Returns ACTIVE listings when {@code criteria.status()} is null.
    * Source and currency associations are eagerly loaded to prevent N+1 queries.
    *
+   * <p>When {@code userId} is not null, listings the user has blacklisted are excluded: an
+   * individual listing (by ID), an entire source (by code), or any listing whose title,
+   * description, or address matches one of the user's stop-words. Pass {@code null} for an
+   * anonymous or otherwise user-less caller to skip blacklist exclusion entirely (issue #414).
+   *
    * @param criteria filter parameters; all fields are optional
    * @param pageable pagination and sorting configuration
+   * @param userId   the authenticated caller's ID for blacklist exclusion, or null to skip it
    * @return page of matching listing summaries, never null
    */
-  Page<ListingSummaryResponse> search(ListingSearchCriteria criteria, Pageable pageable);
+  Page<ListingSummaryResponse> search(ListingSearchCriteria criteria, Pageable pageable, Long userId);
 
   /**
    * Returns the full details of a listing by its internal ID, including price history.

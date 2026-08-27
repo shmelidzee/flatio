@@ -12,6 +12,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -33,9 +34,11 @@ public class ListingController {
    * Returns a paginated list of listings matching the given filter criteria.
    *
    * <p>All filter parameters are optional. Defaults to ACTIVE listings when {@code status} is omitted.
+   * Excludes listings, sources, and stop-words the caller has blacklisted (issue #414).
    *
-   * @param criteria filter parameters bound from query string
-   * @param pageable pagination and sorting (default: 20 per page, sorted by createdAt DESC)
+   * @param criteria       filter parameters bound from query string
+   * @param pageable       pagination and sorting (default: 20 per page, sorted by createdAt DESC)
+   * @param authentication the authenticated caller, used for blacklist exclusion
    * @return page of matching listing summaries
    */
   @Operation(
@@ -48,9 +51,25 @@ public class ListingController {
   @GetMapping
   public Page<ListingSummaryResponse> search(
       @ModelAttribute ListingSearchCriteria criteria,
-      @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable
+      @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
+      Authentication authentication
   ) {
-    return listingService.search(criteria, pageable);
+    return listingService.search(criteria, pageable, currentUserId(authentication));
+  }
+
+  /**
+   * Resolves the authenticated caller's internal user ID, or null for an anonymous caller.
+   *
+   * <p>{@code /api/v1/listings} currently requires authentication ({@code SecurityConfig}), so
+   * {@code authentication} is never actually null in production traffic — this null-safety exists
+   * for a future anonymous-browsing mode (OQ-25) and so blacklist exclusion degrades gracefully
+   * rather than throwing if that ever changes.
+   *
+   * @param authentication the request's authentication, or null if anonymous
+   * @return the caller's user ID, or null if anonymous
+   */
+  private Long currentUserId(Authentication authentication) {
+    return authentication != null ? Long.valueOf(authentication.getName()) : null;
   }
 
   /**
