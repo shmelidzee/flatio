@@ -41,6 +41,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -194,7 +195,7 @@ class ListingServiceTest {
     var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
 
     // When
-    var result = listingService.search(criteria, pageable);
+    var result = listingService.search(criteria, pageable, null);
 
     // Then
     assertThat(result).isNotNull();
@@ -213,7 +214,7 @@ class ListingServiceTest {
     var criteria = new ListingSearchCriteria(DealType.SELL, null, null, "Гомель", null, null, null, null, null, null, null);
 
     // When
-    var result = listingService.search(criteria, pageable);
+    var result = listingService.search(criteria, pageable, null);
 
     // Then
     assertThat(result.getTotalElements()).isZero();
@@ -234,7 +235,7 @@ class ListingServiceTest {
     );
 
     // When
-    listingService.search(criteria, pageable);
+    listingService.search(criteria, pageable, null);
 
     // Then — Specification was passed to repository (its building/execution is tested via integration tests)
     verify(listingRepository).findAll(any(Specification.class), eq(pageable));
@@ -253,7 +254,7 @@ class ListingServiceTest {
     var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
 
     // When
-    listingService.search(criteria, pageable);
+    listingService.search(criteria, pageable, null);
 
     // Then — repository receives the same createdAt DESC sort unchanged
     Sort.Order capturedOrder = pageableCaptor.getValue().getSort().getOrderFor("createdAt");
@@ -276,8 +277,8 @@ class ListingServiceTest {
     var pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
 
     // When — call search twice simulating pagination
-    listingService.search(criteria, pageOne);
-    listingService.search(criteria, pageTwo);
+    listingService.search(criteria, pageOne, null);
+    listingService.search(criteria, pageTwo, null);
 
     // Then — both calls pass createdAt DESC sort to repository
     verify(listingRepository, times(2))
@@ -288,6 +289,43 @@ class ListingServiceTest {
       assertThat(order).isNotNull();
       assertThat(order.getDirection()).isEqualTo(Sort.Direction.DESC);
     });
+  }
+
+  // -------------------------------------------------------------------------
+  // search — blacklist exclusion userId propagation (issue #414)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_pass_authenticated_user_id_to_fts_query_for_blacklist_exclusion() {
+    // Given
+    var pageable = PageRequest.of(0, 20);
+    Page<Listing> emptyPage = new PageImpl<>(Collections.emptyList(), pageable, 0);
+
+    when(listingRepository.fullTextSearch(
+        any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(7L), any()
+    )).thenReturn(emptyPage);
+
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, "квартира", null);
+
+    // When
+    listingService.search(criteria, pageable, 7L);
+
+    // Then
+    verify(listingRepository).fullTextSearch(
+        any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(7L), any()
+    );
+  }
+
+  @Test
+  void should_not_throw_when_user_id_is_null_for_default_search() {
+    // Given — anonymous/user-less caller must not break the Specification-based search path
+    var pageable = PageRequest.of(0, 10);
+    Page<Listing> emptyPage = new PageImpl<>(Collections.emptyList(), pageable, 0);
+    when(listingRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(emptyPage);
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
+
+    // When / Then
+    assertThatNoException().isThrownBy(() -> listingService.search(criteria, pageable, null));
   }
 
   // -------------------------------------------------------------------------
@@ -314,6 +352,7 @@ class ListingServiceTest {
         isNull(),
         isNull(),
         isNull(),
+        isNull(),
         eq(pageable)
     )).thenReturn(page);
     when(listingMapper.toSummaryResponse(listing)).thenReturn(summary);
@@ -321,7 +360,7 @@ class ListingServiceTest {
     var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, "двухкомнатная квартира", null);
 
     // When
-    var result = listingService.search(criteria, pageable);
+    var result = listingService.search(criteria, pageable, null);
 
     // Then
     assertThat(result.getTotalElements()).isEqualTo(1);
@@ -329,6 +368,7 @@ class ListingServiceTest {
         eq("двухкомнатная квартира"),
         eq("russian"),
         eq("ACTIVE"),
+        isNull(),
         isNull(),
         isNull(),
         isNull(),
@@ -353,14 +393,14 @@ class ListingServiceTest {
     var page = new PageImpl<>(List.of(listing1, listing2), pageable, 2);
 
     when(listingRepository.fullTextSearch(
-        eq("квартира"), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()
+        eq("квартира"), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()
     )).thenReturn(page);
     when(listingMapper.toSummaryResponse(any())).thenReturn(buildListingSummary(1L));
 
     var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, "квартира", null);
 
     // When
-    listingService.search(criteria, pageable);
+    listingService.search(criteria, pageable, null);
 
     // Then — one batch lookup per distinct id set, not one per row
     verify(sourceRepository).findAllById(Set.of(10L));
@@ -378,11 +418,11 @@ class ListingServiceTest {
     var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
 
     // When
-    listingService.search(criteria, pageable);
+    listingService.search(criteria, pageable, null);
 
     // Then
     verify(listingRepository).findAll(any(Specification.class), eq(pageable));
-    verify(listingRepository, never()).fullTextSearch(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+    verify(listingRepository, never()).fullTextSearch(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
   }
 
   @Test
@@ -396,11 +436,11 @@ class ListingServiceTest {
     var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, "   ", null);
 
     // When
-    listingService.search(criteria, pageable);
+    listingService.search(criteria, pageable, null);
 
     // Then
     verify(listingRepository).findAll(any(Specification.class), eq(pageable));
-    verify(listingRepository, never()).fullTextSearch(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+    verify(listingRepository, never()).fullTextSearch(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
   }
 
   @Test
@@ -410,18 +450,18 @@ class ListingServiceTest {
     Page<Listing> emptyPage = new PageImpl<>(Collections.emptyList(), pageable, 0);
 
     when(listingRepository.fullTextSearch(
-        any(), any(), eq("ACTIVE"), any(), any(), any(), any(), any(), any(), any(), any(), any()
+        any(), any(), eq("ACTIVE"), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()
     )).thenReturn(emptyPage);
 
     // criteria.status() == null → effectiveStatus должен стать ACTIVE
     var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, "квартира", null);
 
     // When
-    listingService.search(criteria, pageable);
+    listingService.search(criteria, pageable, null);
 
     // Then
     verify(listingRepository).fullTextSearch(
-        any(), any(), eq("ACTIVE"), any(), any(), any(), any(), any(), any(), any(), any(), any()
+        any(), any(), eq("ACTIVE"), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()
     );
   }
 
@@ -443,6 +483,7 @@ class ListingServiceTest {
         eq("onliner"),
         eq("APARTMENT"),
         isNull(),
+        isNull(),
         eq(pageable)
     )).thenReturn(emptyPage);
 
@@ -452,7 +493,7 @@ class ListingServiceTest {
     );
 
     // When
-    listingService.search(criteria, pageable);
+    listingService.search(criteria, pageable, null);
 
     // Then
     verify(listingRepository).fullTextSearch(
@@ -467,6 +508,7 @@ class ListingServiceTest {
         eq("onliner"),
         eq("APARTMENT"),
         isNull(),
+        isNull(),
         eq(pageable)
     );
   }
@@ -478,17 +520,17 @@ class ListingServiceTest {
     Page<Listing> emptyPage = new PageImpl<>(Collections.emptyList(), pageable, 0);
 
     when(listingRepository.fullTextSearch(
-        any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(Boolean.TRUE), any()
+        any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(Boolean.TRUE), any(), any()
     )).thenReturn(emptyPage);
 
     var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, "квартира", Boolean.TRUE);
 
     // When
-    listingService.search(criteria, pageable);
+    listingService.search(criteria, pageable, null);
 
     // Then — ownerOnly=true passed as non-null to fullTextSearch
     verify(listingRepository).fullTextSearch(
-        any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(Boolean.TRUE), any()
+        any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(Boolean.TRUE), any(), any()
     );
   }
 
@@ -501,17 +543,17 @@ class ListingServiceTest {
     // Given — sort by Java field name "createdAt" (camelCase)
     var pageableWithCamelSort = PageRequest.of(0, 5, Sort.by(Sort.Direction.DESC, "createdAt"));
     Page<Listing> emptyPage = Page.empty();
-    when(listingRepository.fullTextSearch(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+    when(listingRepository.fullTextSearch(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
         .thenReturn(emptyPage);
 
     var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, "квартира", null);
 
     // When
-    listingService.search(criteria, pageableWithCamelSort);
+    listingService.search(criteria, pageableWithCamelSort, null);
 
     // Then — fullTextSearch receives snake_case "created_at", not camelCase "createdAt"
     var pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
-    verify(listingRepository).fullTextSearch(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), pageableCaptor.capture());
+    verify(listingRepository).fullTextSearch(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), pageableCaptor.capture());
 
     Sort.Order capturedOrder = pageableCaptor.getValue().getSort().getOrderFor("created_at");
     assertThat(capturedOrder).isNotNull();
@@ -525,7 +567,7 @@ class ListingServiceTest {
     var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, "квартира", null);
 
     // When / Then — rejected before reaching the repository
-    assertThatThrownBy(() -> listingService.search(criteria, maliciousPageable))
+    assertThatThrownBy(() -> listingService.search(criteria, maliciousPageable, null))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("not allowed");
   }
@@ -548,6 +590,7 @@ class ListingServiceTest {
         isNull(),
         eq("APARTMENT"),
         eq(Boolean.TRUE),
+        isNull(),
         eq(pageable)
     )).thenReturn(emptyPage);
 
@@ -557,7 +600,7 @@ class ListingServiceTest {
     );
 
     // When
-    listingService.search(criteria, pageable);
+    listingService.search(criteria, pageable, null);
 
     // Then — null priceMin/priceMax and ownerOnly=true correctly forwarded
     verify(listingRepository).fullTextSearch(
@@ -572,6 +615,7 @@ class ListingServiceTest {
         isNull(),
         eq("APARTMENT"),
         eq(Boolean.TRUE),
+        isNull(),
         eq(pageable)
     );
   }
@@ -590,6 +634,7 @@ class ListingServiceTest {
         isNull(), isNull(), isNull(), isNull(),
         isNull(),       // cityPattern null — city is matched via search_vector, not LIKE
         isNull(), isNull(), isNull(),
+        isNull(),
         eq(pageable)
     )).thenReturn(emptyPage);
 
@@ -597,7 +642,7 @@ class ListingServiceTest {
     var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, "Минск тихий двор", null);
 
     // When
-    listingService.search(criteria, pageable);
+    listingService.search(criteria, pageable, null);
 
     // Then — FTS path used (query non-null); cityPattern null because no separate city filter
     verify(listingRepository).fullTextSearch(
@@ -607,6 +652,7 @@ class ListingServiceTest {
         isNull(), isNull(), isNull(), isNull(),
         isNull(),
         isNull(), isNull(), isNull(),
+        isNull(),
         eq(pageable)
     );
     verify(listingRepository, never()).findAll(any(Specification.class), eq(pageable));
@@ -619,17 +665,17 @@ class ListingServiceTest {
     Page<Listing> emptyPage = new PageImpl<>(Collections.emptyList(), pageable, 0);
 
     when(listingRepository.fullTextSearch(
-        any(), any(), any(), any(), any(), any(), any(), eq("%минск%"), any(), any(), any(), any()
+        any(), any(), any(), any(), any(), any(), any(), eq("%минск%"), any(), any(), any(), any(), any()
     )).thenReturn(emptyPage);
 
     var criteria = new ListingSearchCriteria(null, null, null, "Минск", null, null, null, null, null, "квартира", null);
 
     // When
-    listingService.search(criteria, pageable);
+    listingService.search(criteria, pageable, null);
 
     // Then
     verify(listingRepository).fullTextSearch(
-        any(), any(), any(), any(), any(), any(), any(), eq("%минск%"), any(), any(), any(), any()
+        any(), any(), any(), any(), any(), any(), any(), eq("%минск%"), any(), any(), any(), any(), any()
     );
   }
 
@@ -656,7 +702,7 @@ class ListingServiceTest {
     var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
 
     // When
-    var result = listingService.search(criteria, pageable);
+    var result = listingService.search(criteria, pageable, null);
 
     // Then — priceUsd is derived from BYN / rate; currency and price remain unchanged
     var enriched = result.getContent().get(0);
@@ -685,7 +731,7 @@ class ListingServiceTest {
     var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
 
     // When
-    var result = listingService.search(criteria, pageable);
+    var result = listingService.search(criteria, pageable, null);
 
     // Then — priceUsd remains null; no enrichment without rate
     assertThat(result.getContent().get(0).priceUsd()).isNull();
@@ -710,7 +756,7 @@ class ListingServiceTest {
     var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
 
     // When
-    var result = listingService.search(criteria, pageable);
+    var result = listingService.search(criteria, pageable, null);
 
     // Then — priceUsd stays as set by source (1200), not recomputed
     assertThat(result.getContent().get(0).priceUsd()).isEqualByComparingTo(BigDecimal.valueOf(1_200));
@@ -735,7 +781,7 @@ class ListingServiceTest {
     var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
 
     // When
-    var result = listingService.search(criteria, pageable);
+    var result = listingService.search(criteria, pageable, null);
 
     // Then — non-BYN listings are not touched by enrichment
     assertThat(result.getContent().get(0).priceUsd()).isNull();
@@ -754,7 +800,7 @@ class ListingServiceTest {
     var page = new PageImpl<>(List.of(listing), pageable, 1);
 
     when(listingRepository.fullTextSearch(
-        eq("квартира"), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()
+        eq("квартира"), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()
     )).thenReturn(page);
     when(listingMapper.toSummaryResponse(listing)).thenReturn(summaryByn);
     when(currencyRateService.getUsdToByn()).thenReturn(Optional.of(BigDecimal.valueOf(3.3228)));
@@ -762,7 +808,7 @@ class ListingServiceTest {
     var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, "квартира", null);
 
     // When
-    var result = listingService.search(criteria, pageable);
+    var result = listingService.search(criteria, pageable, null);
 
     // Then — FTS path also enriches priceUsd from BYN rate
     assertThat(result.getContent().get(0).priceUsd()).isNotNull();

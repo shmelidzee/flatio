@@ -43,7 +43,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest({ListingController.class, GlobalExceptionHandler.class})
-@WithMockUser
+@WithMockUser(username = "1")
 @TestPropertySource(properties = "JWT_SECRET_KEY=test-secret-key-for-unit-tests-minimum-256-bits-long")
 class ListingControllerTest {
 
@@ -89,7 +89,7 @@ class ListingControllerTest {
     // Given
     var summary = buildSummary(1L);
     Page<ListingSummaryResponse> page = new PageImpl<>(List.of(summary), PageRequest.of(0, 20), 1);
-    when(listingService.search(any(), any())).thenReturn(page);
+    when(listingService.search(any(), any(), any())).thenReturn(page);
 
     // When / Then
     mockMvc.perform(get("/api/v1/listings"))
@@ -103,7 +103,7 @@ class ListingControllerTest {
   void should_return_200_with_empty_page_when_no_listings_match() throws Exception {
     // Given
     Page<ListingSummaryResponse> emptyPage = Page.empty();
-    when(listingService.search(any(), any())).thenReturn(emptyPage);
+    when(listingService.search(any(), any(), any())).thenReturn(emptyPage);
 
     // When / Then
     mockMvc.perform(get("/api/v1/listings").param("city", "Гродно"))
@@ -115,7 +115,7 @@ class ListingControllerTest {
   void should_pass_filter_params_to_service() throws Exception {
     // Given
     Page<ListingSummaryResponse> emptyPage = Page.empty();
-    when(listingService.search(any(), any())).thenReturn(emptyPage);
+    when(listingService.search(any(), any(), any())).thenReturn(emptyPage);
 
     // When / Then — verify endpoint accepts all filter params without error
     mockMvc.perform(get("/api/v1/listings")
@@ -133,7 +133,7 @@ class ListingControllerTest {
     // Given
     var pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
     Page<ListingSummaryResponse> emptyPage = Page.empty();
-    when(listingService.search(any(), pageableCaptor.capture())).thenReturn(emptyPage);
+    when(listingService.search(any(), pageableCaptor.capture(), any())).thenReturn(emptyPage);
 
     // When
     mockMvc.perform(get("/api/v1/listings"))
@@ -152,7 +152,7 @@ class ListingControllerTest {
     // Given — spring.data.web.pageable.max-page-size is 100 (issue #386)
     var pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
     Page<ListingSummaryResponse> emptyPage = Page.empty();
-    when(listingService.search(any(), pageableCaptor.capture())).thenReturn(emptyPage);
+    when(listingService.search(any(), pageableCaptor.capture(), any())).thenReturn(emptyPage);
 
     // When — request far exceeds the configured max
     mockMvc.perform(get("/api/v1/listings").param("size", "2000"))
@@ -160,6 +160,22 @@ class ListingControllerTest {
 
     // Then — Spring Data clamps to the configured max, not the requested 2000
     assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(100);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void should_pass_authenticated_user_id_to_service_for_blacklist_exclusion() throws Exception {
+    // Given
+    var userIdCaptor = ArgumentCaptor.forClass(Long.class);
+    Page<ListingSummaryResponse> emptyPage = Page.empty();
+    when(listingService.search(any(), any(), userIdCaptor.capture())).thenReturn(emptyPage);
+
+    // When
+    mockMvc.perform(get("/api/v1/listings"))
+        .andExpect(status().isOk());
+
+    // Then — issue #414: the authenticated caller's ID is passed through for blacklist exclusion
+    assertThat(userIdCaptor.getValue()).isEqualTo(1L);
   }
 
   // -------------------------------------------------------------------------
@@ -212,7 +228,7 @@ class ListingControllerTest {
   void should_return_200_when_deal_type_filter_is_rent_daily() throws Exception {
     // Given
     Page<ListingSummaryResponse> emptyPage = Page.empty();
-    when(listingService.search(any(), any())).thenReturn(emptyPage);
+    when(listingService.search(any(), any(), any())).thenReturn(emptyPage);
 
     // When / Then — RENT_DAILY must be accepted as a valid dealType filter value
     mockMvc.perform(get("/api/v1/listings").param("dealType", "RENT_DAILY"))
@@ -225,7 +241,7 @@ class ListingControllerTest {
     // Given
     var criteriaCaptor = ArgumentCaptor.forClass(ListingSearchCriteria.class);
     Page<ListingSummaryResponse> emptyPage = Page.empty();
-    when(listingService.search(criteriaCaptor.capture(), any())).thenReturn(emptyPage);
+    when(listingService.search(criteriaCaptor.capture(), any(), any())).thenReturn(emptyPage);
 
     // When
     mockMvc.perform(get("/api/v1/listings").param("dealType", "RENT_DAILY"))

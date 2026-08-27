@@ -1,13 +1,18 @@
 package com.flatio.service.impl;
 
+import com.flatio.domain.blacklist.BlacklistEntry;
+import com.flatio.domain.blacklist.BlacklistEntryType;
 import com.flatio.domain.listing.DealType;
 import com.flatio.domain.listing.Listing;
 import com.flatio.domain.listing.ListingStatus;
+import com.flatio.domain.user.User;
+import com.flatio.repository.BlacklistEntryRepository;
 import com.flatio.repository.CountryRepository;
 import com.flatio.repository.CurrencyRepository;
 import com.flatio.repository.ListingRepository;
 import com.flatio.repository.PriceHistoryRepository;
 import com.flatio.repository.SourceRepository;
+import com.flatio.repository.UserRepository;
 import com.flatio.service.CurrencyRateService;
 import com.flatio.web.dto.ListingSearchCriteria;
 import com.flatio.web.dto.ListingSummaryResponse;
@@ -69,6 +74,12 @@ class ListingServiceImplIT {
   @Autowired
   private SourceRepository sourceRepository;
 
+  @Autowired
+  private UserRepository userRepository;
+
+  @Autowired
+  private BlacklistEntryRepository blacklistEntryRepository;
+
   private ListingServiceImpl listingService;
   private ListingMapper listingMapper;
 
@@ -117,7 +128,7 @@ class ListingServiceImplIT {
     );
 
     // When
-    var result = listingService.search(criteria, PageRequest.of(0, 10));
+    var result = listingService.search(criteria, PageRequest.of(0, 10), null);
 
     // Then — USD listing without BYN conversion bypasses the BYN price filter
     assertThat(result.getTotalElements()).isEqualTo(1);
@@ -149,7 +160,7 @@ class ListingServiceImplIT {
     );
 
     // When
-    var result = listingService.search(criteria, PageRequest.of(0, 10));
+    var result = listingService.search(criteria, PageRequest.of(0, 10), null);
 
     // Then — BYN listing at 300 is correctly excluded (300 < priceMin 500)
     assertThat(result.getTotalElements()).isZero();
@@ -181,7 +192,7 @@ class ListingServiceImplIT {
     );
 
     // When
-    var result = listingService.search(criteria, PageRequest.of(0, 10));
+    var result = listingService.search(criteria, PageRequest.of(0, 10), null);
 
     // Then — BYN listing at 800 is correctly included (500 ≤ 800 ≤ 1000)
     assertThat(result.getTotalElements()).isEqualTo(1);
@@ -216,7 +227,7 @@ class ListingServiceImplIT {
     );
 
     // When / Then — real Hibernate criteria resolution must not fail on a non-existent "cityRef"
-    assertThatNoException().isThrownBy(() -> listingService.search(criteria, PageRequest.of(0, 10)));
+    assertThatNoException().isThrownBy(() -> listingService.search(criteria, PageRequest.of(0, 10), null));
   }
 
   // -------------------------------------------------------------------------
@@ -262,7 +273,7 @@ class ListingServiceImplIT {
     );
 
     // When
-    var result = listingService.search(criteria, PageRequest.of(0, 10));
+    var result = listingService.search(criteria, PageRequest.of(0, 10), null);
 
     // Then — only the literal "d_town" match, "dxtown" is correctly excluded
     assertThat(result.getTotalElements()).isEqualTo(1);
@@ -307,9 +318,166 @@ class ListingServiceImplIT {
     );
 
     // When
-    var result = listingService.search(criteria, PageRequest.of(0, 10));
+    var result = listingService.search(criteria, PageRequest.of(0, 10), null);
 
     // Then — only the literal "d_town" match, "dxtown" is correctly excluded
     assertThat(result.getTotalElements()).isEqualTo(1);
+  }
+
+  // -------------------------------------------------------------------------
+  // buildSearchSpec — blacklist exclusion (issue #414)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_exclude_blacklisted_listing_from_default_search() {
+    // Given
+    var user = userRepository.save(buildUser());
+    var listing = listingRepository.saveAndFlush(buildBasicListing("ext-bl-spec-listing"));
+    blacklistEntryRepository.saveAndFlush(
+        buildBlacklistEntry(user, BlacklistEntryType.LISTING, listing.getId().toString()));
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
+
+    // When
+    var result = listingService.search(criteria, PageRequest.of(0, 10), user.getId());
+
+    // Then
+    assertThat(result.getTotalElements()).isZero();
+  }
+
+  @Test
+  void should_exclude_listing_from_blacklisted_source_in_default_search() {
+    // Given
+    var user = userRepository.save(buildUser());
+    var listing = listingRepository.saveAndFlush(buildBasicListing("ext-bl-spec-source"));
+    blacklistEntryRepository.saveAndFlush(
+        buildBlacklistEntry(user, BlacklistEntryType.SOURCE, listing.getSource().getCode()));
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
+
+    // When
+    var result = listingService.search(criteria, PageRequest.of(0, 10), user.getId());
+
+    // Then
+    assertThat(result.getTotalElements()).isZero();
+  }
+
+  @Test
+  void should_exclude_listing_matching_blacklisted_keyword_in_default_search() {
+    // Given
+    var user = userRepository.save(buildUser());
+    var listing = buildBasicListing("ext-bl-spec-keyword");
+    listing.setDescription("содержит стоп-слово в описании");
+    listingRepository.saveAndFlush(listing);
+    blacklistEntryRepository.saveAndFlush(buildBlacklistEntry(user, BlacklistEntryType.KEYWORD, "стоп-слово"));
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
+
+    // When
+    var result = listingService.search(criteria, PageRequest.of(0, 10), user.getId());
+
+    // Then
+    assertThat(result.getTotalElements()).isZero();
+  }
+
+  @Test
+  void should_exclude_listing_when_blacklisted_keyword_contains_like_wildcards_in_default_search() {
+    // Given — a stop-word containing literal LIKE wildcard characters must match literally,
+    // not be reinterpreted as a wildcard pattern (same class of bug as issue #388)
+    var user = userRepository.save(buildUser());
+    var listing = buildBasicListing("ext-bl-spec-wildcard");
+    listing.setDescription("цена 50%_скидка сегодня");
+    listingRepository.saveAndFlush(listing);
+    blacklistEntryRepository.saveAndFlush(buildBlacklistEntry(user, BlacklistEntryType.KEYWORD, "50%_скидка"));
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
+
+    // When
+    var result = listingService.search(criteria, PageRequest.of(0, 10), user.getId());
+
+    // Then
+    assertThat(result.getTotalElements()).isZero();
+  }
+
+  @Test
+  void should_not_exclude_listing_blacklisted_by_a_different_user_in_default_search() {
+    // Given
+    var owner = userRepository.save(buildUser());
+    var stranger = userRepository.save(buildUser());
+    var listing = listingRepository.saveAndFlush(buildBasicListing("ext-bl-spec-other-user"));
+    blacklistEntryRepository.saveAndFlush(
+        buildBlacklistEntry(stranger, BlacklistEntryType.LISTING, listing.getId().toString()));
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
+
+    // When — the caller (owner) has no blacklist entry for this listing
+    var result = listingService.search(criteria, PageRequest.of(0, 10), owner.getId());
+
+    // Then
+    assertThat(result.getTotalElements()).isEqualTo(1);
+  }
+
+  @Test
+  void should_not_apply_blacklist_when_user_id_is_null_in_default_search() {
+    // Given — anonymous/user-less caller: userId=null must skip exclusion entirely
+    var user = userRepository.save(buildUser());
+    var listing = listingRepository.saveAndFlush(buildBasicListing("ext-bl-spec-anon"));
+    blacklistEntryRepository.saveAndFlush(
+        buildBlacklistEntry(user, BlacklistEntryType.LISTING, listing.getId().toString()));
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
+
+    // When
+    var result = listingService.search(criteria, PageRequest.of(0, 10), null);
+
+    // Then
+    assertThat(result.getTotalElements()).isEqualTo(1);
+  }
+
+  @Test
+  void should_exclude_blacklisted_listing_in_full_text_search_path() {
+    // Given — same exclusion, through the native-SQL fullTextSearch query (searchWithFts),
+    // triggered by a non-blank criteria.query()
+    var user = userRepository.save(buildUser());
+    var listing = buildBasicListing("ext-bl-fts-listing");
+    listing.setTitle("Уникальнаяфразадлятеста");
+    listingRepository.saveAndFlush(listing);
+    blacklistEntryRepository.saveAndFlush(
+        buildBlacklistEntry(user, BlacklistEntryType.LISTING, listing.getId().toString()));
+    var criteria = new ListingSearchCriteria(
+        null, null, null, null, null, null, null, null, null, "уникальнаяфразадлятеста", null);
+
+    // When
+    var result = listingService.search(criteria, PageRequest.of(0, 10), user.getId());
+
+    // Then
+    assertThat(result.getTotalElements()).isZero();
+  }
+
+  private Listing buildBasicListing(String externalId) {
+    var source = sourceRepository.findByCode("ONLINER").orElseThrow();
+    var currency = currencyRepository.findByCode("BYN").orElseThrow();
+    var country = countryRepository.findByCode("BY").orElseThrow();
+
+    var listing = new Listing();
+    listing.setExternalId(externalId);
+    listing.setSource(source);
+    listing.setTitle("Test listing " + externalId);
+    listing.setDealType(DealType.RENT);
+    listing.setPrice(BigDecimal.valueOf(500));
+    listing.setCurrency(currency);
+    listing.setCountry(country);
+    listing.setStatus(ListingStatus.ACTIVE);
+    listing.setSourceUrl("https://onliner.by/listings/" + externalId);
+    return listing;
+  }
+
+  private User buildUser() {
+    var user = new User();
+    user.setDisplayName("Test User");
+    user.setActive(true);
+    return user;
+  }
+
+  private BlacklistEntry buildBlacklistEntry(User user, BlacklistEntryType type, String value) {
+    var entry = new BlacklistEntry();
+    entry.setUser(user);
+    entry.setType(type);
+    entry.setValue(value);
+    return entry;
   }
 }

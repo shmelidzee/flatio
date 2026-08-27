@@ -113,7 +113,7 @@ class SearchResultSenderTest {
     // Given
     var listing = buildListing(1L, null, "https://realt.by/1");
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
-    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingService.search(any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
     when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
 
@@ -138,7 +138,7 @@ class SearchResultSenderTest {
     // Given — real private chat: chatId equals the Telegram user ID
     var listing = buildListing(1L, null, "https://realt.by/1");
     when(wizard.getState(100L)).thenReturn(Optional.of(defaultState));
-    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingService.search(any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
     when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
     lenient().when(telegramClient.execute(any(EditMessageText.class))).thenReturn(mock());
@@ -160,7 +160,7 @@ class SearchResultSenderTest {
     // treated as a block
     var listing = buildListing(1L, null, "https://realt.by/1");
     when(wizard.getState(101L)).thenReturn(Optional.of(defaultState));
-    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingService.search(any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
     when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
     lenient().when(telegramClient.execute(any(EditMessageText.class))).thenReturn(mock());
@@ -190,7 +190,7 @@ class SearchResultSenderTest {
     // Given
     var listing = buildListing(2L, "https://cdn.realt.by/photo.jpg", "https://realt.by/2");
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
-    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingService.search(any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
     when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
 
@@ -208,7 +208,7 @@ class SearchResultSenderTest {
     // Given — proxy download fails for the listing photo (e.g. source returns a non-image response)
     var listing = buildListing(3L, "https://content.onliner.by/photo.jpg", "https://onliner.by/3");
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
-    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingService.search(any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
     when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
     when(photoProxyClient.download(anyString(), eq(3L))).thenReturn(Optional.empty());
@@ -230,7 +230,7 @@ class SearchResultSenderTest {
     // Given — proxy download fails, and Telegram also rejects the placeholder photo
     var listing = buildListing(3L, "https://content.onliner.by/photo.jpg", "https://onliner.by/3");
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
-    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingService.search(any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
     when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
     when(photoProxyClient.download(anyString(), eq(3L))).thenReturn(Optional.empty());
@@ -251,7 +251,7 @@ class SearchResultSenderTest {
     // Given — download succeeds, but Telegram rejects the binary upload
     var listing = buildListing(4L, "https://cdn.realt.by/photo.jpg", "https://realt.by/4");
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
-    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingService.search(any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
     when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
     lenient().when(telegramClient.execute(any(EditMessageText.class))).thenReturn(mock());
@@ -272,7 +272,7 @@ class SearchResultSenderTest {
     var oversizedBytes = new byte[(int) TEST_MAX_PHOTO_BYTES + 1];
     var listing = buildListing(50L, "https://content.onliner.by/big.jpg", "https://onliner.by/50");
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
-    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingService.search(any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
     when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
     when(photoProxyClient.download(anyString(), eq(50L))).thenReturn(Optional.of(oversizedBytes));
@@ -292,7 +292,7 @@ class SearchResultSenderTest {
     var tooLargeBytes = new byte[(int) TEST_MAX_DOCUMENT_BYTES + 1];
     var listing = buildListing(51L, "https://content.onliner.by/huge.jpg", "https://onliner.by/51");
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
-    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingService.search(any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
     when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
     when(photoProxyClient.download(anyString(), eq(51L))).thenReturn(Optional.of(tooLargeBytes));
@@ -312,7 +312,7 @@ class SearchResultSenderTest {
     var oversizedBytes = new byte[(int) TEST_MAX_PHOTO_BYTES + 1];
     var listing = buildListing(52L, "https://content.onliner.by/big.jpg", "https://onliner.by/52");
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
-    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingService.search(any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
     when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
     when(photoProxyClient.download(anyString(), eq(52L))).thenReturn(Optional.of(oversizedBytes));
@@ -390,7 +390,7 @@ class SearchResultSenderTest {
     var notJpegBytes = new byte[(int) TEST_MAX_PHOTO_BYTES + 1];
     var listing = buildListing(60L, "https://cdn.realt.by/bad.bmp", "https://realt.by/60");
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
-    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingService.search(any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
     when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
     when(photoProxyClient.download(anyString(), eq(60L))).thenReturn(Optional.of(notJpegBytes));
@@ -412,7 +412,7 @@ class SearchResultSenderTest {
   void should_send_no_results_message_when_search_returns_empty() throws TelegramApiException {
     // Given
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
-    when(listingService.search(any(), any())).thenReturn(Page.empty());
+    when(listingService.search(any(), any(), any())).thenReturn(Page.empty());
 
     // When
     searchResultSender.handle(buildCallback(1L, 100L, 10));
@@ -425,7 +425,7 @@ class SearchResultSenderTest {
   void should_include_change_filters_and_main_menu_buttons_when_handle_returns_empty() throws TelegramApiException {
     // Given
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
-    when(listingService.search(any(), any())).thenReturn(Page.empty());
+    when(listingService.search(any(), any(), any())).thenReturn(Page.empty());
     var captor = ArgumentCaptor.forClass(SendMessage.class);
 
     // When
@@ -447,7 +447,7 @@ class SearchResultSenderTest {
     // Given
     var savedFilter = new SearchFilter(null, null, null, null, null, null, null, null, null, null);
     when(userSavedSearchService.getByTelegramUserId(1L)).thenReturn(Optional.of(savedFilter));
-    when(listingService.search(any(), any())).thenReturn(Page.empty());
+    when(listingService.search(any(), any(), any())).thenReturn(Page.empty());
     var captor = ArgumentCaptor.forClass(SendMessage.class);
 
     // When
@@ -473,7 +473,7 @@ class SearchResultSenderTest {
     var sessions = new ConcurrentHashMap<Long, SearchSession>();
     sessions.put(1L, session);
     ReflectionTestUtils.setField(searchResultSender, "sessions", sessions);
-    when(listingService.search(any(), any())).thenReturn(Page.empty());
+    when(listingService.search(any(), any(), any())).thenReturn(Page.empty());
     var captor = ArgumentCaptor.forClass(SendMessage.class);
 
     // When
@@ -504,7 +504,7 @@ class SearchResultSenderTest {
 
     // Then
     verify(telegramClient).execute(any(SendMessage.class));
-    verify(listingService, never()).search(any(), any());
+    verify(listingService, never()).search(any(), any(), any());
   }
 
   // -------------------------------------------------------------------------
@@ -516,7 +516,7 @@ class SearchResultSenderTest {
     // Given
     var listing = buildListing(5L, null, "https://realt.by/5");
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
-    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingService.search(any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
     when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
 
@@ -540,7 +540,7 @@ class SearchResultSenderTest {
     var listing2 = buildListing(71L, null, "https://realt.by/71");
     var listing3 = buildListing(72L, null, "https://realt.by/72");
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
-    when(listingService.search(any(), any())).thenReturn(pageOf(listing1, listing2, listing3));
+    when(listingService.search(any(), any(), any())).thenReturn(pageOf(listing1, listing2, listing3));
     when(listingFormatter.buildCaption(any())).thenReturn("caption");
     when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
 
@@ -563,7 +563,7 @@ class SearchResultSenderTest {
     var listing2 = buildListing(74L, null, "https://realt.by/74");
     var listing3 = buildListing(75L, null, "https://realt.by/75");
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
-    when(listingService.search(any(), any())).thenReturn(pageOf(listing1, listing2, listing3));
+    when(listingService.search(any(), any(), any())).thenReturn(pageOf(listing1, listing2, listing3));
     when(listingFormatter.buildCaption(listing1)).thenThrow(new RuntimeException("unexpected caption error"));
     when(listingFormatter.buildCaption(listing2)).thenReturn("caption");
     when(listingFormatter.buildCaption(listing3)).thenReturn("caption");
@@ -590,7 +590,7 @@ class SearchResultSenderTest {
     var listing2 = buildListing(7L, null, "https://realt.by/7");
     var listing3 = buildListing(8L, null, "https://realt.by/8");
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
-    when(listingService.search(any(), any())).thenReturn(pageOf(listing1, listing2, listing3));
+    when(listingService.search(any(), any(), any())).thenReturn(pageOf(listing1, listing2, listing3));
     when(listingFormatter.buildCaption(any())).thenReturn("caption");
     when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
     lenient().when(telegramClient.execute(any(EditMessageText.class))).thenReturn(mock());
@@ -618,7 +618,7 @@ class SearchResultSenderTest {
     // Given — listing with a short invalid URL "g"
     var listing = buildListing(10L, "g", "https://realt.by/10");
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
-    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingService.search(any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
     when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
 
@@ -638,7 +638,7 @@ class SearchResultSenderTest {
     // Given
     var listing = buildListing(11L, "javascript:void(0)", "https://realt.by/11");
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
-    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingService.search(any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
     when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
 
@@ -658,7 +658,7 @@ class SearchResultSenderTest {
     // Given — listing with a whitespace-only URL
     var listing = buildListing(12L, "   ", "https://realt.by/12");
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
-    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingService.search(any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
     when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
 
@@ -683,7 +683,7 @@ class SearchResultSenderTest {
     var savedFilter = new SearchFilter(null, "RENT", 42L, null, null, 2, null, "APARTMENT", null, null);
     when(userSavedSearchService.getByTelegramUserId(1L)).thenReturn(Optional.of(savedFilter));
     var listing = buildListing(30L, null, "https://realt.by/30");
-    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingService.search(any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
     when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
 
@@ -713,7 +713,7 @@ class SearchResultSenderTest {
     // Given
     var savedFilter = new SearchFilter(null, null, null, null, null, null, null, null, null, null);
     when(userSavedSearchService.getByTelegramUserId(1L)).thenReturn(Optional.of(savedFilter));
-    when(listingService.search(any(), any())).thenReturn(Page.empty());
+    when(listingService.search(any(), any(), any())).thenReturn(Page.empty());
 
     // When
     searchResultSender.handleLastSearch(buildCallback(1L, 100L, 10));
@@ -740,7 +740,7 @@ class SearchResultSenderTest {
 
     var listing = buildListing(20L, null, "https://realt.by/20");
     when(wizard.getState(1L)).thenReturn(Optional.of(state));
-    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingService.search(any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
     when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
 
@@ -762,7 +762,7 @@ class SearchResultSenderTest {
     var listing = buildListing(40L, null, "https://realt.by/40");
     when(wizard.getState(1L)).thenReturn(Optional.of(state));
     var criteriaCaptor = ArgumentCaptor.forClass(ListingSearchCriteria.class);
-    when(listingService.search(criteriaCaptor.capture(), any())).thenReturn(pageOf(listing));
+    when(listingService.search(criteriaCaptor.capture(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
     when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
 
@@ -778,7 +778,7 @@ class SearchResultSenderTest {
   void should_not_save_filter_when_search_returns_empty() throws TelegramApiException {
     // Given
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
-    when(listingService.search(any(), any())).thenReturn(Page.empty());
+    when(listingService.search(any(), any(), any())).thenReturn(Page.empty());
 
     // When
     searchResultSender.handle(buildCallback(1L, 100L, 10));
@@ -792,7 +792,7 @@ class SearchResultSenderTest {
     // Given
     var listing = buildListing(21L, null, "https://realt.by/21");
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
-    when(listingService.search(any(), any())).thenReturn(pageOf(listing));
+    when(listingService.search(any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
     when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
     doThrow(new RuntimeException("DB error")).when(userSavedSearchService).save(anyLong(), any());

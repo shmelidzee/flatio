@@ -1,5 +1,7 @@
 package com.flatio.service.impl;
 
+import com.flatio.domain.blacklist.BlacklistEntry;
+import com.flatio.domain.blacklist.BlacklistEntryType;
 import com.flatio.domain.city.City;
 import com.flatio.domain.listing.DealType;
 import com.flatio.domain.listing.Listing;
@@ -8,6 +10,8 @@ import com.flatio.domain.notification.Notification;
 import com.flatio.domain.source.Source;
 import com.flatio.domain.subscription.Subscription;
 import com.flatio.domain.subscription.TriggerType;
+import com.flatio.domain.user.User;
+import com.flatio.repository.BlacklistEntryRepository;
 import com.flatio.repository.CityRepository;
 import com.flatio.repository.NotificationRepository;
 import com.flatio.repository.SubscriptionRepository;
@@ -31,6 +35,7 @@ import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -49,6 +54,9 @@ class NotificationTriggerServiceImplTest {
   private CityRepository cityRepository;
 
   @Mock
+  private BlacklistEntryRepository blacklistEntryRepository;
+
+  @Mock
   private SearchCriteriaJsonMapper searchCriteriaJsonMapper;
 
   @Mock
@@ -58,8 +66,12 @@ class NotificationTriggerServiceImplTest {
 
   @BeforeEach
   void setUp() {
+    // Default: no user has any blacklist entries. Overridden per-test where blacklist matching
+    // itself is under test.
+    lenient().when(blacklistEntryRepository.findByUserIn(any())).thenReturn(List.of());
     notificationTriggerService = new NotificationTriggerServiceImpl(
-        subscriptionRepository, notificationRepository, cityRepository, searchCriteriaJsonMapper, notificationCreator
+        subscriptionRepository, notificationRepository, cityRepository, blacklistEntryRepository,
+        searchCriteriaJsonMapper, notificationCreator
     );
   }
 
@@ -483,6 +495,103 @@ class NotificationTriggerServiceImplTest {
   }
 
   // -------------------------------------------------------------------------
+  // Blacklist exclusion (issue #414)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_not_create_notification_when_listing_is_blacklisted() {
+    // Given
+    var listing = buildFullyMatchingListing();
+    var subscription = buildSubscription(10L, Set.of(TriggerType.NEW_LISTING));
+    var change = new ListingChange(listing, ListingChangeType.NEW, null, null, null);
+    when(subscriptionRepository.findByActiveTrue()).thenReturn(List.of(subscription));
+    when(searchCriteriaJsonMapper.toCriteria(subscription.getSearchCriteria())).thenReturn(fullyMatchingCriteria());
+    when(blacklistEntryRepository.findByUserIn(any()))
+        .thenReturn(List.of(buildBlacklistEntry(subscription.getUser(), BlacklistEntryType.LISTING, "1")));
+
+    // When
+    notificationTriggerService.evaluate(List.of(change));
+
+    // Then
+    verify(notificationCreator, never()).create(any(), any(), any());
+  }
+
+  @Test
+  void should_not_create_notification_when_source_is_blacklisted() {
+    // Given
+    var listing = buildFullyMatchingListing();
+    var subscription = buildSubscription(10L, Set.of(TriggerType.NEW_LISTING));
+    var change = new ListingChange(listing, ListingChangeType.NEW, null, null, null);
+    when(subscriptionRepository.findByActiveTrue()).thenReturn(List.of(subscription));
+    when(searchCriteriaJsonMapper.toCriteria(subscription.getSearchCriteria())).thenReturn(fullyMatchingCriteria());
+    when(blacklistEntryRepository.findByUserIn(any()))
+        .thenReturn(List.of(buildBlacklistEntry(subscription.getUser(), BlacklistEntryType.SOURCE, "onliner")));
+
+    // When
+    notificationTriggerService.evaluate(List.of(change));
+
+    // Then
+    verify(notificationCreator, never()).create(any(), any(), any());
+  }
+
+  @Test
+  void should_not_create_notification_when_keyword_matches_title() {
+    // Given — buildFullyMatchingListing's title is "Уютная квартира в центре"
+    var listing = buildFullyMatchingListing();
+    var subscription = buildSubscription(10L, Set.of(TriggerType.NEW_LISTING));
+    var change = new ListingChange(listing, ListingChangeType.NEW, null, null, null);
+    when(subscriptionRepository.findByActiveTrue()).thenReturn(List.of(subscription));
+    when(searchCriteriaJsonMapper.toCriteria(subscription.getSearchCriteria())).thenReturn(fullyMatchingCriteria());
+    when(blacklistEntryRepository.findByUserIn(any()))
+        .thenReturn(List.of(buildBlacklistEntry(subscription.getUser(), BlacklistEntryType.KEYWORD, "уютная")));
+
+    // When
+    notificationTriggerService.evaluate(List.of(change));
+
+    // Then
+    verify(notificationCreator, never()).create(any(), any(), any());
+  }
+
+  @Test
+  void should_create_notification_when_blacklist_entry_belongs_to_a_different_user() {
+    // Given — the blacklist entry matches this listing but belongs to a different user
+    var listing = buildFullyMatchingListing();
+    var subscription = buildSubscription(10L, Set.of(TriggerType.NEW_LISTING));
+    var otherUser = new User();
+    otherUser.setId(999L);
+    var change = new ListingChange(listing, ListingChangeType.NEW, null, null, null);
+    when(subscriptionRepository.findByActiveTrue()).thenReturn(List.of(subscription));
+    when(searchCriteriaJsonMapper.toCriteria(subscription.getSearchCriteria())).thenReturn(fullyMatchingCriteria());
+    when(blacklistEntryRepository.findByUserIn(any()))
+        .thenReturn(List.of(buildBlacklistEntry(otherUser, BlacklistEntryType.LISTING, "1")));
+
+    // When
+    notificationTriggerService.evaluate(List.of(change));
+
+    // Then
+    verify(notificationCreator).create(subscription, listing, TriggerType.NEW_LISTING);
+  }
+
+  @Test
+  void should_load_blacklists_in_one_batched_query_regardless_of_subscription_count() {
+    // Given — two distinct subscribers, neither blacklisted
+    var listing = buildFullyMatchingListing();
+    var subscriptionA = buildSubscription(10L, Set.of(TriggerType.NEW_LISTING));
+    var subscriptionB = buildSubscription(20L, Set.of(TriggerType.NEW_LISTING));
+    var change = new ListingChange(listing, ListingChangeType.NEW, null, null, null);
+    when(subscriptionRepository.findByActiveTrue()).thenReturn(List.of(subscriptionA, subscriptionB));
+    when(searchCriteriaJsonMapper.toCriteria(any())).thenReturn(fullyMatchingCriteria());
+
+    // When
+    notificationTriggerService.evaluate(List.of(change));
+
+    // Then — one findByUserIn call for the whole run, not one per subscription
+    verify(blacklistEntryRepository, times(1)).findByUserIn(any());
+    verify(notificationCreator).create(subscriptionA, listing, TriggerType.NEW_LISTING);
+    verify(notificationCreator).create(subscriptionB, listing, TriggerType.NEW_LISTING);
+  }
+
+  // -------------------------------------------------------------------------
   // helpers
   // -------------------------------------------------------------------------
 
@@ -581,9 +690,20 @@ class NotificationTriggerServiceImplTest {
         criteria.query(), ownerOnly);
   }
 
+  private BlacklistEntry buildBlacklistEntry(User user, BlacklistEntryType type, String value) {
+    var entry = new BlacklistEntry();
+    entry.setUser(user);
+    entry.setType(type);
+    entry.setValue(value);
+    return entry;
+  }
+
   private Subscription buildSubscription(Long id, Set<TriggerType> triggers) {
+    var user = new User();
+    user.setId(id);
     var subscription = new Subscription();
     subscription.setId(id);
+    subscription.setUser(user);
     subscription.setActive(true);
     subscription.setTriggers(triggers);
     subscription.setSearchCriteria(Map.of("id", id));
