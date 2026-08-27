@@ -300,6 +300,14 @@ flatio:
       batch-size: ${FLATIO_NOTIFICATIONS_REALTIME_BATCH_SIZE:50}
       max-per-hour: ${FLATIO_NOTIFICATIONS_REALTIME_MAX_PER_HOUR:10}
       retry-delay-minutes: ${FLATIO_NOTIFICATIONS_REALTIME_RETRY_DELAY_MINUTES:5}
+  nbrb:
+    base-url: ${FLATIO_NBRB_BASE_URL:https://api.nbrb.by}
+    sync-cron: ${FLATIO_NBRB_SYNC_CRON:0 0 5 * * *}
+    # ISO currency code -> NBRb's own internal numeric currency ID (verified against NBRb's
+    # currency directory before enabling — see NbrbProperties). Only USD is enabled by default;
+    # add EUR (or others) here once its NBRb numeric ID has been confirmed.
+    currency-ids:
+      USD: ${NBRB_CURRENCY_ID_USD:431}
 
 resilience4j:
   ratelimiter:
@@ -321,6 +329,10 @@ resilience4j:
         limit-refresh-period: 2s
         timeout-duration: 5s
       nominatim:
+        limit-for-period: 1
+        limit-refresh-period: 1s
+        timeout-duration: 5s
+      connector-nbrb:
         limit-for-period: 1
         limit-refresh-period: 1s
         timeout-duration: 5s
@@ -431,6 +443,16 @@ resilience4j:
           - com.flatio.integration.core.ConnectorTransientException
         ignore-exceptions:
           - io.github.resilience4j.circuitbreaker.CallNotPermittedException
+      connector-nbrb:
+        max-attempts: 3
+        wait-duration: 2s
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - org.springframework.web.client.HttpServerErrorException
+          - org.springframework.web.client.ResourceAccessException
+        ignore-exceptions:
+          - io.github.resilience4j.circuitbreaker.CallNotPermittedException
       connector-kufar-detail:
         max-attempts: 3
         wait-duration: 2s
@@ -516,6 +538,14 @@ resilience4j:
         automatic-transition-from-open-to-half-open-enabled: true
         permitted-number-of-calls-in-half-open-state: 1
       connector-kufar:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 5
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 100
+        wait-duration-in-open-state: 60s
+        automatic-transition-from-open-to-half-open-enabled: true
+        permitted-number-of-calls-in-half-open-state: 1
+      connector-nbrb:
         sliding-window-type: COUNT_BASED
         sliding-window-size: 5
         minimum-number-of-calls: 5
