@@ -2,6 +2,8 @@ package com.flatio.service.impl;
 
 import com.flatio.common.exception.ListingNotFoundException;
 import com.flatio.common.util.LikePatternUtils;
+import com.flatio.domain.blacklist.BlacklistEntry;
+import com.flatio.domain.blacklist.BlacklistEntryType;
 import com.flatio.domain.currency.Currency;
 import com.flatio.domain.listing.Listing;
 import com.flatio.domain.listing.ListingStatus;
@@ -19,10 +21,12 @@ import com.flatio.web.dto.ListingSummaryResponse;
 import com.flatio.web.dto.PriceHistoryEntry;
 import com.flatio.web.mapper.ListingMapper;
 import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
@@ -79,18 +83,18 @@ public class ListingServiceImpl implements ListingService {
   }
 
   @Override
-  public Page<ListingSummaryResponse> search(ListingSearchCriteria criteria, Pageable pageable) {
-    log.debug("Searching listings with criteria={}", criteria);
+  public Page<ListingSummaryResponse> search(ListingSearchCriteria criteria, Pageable pageable, Long userId) {
+    log.debug("Searching listings with criteria={}, userId={}", criteria, userId);
     BigDecimal usdToByn = currencyRateService.getUsdToByn().orElse(null);
     if (criteria.query() != null && !criteria.query().isBlank()) {
-      return searchWithFts(criteria, pageable, usdToByn);
+      return searchWithFts(criteria, pageable, usdToByn, userId);
     }
-    return listingRepository.findAll(buildSearchSpec(criteria), pageable)
+    return listingRepository.findAll(buildSearchSpec(criteria, userId), pageable)
         .map(l -> enrichWithPriceUsd(listingMapper.toSummaryResponse(l), usdToByn));
   }
 
   private Page<ListingSummaryResponse> searchWithFts(ListingSearchCriteria criteria, Pageable pageable,
-      BigDecimal usdToByn) {
+      BigDecimal usdToByn, Long userId) {
     ListingStatus effectiveStatus = criteria.status() != null ? criteria.status() : ListingStatus.ACTIVE;
     String dealType = criteria.dealType() != null ? criteria.dealType().name() : null;
     String cityPattern = criteria.city() != null && !criteria.city().isBlank()
@@ -107,6 +111,7 @@ public class ListingServiceImpl implements ListingService {
         criteria.sourceId(),
         criteria.propertyType(),
         Boolean.TRUE.equals(criteria.ownerOnly()) ? Boolean.TRUE : null,
+        userId,
         toNativePageable(pageable)
     );
     primeSourceAndCurrencyCache(page.getContent());
@@ -239,7 +244,7 @@ public class ListingServiceImpl implements ListingService {
     return result;
   }
 
-  private Specification<Listing> buildSearchSpec(ListingSearchCriteria criteria) {
+  private Specification<Listing> buildSearchSpec(ListingSearchCriteria criteria, Long userId) {
     return (root, query, cb) -> {
       List<Predicate> predicates = new ArrayList<>();
 
@@ -277,8 +282,73 @@ public class ListingServiceImpl implements ListingService {
             cb.isNull(root.get("isOwner"))
         ));
       }
+      if (userId != null) {
+        predicates.add(cb.not(cb.exists(buildBlacklistSubquery(cb, query, root, userId))));
+      }
 
       return cb.and(predicates.toArray(new Predicate[0]));
     };
+  }
+
+  /**
+   * Builds a correlated subquery over {@link BlacklistEntry} matching the given user's excluded
+   * listings (by ID), sources (by code), or stop-words (substring match against title,
+   * description, or address) — negated by the caller into a {@code NOT EXISTS} predicate so the
+   * exclusion is enforced by the database query itself (issue #414), not by filtering the result
+   * page in memory.
+   *
+   * @param cb        JPA criteria builder
+   * @param query     the outer query (data or count) the subquery is correlated against
+   * @param listing   root of the outer query over {@link Listing}
+   * @param userId    the caller whose blacklist to match against
+   * @return subquery selecting the ID of any matching blacklist entry
+   */
+  private Subquery<Long> buildBlacklistSubquery(CriteriaBuilder cb, CriteriaQuery<?> query, Root<Listing> listing,
+      Long userId) {
+    Subquery<Long> subquery = query.subquery(Long.class);
+    Root<BlacklistEntry> entry = subquery.from(BlacklistEntry.class);
+    subquery.select(entry.get("id"));
+
+    Predicate listingMatch = cb.and(
+        cb.equal(entry.get("type"), BlacklistEntryType.LISTING),
+        cb.equal(entry.get("value"), listing.get("id").as(String.class)));
+    Predicate sourceMatch = cb.and(
+        cb.equal(entry.get("type"), BlacklistEntryType.SOURCE),
+        cb.equal(entry.get("value"), listing.get("source").get("code")));
+    Predicate keywordMatch = cb.and(
+        cb.equal(entry.get("type"), BlacklistEntryType.KEYWORD),
+        cb.or(
+            matchesKeywordValue(cb, listing.get("title"), entry.get("value")),
+            matchesKeywordValue(cb, listing.get("description"), entry.get("value")),
+            matchesKeywordValue(cb, listing.get("address"), entry.get("value"))
+        ));
+
+    subquery.where(cb.and(
+        cb.equal(entry.get("user").get("id"), userId),
+        cb.or(listingMatch, sourceMatch, keywordMatch)
+    ));
+    return subquery;
+  }
+
+  /**
+   * Builds a case-insensitive "contains" predicate matching {@code column} against a stop-word
+   * value read from a database column rather than a fixed Java string — {@code %}/{@code _} in
+   * the stored value are escaped in SQL via {@code replace()} calls mirroring
+   * {@link LikePatternUtils#escape(String)}, since that helper only escapes a literal Java string
+   * known at query-build time.
+   *
+   * @param cb     JPA criteria builder
+   * @param column the listing column to match against (title, description, or address)
+   * @param value  the stop-word column ({@code BlacklistEntry.value}) to match with
+   * @return a {@code LIKE ... ESCAPE '\'} predicate, case-insensitive
+   */
+  private Predicate matchesKeywordValue(CriteriaBuilder cb, Expression<String> column, Expression<String> value) {
+    Expression<String> escaped = cb.function("replace", String.class,
+        cb.function("replace", String.class,
+            cb.function("replace", String.class, value, cb.literal("\\"), cb.literal("\\\\")),
+            cb.literal("%"), cb.literal("\\%")),
+        cb.literal("_"), cb.literal("\\_"));
+    Expression<String> pattern = cb.concat(cb.concat(cb.literal("%"), escaped), "%");
+    return cb.like(cb.lower(column), cb.lower(pattern), LikePatternUtils.ESCAPE_CHAR);
   }
 }

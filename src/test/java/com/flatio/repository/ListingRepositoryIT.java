@@ -1,8 +1,11 @@
 package com.flatio.repository;
 
+import com.flatio.domain.blacklist.BlacklistEntry;
+import com.flatio.domain.blacklist.BlacklistEntryType;
 import com.flatio.domain.listing.DealType;
 import com.flatio.domain.listing.Listing;
 import com.flatio.domain.listing.ListingStatus;
+import com.flatio.domain.user.User;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -48,6 +51,12 @@ class ListingRepositoryIT {
 
   @Autowired
   private SourceRepository sourceRepository;
+
+  @Autowired
+  private UserRepository userRepository;
+
+  @Autowired
+  private BlacklistEntryRepository blacklistEntryRepository;
 
   @BeforeEach
   void setUp() {
@@ -287,7 +296,7 @@ class ListingRepositoryIT {
 
     // When
     var result = listingRepository.fullTextSearch(
-        "Минск", "russian", "ACTIVE", null, null, null, null, null, null, null, null, PageRequest.of(0, 10)
+        "Минск", "russian", "ACTIVE", null, null, null, null, null, null, null, null, null, PageRequest.of(0, 10)
     );
 
     // Then
@@ -305,10 +314,146 @@ class ListingRepositoryIT {
 
     // When — searching for a city this listing does not belong to
     var result = listingRepository.fullTextSearch(
-        "Гомель", "russian", "ACTIVE", null, null, null, null, null, null, null, null, PageRequest.of(0, 10)
+        "Гомель", "russian", "ACTIVE", null, null, null, null, null, null, null, null, null, PageRequest.of(0, 10)
     );
 
     // Then
     assertThat(result.getContent()).isEmpty();
+  }
+
+  // -------------------------------------------------------------------------
+  // fullTextSearch — blacklist exclusion (issue #414)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_exclude_blacklisted_listing_from_fts_results() {
+    // Given
+    var user = userRepository.save(buildUser());
+    var listing = listingRepository.save(withFtsTitle(buildListing("ext-bl-listing", ListingStatus.ACTIVE)));
+    blacklistEntryRepository.save(
+        buildBlacklistEntry(user, BlacklistEntryType.LISTING, listing.getId().toString()));
+
+    // When
+    var result = listingRepository.fullTextSearch(
+        "уникальнаяфраза", "russian", "ACTIVE", null, null, null, null, null, null, null, null, user.getId(),
+        PageRequest.of(0, 10)
+    );
+
+    // Then
+    assertThat(result.getContent()).isEmpty();
+  }
+
+  @Test
+  void should_exclude_listing_from_blacklisted_source_in_fts_results() {
+    // Given
+    var user = userRepository.save(buildUser());
+    var listing = listingRepository.save(withFtsTitle(buildListing("ext-bl-source", ListingStatus.ACTIVE)));
+    blacklistEntryRepository.save(
+        buildBlacklistEntry(user, BlacklistEntryType.SOURCE, listing.getSource().getCode()));
+
+    // When
+    var result = listingRepository.fullTextSearch(
+        "уникальнаяфраза", "russian", "ACTIVE", null, null, null, null, null, null, null, null, user.getId(),
+        PageRequest.of(0, 10)
+    );
+
+    // Then
+    assertThat(result.getContent()).isEmpty();
+  }
+
+  @Test
+  void should_exclude_listing_matching_blacklisted_keyword_in_fts_results() {
+    // Given
+    var user = userRepository.save(buildUser());
+    var listing = withFtsTitle(buildListing("ext-bl-keyword", ListingStatus.ACTIVE));
+    listing.setDescription("содержит стоп-слово в описании");
+    listingRepository.save(listing);
+    blacklistEntryRepository.save(buildBlacklistEntry(user, BlacklistEntryType.KEYWORD, "стоп-слово"));
+
+    // When
+    var result = listingRepository.fullTextSearch(
+        "уникальнаяфраза", "russian", "ACTIVE", null, null, null, null, null, null, null, null, user.getId(),
+        PageRequest.of(0, 10)
+    );
+
+    // Then
+    assertThat(result.getContent()).isEmpty();
+  }
+
+  @Test
+  void should_not_exclude_listing_blacklisted_by_a_different_user_in_fts_results() {
+    // Given
+    var owner = userRepository.save(buildUser());
+    var stranger = userRepository.save(buildUser());
+    var listing = listingRepository.save(withFtsTitle(buildListing("ext-bl-other-user", ListingStatus.ACTIVE)));
+    blacklistEntryRepository.save(
+        buildBlacklistEntry(stranger, BlacklistEntryType.LISTING, listing.getId().toString()));
+
+    // When — the caller (owner) has no blacklist entry for this listing
+    var result = listingRepository.fullTextSearch(
+        "уникальнаяфраза", "russian", "ACTIVE", null, null, null, null, null, null, null, null, owner.getId(),
+        PageRequest.of(0, 10)
+    );
+
+    // Then
+    assertThat(result.getContent()).hasSize(1);
+  }
+
+  @Test
+  void should_not_apply_blacklist_when_user_id_is_null_in_fts_results() {
+    // Given — anonymous/user-less caller: userId=null must skip exclusion entirely
+    var user = userRepository.save(buildUser());
+    var listing = listingRepository.save(withFtsTitle(buildListing("ext-bl-anon", ListingStatus.ACTIVE)));
+    blacklistEntryRepository.save(
+        buildBlacklistEntry(user, BlacklistEntryType.LISTING, listing.getId().toString()));
+
+    // When
+    var result = listingRepository.fullTextSearch(
+        "уникальнаяфраза", "russian", "ACTIVE", null, null, null, null, null, null, null, null, null,
+        PageRequest.of(0, 10)
+    );
+
+    // Then
+    assertThat(result.getContent()).hasSize(1);
+  }
+
+  @Test
+  void should_exclude_listing_when_blacklisted_keyword_contains_like_wildcards() {
+    // Given — a stop-word containing literal LIKE wildcard characters must match literally,
+    // not be reinterpreted as a wildcard pattern (same class of bug as issue #388)
+    var user = userRepository.save(buildUser());
+    var listing = withFtsTitle(buildListing("ext-bl-wildcard", ListingStatus.ACTIVE));
+    listing.setDescription("цена 50%_скидка сегодня");
+    listingRepository.save(listing);
+    blacklistEntryRepository.save(buildBlacklistEntry(user, BlacklistEntryType.KEYWORD, "50%_скидка"));
+
+    // When
+    var result = listingRepository.fullTextSearch(
+        "уникальнаяфраза", "russian", "ACTIVE", null, null, null, null, null, null, null, null, user.getId(),
+        PageRequest.of(0, 10)
+    );
+
+    // Then
+    assertThat(result.getContent()).isEmpty();
+  }
+
+  private Listing withFtsTitle(Listing listing) {
+    listing.setTitle("Уникальнаяфраза " + listing.getExternalId());
+    return listing;
+  }
+
+  private User buildUser() {
+    var user = new User();
+    user.setDisplayName("Test User");
+    user.setActive(true);
+    return user;
+  }
+
+  private BlacklistEntry buildBlacklistEntry(User user, BlacklistEntryType type, String value) {
+    var entry = new BlacklistEntry();
+    entry.setUser(user);
+    entry.setType(type);
+    entry.setValue(value);
+    return entry;
   }
 }

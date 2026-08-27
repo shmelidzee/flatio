@@ -212,6 +212,7 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
    * @param cityPattern SQL LIKE pattern for city name (e.g. "%минск%"), or null to skip
    * @param sourceCode  source platform code (e.g. "ONLINER"), or null to skip
    * @param propertyType property type filter (e.g. "APARTMENT"), or null to skip
+   * @param userId      caller ID for blacklist exclusion (issue #414), or null to skip it entirely
    * @param pageable    pagination configuration
    * @return page of matching listings, never null
    */
@@ -227,6 +228,7 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
                  l.photo_url, l.version
           FROM listings l
           LEFT JOIN source src_filter ON src_filter.code = CAST(:sourceCode AS varchar)
+          INNER JOIN source src_own ON src_own.id = l.source_id
           INNER JOIN currency cur ON cur.id = l.currency_id
           WHERE l.search_vector @@ websearch_to_tsquery(CAST(:ftsLanguage AS regconfig), :query)
             AND l.status = :status
@@ -239,10 +241,24 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
             AND (CAST(:sourceCode AS varchar) IS NULL OR l.source_id = src_filter.id)
             AND (CAST(:propertyType AS varchar) IS NULL OR l.property_type = :propertyType)
             AND (CAST(:ownerOnly AS boolean) IS NULL OR l.is_owner IS TRUE OR l.is_owner IS NULL)
+            AND (CAST(:userId AS bigint) IS NULL OR NOT EXISTS (
+                SELECT 1 FROM blacklist_entries be
+                WHERE be.user_id = :userId
+                  AND (
+                    (be.type = 'LISTING' AND be.value = CAST(l.id AS varchar))
+                    OR (be.type = 'SOURCE' AND be.value = src_own.code)
+                    OR (be.type = 'KEYWORD' AND (
+                         l.title ILIKE '%' || replace(replace(replace(be.value, '\\', '\\\\'), '%', '\\%'), '_', '\\_') || '%' ESCAPE '\\'
+                      OR l.description ILIKE '%' || replace(replace(replace(be.value, '\\', '\\\\'), '%', '\\%'), '_', '\\_') || '%' ESCAPE '\\'
+                      OR l.address ILIKE '%' || replace(replace(replace(be.value, '\\', '\\\\'), '%', '\\%'), '_', '\\_') || '%' ESCAPE '\\'
+                    ))
+                  )
+            ))
           """,
       countQuery = """
           SELECT count(*) FROM listings l
           LEFT JOIN source src_filter ON src_filter.code = CAST(:sourceCode AS varchar)
+          INNER JOIN source src_own ON src_own.id = l.source_id
           INNER JOIN currency cur ON cur.id = l.currency_id
           WHERE l.search_vector @@ websearch_to_tsquery(CAST(:ftsLanguage AS regconfig), :query)
             AND l.status = :status
@@ -255,6 +271,19 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
             AND (CAST(:sourceCode AS varchar) IS NULL OR l.source_id = src_filter.id)
             AND (CAST(:propertyType AS varchar) IS NULL OR l.property_type = :propertyType)
             AND (CAST(:ownerOnly AS boolean) IS NULL OR l.is_owner IS TRUE OR l.is_owner IS NULL)
+            AND (CAST(:userId AS bigint) IS NULL OR NOT EXISTS (
+                SELECT 1 FROM blacklist_entries be
+                WHERE be.user_id = :userId
+                  AND (
+                    (be.type = 'LISTING' AND be.value = CAST(l.id AS varchar))
+                    OR (be.type = 'SOURCE' AND be.value = src_own.code)
+                    OR (be.type = 'KEYWORD' AND (
+                         l.title ILIKE '%' || replace(replace(replace(be.value, '\\', '\\\\'), '%', '\\%'), '_', '\\_') || '%' ESCAPE '\\'
+                      OR l.description ILIKE '%' || replace(replace(replace(be.value, '\\', '\\\\'), '%', '\\%'), '_', '\\_') || '%' ESCAPE '\\'
+                      OR l.address ILIKE '%' || replace(replace(replace(be.value, '\\', '\\\\'), '%', '\\%'), '_', '\\_') || '%' ESCAPE '\\'
+                    ))
+                  )
+            ))
           """,
       nativeQuery = true
   )
@@ -270,6 +299,7 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
       @Param("sourceCode") String sourceCode,
       @Param("propertyType") String propertyType,
       @Param("ownerOnly") Boolean ownerOnly,
+      @Param("userId") Long userId,
       Pageable pageable
   );
 }

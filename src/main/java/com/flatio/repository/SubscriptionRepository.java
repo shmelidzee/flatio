@@ -7,6 +7,7 @@ import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 
 public interface SubscriptionRepository extends JpaRepository<Subscription, Long> {
 
@@ -24,10 +25,13 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, Long
    *
    * <p>Used by {@code NotificationTriggerServiceImpl} to evaluate every enabled subscription
    * against a batch of listing changes; paused subscriptions ({@code isActive = false}) are
-   * excluded from evaluation entirely.
+   * excluded from evaluation entirely. {@code JOIN FETCH}es {@code user} — the evaluator reads
+   * each subscription's owner to apply their blacklist (issue #414), so eager loading here avoids
+   * one lazy-load query per subscription across the batch.
    *
    * @return list of active subscriptions, never null, may be empty
    */
+  @Query("SELECT s FROM Subscription s JOIN FETCH s.user WHERE s.active = true")
   List<Subscription> findByActiveTrue();
 
   /**

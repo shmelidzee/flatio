@@ -1,11 +1,14 @@
 package com.flatio.service.impl;
 
+import com.flatio.domain.blacklist.BlacklistEntry;
 import com.flatio.domain.city.City;
 import com.flatio.domain.listing.Listing;
 import com.flatio.domain.listing.ListingStatus;
 import com.flatio.domain.notification.Notification;
 import com.flatio.domain.subscription.Subscription;
 import com.flatio.domain.subscription.TriggerType;
+import com.flatio.domain.user.User;
+import com.flatio.repository.BlacklistEntryRepository;
 import com.flatio.repository.CityRepository;
 import com.flatio.repository.NotificationRepository;
 import com.flatio.repository.SubscriptionRepository;
@@ -19,6 +22,7 @@ import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -48,6 +52,7 @@ public class NotificationTriggerServiceImpl implements NotificationTriggerServic
   private final SubscriptionRepository subscriptionRepository;
   private final NotificationRepository notificationRepository;
   private final CityRepository cityRepository;
+  private final BlacklistEntryRepository blacklistEntryRepository;
   private final SearchCriteriaJsonMapper searchCriteriaJsonMapper;
   private final NotificationCreator notificationCreator;
 
@@ -66,7 +71,9 @@ public class NotificationTriggerServiceImpl implements NotificationTriggerServic
     // everything" behaviour, which is reserved for subscriptions with no filter at all.
     List<Subscription> evaluableSubscriptions = List.copyOf(criteriaBySubscription.keySet());
     Map<Long, City> citiesById = preloadCities(criteriaBySubscription.values());
-    EvaluationContext context = new EvaluationContext(evaluableSubscriptions, criteriaBySubscription, citiesById);
+    Map<Long, BlacklistProfile> blacklistByUserId = preloadBlacklists(evaluableSubscriptions);
+    EvaluationContext context =
+        new EvaluationContext(evaluableSubscriptions, criteriaBySubscription, citiesById, blacklistByUserId);
     List<NotificationCandidate> candidates = collectCandidates(changes, context);
     Set<NotificationKey> existingKeys = loadExistingKeys(candidates);
     for (NotificationCandidate candidate : candidates) {
@@ -131,13 +138,76 @@ public class NotificationTriggerServiceImpl implements NotificationTriggerServic
     try {
       for (Subscription subscription : context.subscriptions()) {
         SubscriptionSearchCriteria criteria = context.criteriaBySubscription().get(subscription);
-        if (matchesCriteria(criteria, change.listing(), context.citiesById())) {
+        BlacklistProfile blacklist = context.blacklistByUserId().get(subscription.getUser().getId());
+        if (matchesCriteria(criteria, change.listing(), context.citiesById())
+            && !isBlacklisted(change.listing(), blacklist)) {
           collectSubscriptionTriggers(subscription, change, candidates);
         }
       }
     } catch (RuntimeException ex) {
       log.error("Failed to evaluate notification triggers: listingId={}", change.listing().getId(), ex);
     }
+  }
+
+  /**
+   * Batch-preloads every evaluable subscription owner's blacklist in one query (issue #414),
+   * instead of one query per distinct user.
+   *
+   * @param subscriptions the subscriptions being evaluated this run
+   * @return each user's blacklist profile, keyed by user ID; a user with no blacklist entries at
+   *     all is simply absent from the map
+   */
+  private Map<Long, BlacklistProfile> preloadBlacklists(List<Subscription> subscriptions) {
+    Set<User> users = subscriptions.stream().map(Subscription::getUser).collect(Collectors.toSet());
+    if (users.isEmpty()) {
+      return Map.of();
+    }
+    return blacklistEntryRepository.findByUserIn(users).stream()
+        .collect(Collectors.groupingBy(
+            entry -> entry.getUser().getId(),
+            Collectors.collectingAndThen(Collectors.toList(), NotificationTriggerServiceImpl::buildBlacklistProfile)));
+  }
+
+  private static BlacklistProfile buildBlacklistProfile(List<BlacklistEntry> entries) {
+    Set<Long> listingIds = new HashSet<>();
+    Set<String> sourceCodes = new HashSet<>();
+    List<String> keywords = new ArrayList<>();
+    for (BlacklistEntry entry : entries) {
+      switch (entry.getType()) {
+        case LISTING -> listingIds.add(Long.valueOf(entry.getValue()));
+        case SOURCE -> sourceCodes.add(entry.getValue());
+        case KEYWORD -> keywords.add(entry.getValue());
+      }
+    }
+    return new BlacklistProfile(listingIds, sourceCodes, keywords);
+  }
+
+  /**
+   * Checks whether the given listing matches one of the subscriber's blacklist entries: an
+   * excluded listing (by ID), an excluded source (by code), or a stop-word appearing in the
+   * title, description, or address (issue #414).
+   *
+   * @param listing   the listing a change was raised for
+   * @param blacklist the subscriber's blacklist profile, or null if they have no entries at all
+   * @return true if the listing should be excluded from notifications for this subscriber
+   */
+  private boolean isBlacklisted(Listing listing, BlacklistProfile blacklist) {
+    if (blacklist == null) {
+      return false;
+    }
+    if (blacklist.listingIds().contains(listing.getId())) {
+      return true;
+    }
+    if (blacklist.sourceCodes().contains(listing.getSource().getCode())) {
+      return true;
+    }
+    return blacklist.keywords().stream().anyMatch(keyword -> matchesKeyword(listing, keyword));
+  }
+
+  private boolean matchesKeyword(Listing listing, String keyword) {
+    return containsIgnoreCase(listing.getTitle(), keyword)
+        || containsIgnoreCase(listing.getDescription(), keyword)
+        || containsIgnoreCase(listing.getAddress(), keyword);
   }
 
   private void collectSubscriptionTriggers(
@@ -330,7 +400,14 @@ public class NotificationTriggerServiceImpl implements NotificationTriggerServic
   private record EvaluationContext(
       List<Subscription> subscriptions,
       Map<Subscription, SubscriptionSearchCriteria> criteriaBySubscription,
-      Map<Long, City> citiesById) {}
+      Map<Long, City> citiesById,
+      Map<Long, BlacklistProfile> blacklistByUserId) {}
+
+  /**
+   * One user's blacklist, split by type for {@link #isBlacklisted} to check cheaply — listing IDs
+   * and source codes are exact-match sets, keywords are matched as case-insensitive substrings.
+   */
+  private record BlacklistProfile(Set<Long> listingIds, Set<String> sourceCodes, List<String> keywords) {}
 
   /**
    * A (subscription, listing, triggerType) combination eligible for a notification, pending the
