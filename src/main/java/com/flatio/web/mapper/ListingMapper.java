@@ -40,6 +40,8 @@ public interface ListingMapper {
       expression = "java(Boolean.TRUE.equals(listing.getIsNegotiable()) ? null : listing.getPrice())")
   @Mapping(target = "priceLabel",
       expression = "java(resolveNegotiableLabel(listing.getIsNegotiable()))")
+  @Mapping(target = "displayPrice", ignore = true)
+  @Mapping(target = "displayCurrency", ignore = true)
   ListingResponse toResponse(Listing listing, List<PriceHistoryEntry> priceHistory, boolean hasDuplicates);
 
   /**
@@ -55,6 +57,8 @@ public interface ListingMapper {
   @Mapping(source = "priceByn", target = "priceByn")
   @Mapping(source = "propertyType", target = "propertyType")
   @Mapping(source = "isNegotiable", target = "isNegotiable")
+  @Mapping(target = "displayPrice", ignore = true)
+  @Mapping(target = "displayCurrency", ignore = true)
   ListingSummaryResponse toSummaryResponse(Listing listing);
 
   /**

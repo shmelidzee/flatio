@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -35,10 +36,13 @@ public class ListingController {
    *
    * <p>All filter parameters are optional. Defaults to ACTIVE listings when {@code status} is omitted.
    * Excludes listings, sources, and stop-words the caller has blacklisted (issue #414).
+   * Each result's {@code displayPrice} is the stored price converted into {@code targetCurrency}
+   * (BYN by default); the original stored {@code price}/{@code currency} are unaffected (issue #415).
    *
    * @param criteria       filter parameters bound from query string
    * @param pageable       pagination and sorting (default: 20 per page, sorted by createdAt DESC)
    * @param authentication the authenticated caller, used for blacklist exclusion
+   * @param targetCurrency currency to convert each result's display price into; defaults to BYN
    * @return page of matching listing summaries
    */
   @Operation(
@@ -52,9 +56,10 @@ public class ListingController {
   public Page<ListingSummaryResponse> search(
       @ModelAttribute ListingSearchCriteria criteria,
       @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
-      Authentication authentication
+      Authentication authentication,
+      @RequestParam(defaultValue = "BYN") String targetCurrency
   ) {
-    return listingService.search(criteria, pageable, currentUserId(authentication));
+    return listingService.search(criteria, pageable, currentUserId(authentication), targetCurrency);
   }
 
   /**
@@ -75,7 +80,11 @@ public class ListingController {
   /**
    * Returns the full details of a single listing including its price change history.
    *
-   * @param id the internal listing identifier
+   * <p>{@code displayPrice} is the stored price converted into {@code targetCurrency} (BYN by
+   * default); the original stored {@code price}/{@code currency} are unaffected (issue #415).
+   *
+   * @param id             the internal listing identifier
+   * @param targetCurrency currency to convert the display price into; defaults to BYN
    * @return full listing response with price history
    */
   @Operation(
@@ -86,7 +95,7 @@ public class ListingController {
   @ApiResponse(responseCode = "404", description = "Listing not found")
   @ApiResponse(responseCode = "401", description = "Unauthorized")
   @GetMapping("/{id}")
-  public ListingResponse findById(@PathVariable Long id) {
-    return listingService.findById(id);
+  public ListingResponse findById(@PathVariable Long id, @RequestParam(defaultValue = "BYN") String targetCurrency) {
+    return listingService.findById(id, targetCurrency);
   }
 }
