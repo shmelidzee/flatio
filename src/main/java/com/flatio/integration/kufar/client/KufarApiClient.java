@@ -234,31 +234,26 @@ public class KufarApiClient {
         ? BigDecimal.ZERO
         : BigDecimal.valueOf(ad.priceByn()).divide(KOPECKS_DIVISOR, 2, RoundingMode.HALF_UP);
 
-    return new RawListing(
-        String.valueOf(ad.adId()),
-        title,
-        ad.body(),
-        dealType,
-        propertyType,
-        price,
-        "BYN",
-        null,
-        null,
-        rooms,
-        floor,
-        floorsTotal,
-        area,
-        address,
-        null,
-        null,
-        city,
-        ad.adLink(),
-        publishedAt,
-        photoUrls,
-        isOwner,
-        null,
-        isNegotiable
-    );
+    return RawListing.builder()
+        .externalId(String.valueOf(ad.adId()))
+        .title(title)
+        .description(ad.body())
+        .dealType(dealType)
+        .propertyType(propertyType)
+        .price(price)
+        .currency("BYN")
+        .rooms(rooms)
+        .floorNumber(floor)
+        .floorsTotal(floorsTotal)
+        .areaTotalM2(area)
+        .address(address)
+        .city(city)
+        .sourceUrl(ad.adLink())
+        .publishedAt(publishedAt)
+        .photoUrls(photoUrls)
+        .isOwner(isOwner)
+        .isNegotiable(isNegotiable)
+        .build();
   }
 
   /**

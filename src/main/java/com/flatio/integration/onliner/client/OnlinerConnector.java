@@ -269,31 +269,25 @@ public class OnlinerConnector implements ListingConnector {
     Integer rooms = mapRentTypeToRooms(apartment.rentType());
     Boolean isOwner = apartment.contact() != null ? apartment.contact().owner() : null;
 
-    return new RawListing(
-        String.valueOf(apartment.id()),
-        buildTitle(address),
-        null,
-        DEAL_TYPE_RENT,
-        mapRentTypeToPropertyType(apartment.rentType()),
-        price,
-        "BYN",
-        priceUsd,
-        null,
-        rooms,
-        null,
-        null,
-        null,
-        address,
-        lat,
-        lon,
-        city,
-        apartment.url(),
-        publishedAt,
-        photos,
-        isOwner,
-        null,
-        isNegotiable
-    );
+    return RawListing.builder()
+        .externalId(String.valueOf(apartment.id()))
+        .title(buildTitle(address))
+        .dealType(DEAL_TYPE_RENT)
+        .propertyType(mapRentTypeToPropertyType(apartment.rentType()))
+        .price(price)
+        .currency("BYN")
+        .priceUsd(priceUsd)
+        .rooms(rooms)
+        .address(address)
+        .latitude(lat)
+        .longitude(lon)
+        .city(city)
+        .sourceUrl(apartment.url())
+        .publishedAt(publishedAt)
+        .photoUrls(photos)
+        .isOwner(isOwner)
+        .isNegotiable(isNegotiable)
+        .build();
   }
 
   /**
