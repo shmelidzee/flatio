@@ -5,6 +5,7 @@ import com.flatio.common.exception.BlacklistInvalidValueException;
 import com.flatio.common.exception.BlacklistKeywordLimitExceededException;
 import com.flatio.common.exception.ListingNotFoundException;
 import com.flatio.common.exception.SourceNotFoundException;
+import com.flatio.common.util.ControlCharacterUtils;
 import com.flatio.config.BlacklistLimitProperties;
 import com.flatio.domain.blacklist.BlacklistEntry;
 import com.flatio.domain.blacklist.BlacklistEntryType;
@@ -104,7 +105,7 @@ public class BlacklistServiceImpl implements BlacklistService {
    * is stored so equivalent inputs (e.g. leading zeros) are deduplicated. SOURCE values must match
    * an existing source's {@code code} (the same identifier exposed to clients elsewhere in the
    * API), since {@code Source.id} is never exposed to clients. KEYWORD values must be a non-blank
-   * string within the length limit.
+   * string within the length limit, with control characters stripped (issue #433).
    */
   private String normalizeValue(BlacklistEntryType type, String rawValue) {
     String trimmed = rawValue.trim();
@@ -130,10 +131,13 @@ public class BlacklistServiceImpl implements BlacklistService {
   }
 
   private String normalizeKeywordValue(String trimmed) {
-    if (trimmed.isEmpty() || trimmed.length() > MAX_KEYWORD_LENGTH) {
-      throw new BlacklistInvalidValueException(BlacklistEntryType.KEYWORD, trimmed);
+    // Strips control characters (CWE-117) before persisting/logging — a keyword containing them
+    // is also meaningless as a literal substring to match against listing text (issue #433).
+    String sanitized = ControlCharacterUtils.stripControlCharacters(trimmed).trim();
+    if (sanitized.isEmpty() || sanitized.length() > MAX_KEYWORD_LENGTH) {
+      throw new BlacklistInvalidValueException(BlacklistEntryType.KEYWORD, sanitized);
     }
-    return trimmed;
+    return sanitized;
   }
 
   private Long parseId(BlacklistEntryType type, String trimmed) {
