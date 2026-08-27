@@ -173,6 +173,9 @@ nominatim:
   base-url: ${NOMINATIM_BASE_URL:https://nominatim.openstreetmap.org}
   user-agent: ${NOMINATIM_USER_AGENT:Flatio/1.0 (cr7mks1@gmail.com)}
   language: ${NOMINATIM_LANGUAGE:ru}
+  # Prefix for village/hamlet settlement names (issue #425) — depends on `language` above, not
+  # hardcoded in NominatimClient, so a non-Russian nominatim.language can supply its own prefix.
+  village-prefix: "${NOMINATIM_VILLAGE_PREFIX:д. }"
 
 flatio:
   sync:

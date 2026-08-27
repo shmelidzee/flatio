@@ -50,37 +50,8 @@ public class OnlinerSaleDeltaSyncJob {
     Instant since = syncRunService.findLastSuccessfulRunAt(onlinerSaleConnector.getSourceId()).orElse(Instant.EPOCH);
     Instant runStart = Instant.now();
     log.info("Onliner sale delta sync started: since={}", since);
-
     try {
-      Source source = sourceRepository.findByCode(onlinerSaleConnector.getSourceId())
-          .orElseThrow(() -> new IllegalStateException(
-              "Source not registered in DB: " + onlinerSaleConnector.getSourceId()));
-      if (!source.isActive()) {
-        log.debug("Onliner sale delta sync skipped: source disabled: source={}", onlinerSaleConnector.getSourceId());
-        return;
-      }
-
-      List<RawListing> rawListings = onlinerSaleConnector.fetchDelta(since);
-
-      if (rawListings.isEmpty()) {
-        log.info("Onliner sale delta sync: no new listings since={}", since);
-        Instant finish = Instant.now();
-        syncRunService.record(SyncRunRequest.success(
-            onlinerSaleConnector.getSourceId(), SyncType.DELTA, runStart, finish, 0,
-            new BatchIngestResult(0, 0, 0)));
-        return;
-      }
-
-      BatchIngestResult result = listingIngestionService.ingestBatch(rawListings, source);
-      Instant finish = Instant.now();
-      long durationMs = Duration.between(runStart, finish).toMillis();
-
-      syncRunService.record(SyncRunRequest.success(
-          onlinerSaleConnector.getSourceId(), SyncType.DELTA, runStart, finish,
-          rawListings.size(), result));
-
-      log.info("Onliner sale delta sync completed: fetched={}, added={}, updated={}, errors={}, durationMs={}",
-          rawListings.size(), result.added(), result.updated(), result.errors(), durationMs);
+      executeDeltaSync(since, runStart);
     } catch (CallNotPermittedException e) {
       log.warn("Onliner sale delta sync skipped: circuit breaker OPEN");
     } catch (DataAccessException e) {
@@ -91,5 +62,43 @@ public class OnlinerSaleDeltaSyncJob {
       syncRunService.record(SyncRunRequest.failure(
           onlinerSaleConnector.getSourceId(), SyncType.DELTA, runStart, Instant.now()));
     }
+  }
+
+  private void executeDeltaSync(Instant since, Instant runStart) {
+    Source source = sourceRepository.findByCode(onlinerSaleConnector.getSourceId())
+        .orElseThrow(() -> new IllegalStateException(
+            "Source not registered in DB: " + onlinerSaleConnector.getSourceId()));
+    if (!source.isActive()) {
+      log.debug("Onliner sale delta sync skipped: source disabled: source={}", onlinerSaleConnector.getSourceId());
+      return;
+    }
+
+    List<RawListing> rawListings = onlinerSaleConnector.fetchDelta(since);
+    if (rawListings.isEmpty()) {
+      recordEmptyRun(since, runStart);
+      return;
+    }
+    ingestAndRecord(rawListings, source, runStart);
+  }
+
+  private void recordEmptyRun(Instant since, Instant runStart) {
+    log.info("Onliner sale delta sync: no new listings since={}", since);
+    Instant finish = Instant.now();
+    syncRunService.record(SyncRunRequest.success(
+        onlinerSaleConnector.getSourceId(), SyncType.DELTA, runStart, finish, 0,
+        new BatchIngestResult(0, 0, 0)));
+  }
+
+  private void ingestAndRecord(List<RawListing> rawListings, Source source, Instant runStart) {
+    BatchIngestResult result = listingIngestionService.ingestBatch(rawListings, source);
+    Instant finish = Instant.now();
+    long durationMs = Duration.between(runStart, finish).toMillis();
+
+    syncRunService.record(SyncRunRequest.success(
+        onlinerSaleConnector.getSourceId(), SyncType.DELTA, runStart, finish,
+        rawListings.size(), result));
+
+    log.info("Onliner sale delta sync completed: fetched={}, added={}, updated={}, errors={}, durationMs={}",
+        rawListings.size(), result.added(), result.updated(), result.errors(), durationMs);
   }
 }

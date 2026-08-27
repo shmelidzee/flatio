@@ -14,6 +14,7 @@ import com.flatio.web.dto.ListingSummaryResponse;
 import com.flatio.web.mapper.ListingMapper;
 import jakarta.persistence.criteria.CommonAbstractCriteria;
 import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
@@ -92,55 +93,84 @@ public class AdminListingServiceImpl implements AdminListingService {
 
   private Specification<Listing> buildSearchSpec(AdminListingSearchCriteria criteria) {
     return (root, query, cb) -> {
+      applyFetchJoins(root, query);
       List<Predicate> predicates = new ArrayList<>();
-
-      if (!Long.class.equals(query.getResultType())) {
-        root.fetch("source", JoinType.INNER);
-        root.fetch("currency", JoinType.INNER);
-        query.distinct(true);
-      }
-
-      if (criteria.status() != null) {
-        predicates.add(cb.equal(root.get("status"), criteria.status()));
-      }
-      if (criteria.dealType() != null) {
-        predicates.add(cb.equal(root.get("dealType"), criteria.dealType()));
-      }
-      if (criteria.propertyType() != null) {
-        predicates.add(cb.equal(root.get("propertyType"), criteria.propertyType()));
-      }
-      if (criteria.rooms() != null) {
-        predicates.add(cb.equal(root.get("rooms"), criteria.rooms()));
-      }
-      if (criteria.priceMin() != null) {
-        predicates.add(cb.greaterThanOrEqualTo(root.get("price"), criteria.priceMin()));
-      }
-      if (criteria.priceMax() != null) {
-        predicates.add(cb.lessThanOrEqualTo(root.get("price"), criteria.priceMax()));
-      }
-      if (criteria.areaMin() != null) {
-        predicates.add(cb.greaterThanOrEqualTo(root.get("areaTotalM2"), criteria.areaMin()));
-      }
-      if (criteria.areaMax() != null) {
-        predicates.add(cb.lessThanOrEqualTo(root.get("areaTotalM2"), criteria.areaMax()));
-      }
-      if (criteria.query() != null && !criteria.query().isBlank()) {
-        predicates.add(buildKeywordPredicate(root, cb, criteria.query()));
-      }
-      if (criteria.city() != null && !criteria.city().isBlank()) {
-        predicates.add(cb.like(cb.lower(root.get("city")),
-            LikePatternUtils.containsPattern(criteria.city().toLowerCase()), LikePatternUtils.ESCAPE_CHAR));
-      }
-      if (criteria.sourceId() != null) {
-        predicates.add(cb.equal(root.get("source").get("code"), criteria.sourceId()));
-      }
-      if (Boolean.TRUE.equals(criteria.duplicatesOnly())) {
-        predicates.add(cb.isNotNull(root.get("dedupHash")));
-        predicates.add(cb.exists(buildDuplicateExistsSubquery(query, cb, root)));
-      }
-
+      addEqualityPredicates(root, cb, criteria, predicates);
+      addRangePredicates(root, cb, criteria, predicates);
+      addTextPredicates(root, cb, criteria, predicates);
+      addDuplicatePredicate(root, query, cb, criteria, predicates);
       return cb.and(predicates.toArray(new Predicate[0]));
     };
+  }
+
+  /**
+   * Eagerly fetches {@code source}/{@code currency} for the row-returning query, skipped for the
+   * {@code count(id)} query Spring Data issues alongside it — a fetch join there would be wasted
+   * and {@code distinct} on a scalar result is meaningless.
+   *
+   * @param root  the query root
+   * @param query the query being built; its result type distinguishes the two cases above
+   */
+  private void applyFetchJoins(Root<Listing> root, CriteriaQuery<?> query) {
+    if (!Long.class.equals(query.getResultType())) {
+      root.fetch("source", JoinType.INNER);
+      root.fetch("currency", JoinType.INNER);
+      query.distinct(true);
+    }
+  }
+
+  private void addEqualityPredicates(Root<Listing> root, CriteriaBuilder cb,
+      AdminListingSearchCriteria criteria, List<Predicate> predicates) {
+    if (criteria.status() != null) {
+      predicates.add(cb.equal(root.get("status"), criteria.status()));
+    }
+    if (criteria.dealType() != null) {
+      predicates.add(cb.equal(root.get("dealType"), criteria.dealType()));
+    }
+    if (criteria.propertyType() != null) {
+      predicates.add(cb.equal(root.get("propertyType"), criteria.propertyType()));
+    }
+    if (criteria.rooms() != null) {
+      predicates.add(cb.equal(root.get("rooms"), criteria.rooms()));
+    }
+    if (criteria.sourceId() != null) {
+      predicates.add(cb.equal(root.get("source").get("code"), criteria.sourceId()));
+    }
+  }
+
+  private void addRangePredicates(Root<Listing> root, CriteriaBuilder cb,
+      AdminListingSearchCriteria criteria, List<Predicate> predicates) {
+    if (criteria.priceMin() != null) {
+      predicates.add(cb.greaterThanOrEqualTo(root.get("price"), criteria.priceMin()));
+    }
+    if (criteria.priceMax() != null) {
+      predicates.add(cb.lessThanOrEqualTo(root.get("price"), criteria.priceMax()));
+    }
+    if (criteria.areaMin() != null) {
+      predicates.add(cb.greaterThanOrEqualTo(root.get("areaTotalM2"), criteria.areaMin()));
+    }
+    if (criteria.areaMax() != null) {
+      predicates.add(cb.lessThanOrEqualTo(root.get("areaTotalM2"), criteria.areaMax()));
+    }
+  }
+
+  private void addTextPredicates(Root<Listing> root, CriteriaBuilder cb,
+      AdminListingSearchCriteria criteria, List<Predicate> predicates) {
+    if (criteria.query() != null && !criteria.query().isBlank()) {
+      predicates.add(buildKeywordPredicate(root, cb, criteria.query()));
+    }
+    if (criteria.city() != null && !criteria.city().isBlank()) {
+      predicates.add(cb.like(cb.lower(root.get("city")),
+          LikePatternUtils.containsPattern(criteria.city().toLowerCase()), LikePatternUtils.ESCAPE_CHAR));
+    }
+  }
+
+  private void addDuplicatePredicate(Root<Listing> root, CommonAbstractCriteria query, CriteriaBuilder cb,
+      AdminListingSearchCriteria criteria, List<Predicate> predicates) {
+    if (Boolean.TRUE.equals(criteria.duplicatesOnly())) {
+      predicates.add(cb.isNotNull(root.get("dedupHash")));
+      predicates.add(cb.exists(buildDuplicateExistsSubquery(query, cb, root)));
+    }
   }
 
   /**
