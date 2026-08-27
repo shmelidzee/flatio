@@ -19,7 +19,9 @@ import org.springframework.web.client.RestClient;
  * Reverse-geocoding client backed by the Nominatim (OpenStreetMap) public API.
  *
  * <p>Resolves geographic coordinates to a human-readable settlement name following the
- * OSM address hierarchy: city → town → village/hamlet (the latter prefixed with «д.»).
+ * OSM address hierarchy: city → town → village/hamlet (the latter prefixed with
+ * {@code nominatim.village-prefix}, issue #425 — depends on {@code nominatim.language} rather
+ * than being hardcoded, so a non-Russian language config can supply its own prefix).
  *
  * <p>Rate limiting (1 req/s) is enforced programmatically via Resilience4j so that only
  * actual HTTP calls consume a permit — cache hits bypass the limiter entirely.
@@ -37,7 +39,6 @@ import org.springframework.web.client.RestClient;
 @Slf4j
 public class NominatimClient {
 
-  private static final String VILLAGE_PREFIX = "д. ";
   private static final int COORD_SCALE = 3;
   private static final long CACHE_TTL_DAYS = 30;
   private static final long CACHE_MAX_SIZE = 50_000;
@@ -45,6 +46,7 @@ public class NominatimClient {
   private final RestClient restClient;
   private final RateLimiter rateLimiter;
   private final String language;
+  private final String villagePrefix;
   private final Map<String, Optional<String>> cache = Caffeine.newBuilder()
       .expireAfterWrite(Duration.ofDays(CACHE_TTL_DAYS))
       .maximumSize(CACHE_MAX_SIZE)
@@ -59,6 +61,7 @@ public class NominatimClient {
     this.restClient = restClient;
     this.rateLimiter = rateLimiterRegistry.rateLimiter("nominatim");
     this.language = properties.language();
+    this.villagePrefix = properties.villagePrefix();
   }
 
   /**
@@ -114,8 +117,8 @@ public class NominatimClient {
       return null;
     }
     return address.county() != null
-        ? VILLAGE_PREFIX + settlement + ", " + address.county()
-        : VILLAGE_PREFIX + settlement;
+        ? villagePrefix + settlement + ", " + address.county()
+        : villagePrefix + settlement;
   }
 
   private String buildCacheKey(BigDecimal latitude, BigDecimal longitude) {

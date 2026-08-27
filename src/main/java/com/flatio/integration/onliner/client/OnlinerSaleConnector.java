@@ -218,25 +218,11 @@ public class OnlinerSaleConnector implements ListingConnector {
     }
   }
 
+  /** Resolved price fields — split out of {@link #toRawListing} (issue #425). */
+  private record PriceInfo(BigDecimal price, BigDecimal priceUsd, boolean isNegotiable) {}
+
   private RawListing toRawListing(OnlinerSaleApartment apartment) {
-    BigDecimal price;
-    BigDecimal priceUsd;
-    boolean isNegotiable;
-    if (apartment.price() == null) {
-      price = BigDecimal.ZERO;
-      priceUsd = null;
-      isNegotiable = true;
-    } else {
-      Map<String, OnlinerConvertedPrice> converted = apartment.price().converted();
-      OnlinerConvertedPrice bynConverted = converted != null ? converted.get("BYN") : null;
-      if (bynConverted == null) {
-        throw new IllegalArgumentException("Missing BYN converted price for sale apartment id=" + apartment.id());
-      }
-      price = new BigDecimal(bynConverted.amount());
-      isNegotiable = price.compareTo(BigDecimal.ZERO) == 0;
-      OnlinerConvertedPrice usdConverted = converted.get("USD");
-      priceUsd = usdConverted != null ? new BigDecimal(usdConverted.amount()) : null;
-    }
+    PriceInfo priceInfo = resolvePrice(apartment);
     BigDecimal lat = apartment.location() != null ? apartment.location().latitude() : null;
     BigDecimal lon = apartment.location() != null ? apartment.location().longitude() : null;
     String address = apartment.location() != null ? apartment.location().address() : null;
@@ -257,9 +243,9 @@ public class OnlinerSaleConnector implements ListingConnector {
         .title(buildTitle(address))
         .dealType(DEAL_TYPE_SELL)
         .propertyType(PROPERTY_TYPE_APARTMENT)
-        .price(price)
+        .price(priceInfo.price())
         .currency("BYN")
-        .priceUsd(priceUsd)
+        .priceUsd(priceInfo.priceUsd())
         .rooms(apartment.numberOfRooms())
         .address(address)
         .latitude(lat)
@@ -269,8 +255,32 @@ public class OnlinerSaleConnector implements ListingConnector {
         .publishedAt(publishedAt)
         .photoUrls(photos)
         .isOwner(isOwner)
-        .isNegotiable(isNegotiable)
+        .isNegotiable(priceInfo.isNegotiable())
         .build();
+  }
+
+  /**
+   * Resolves price, USD-original price, and negotiable flag from an apartment's converted-price
+   * map. A missing {@code price} block means the seller did not disclose a price (negotiable).
+   *
+   * @param apartment the apartment to resolve pricing for, never null
+   * @return resolved price fields, never null
+   * @throws IllegalArgumentException if {@code price} is present but has no BYN conversion
+   */
+  private PriceInfo resolvePrice(OnlinerSaleApartment apartment) {
+    if (apartment.price() == null) {
+      return new PriceInfo(BigDecimal.ZERO, null, true);
+    }
+    Map<String, OnlinerConvertedPrice> converted = apartment.price().converted();
+    OnlinerConvertedPrice bynConverted = converted != null ? converted.get("BYN") : null;
+    if (bynConverted == null) {
+      throw new IllegalArgumentException("Missing BYN converted price for sale apartment id=" + apartment.id());
+    }
+    BigDecimal price = new BigDecimal(bynConverted.amount());
+    boolean isNegotiable = price.compareTo(BigDecimal.ZERO) == 0;
+    OnlinerConvertedPrice usdConverted = converted.get("USD");
+    BigDecimal priceUsd = usdConverted != null ? new BigDecimal(usdConverted.amount()) : null;
+    return new PriceInfo(price, priceUsd, isNegotiable);
   }
 
   /**
