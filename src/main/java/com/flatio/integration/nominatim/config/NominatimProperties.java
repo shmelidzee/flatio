@@ -10,5 +10,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record NominatimProperties(
     String baseUrl,
     String userAgent,
-    String language
+    String language,
+    String villagePrefix
 ) {}

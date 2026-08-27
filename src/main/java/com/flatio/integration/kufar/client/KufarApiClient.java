@@ -81,12 +81,14 @@ public class KufarApiClient {
   private final RestClient restClient;
   private final KufarProperties properties;
   private final KufarAdDetailClient adDetailClient;
+  private final ImageUrlValidator imageUrlValidator;
 
   public KufarApiClient(@Qualifier("kufarRestClient") RestClient restClient,
-      KufarProperties properties, KufarAdDetailClient adDetailClient) {
+      KufarProperties properties, KufarAdDetailClient adDetailClient, ImageUrlValidator imageUrlValidator) {
     this.restClient = restClient;
     this.properties = properties;
     this.adDetailClient = adDetailClient;
+    this.imageUrlValidator = imageUrlValidator;
   }
 
   /**
@@ -234,31 +236,26 @@ public class KufarApiClient {
         ? BigDecimal.ZERO
         : BigDecimal.valueOf(ad.priceByn()).divide(KOPECKS_DIVISOR, 2, RoundingMode.HALF_UP);
 
-    return new RawListing(
-        String.valueOf(ad.adId()),
-        title,
-        ad.body(),
-        dealType,
-        propertyType,
-        price,
-        "BYN",
-        null,
-        null,
-        rooms,
-        floor,
-        floorsTotal,
-        area,
-        address,
-        null,
-        null,
-        city,
-        ad.adLink(),
-        publishedAt,
-        photoUrls,
-        isOwner,
-        null,
-        isNegotiable
-    );
+    return RawListing.builder()
+        .externalId(String.valueOf(ad.adId()))
+        .title(title)
+        .description(ad.body())
+        .dealType(dealType)
+        .propertyType(propertyType)
+        .price(price)
+        .currency("BYN")
+        .rooms(rooms)
+        .floorNumber(floor)
+        .floorsTotal(floorsTotal)
+        .areaTotalM2(area)
+        .address(address)
+        .city(city)
+        .sourceUrl(ad.adLink())
+        .publishedAt(publishedAt)
+        .photoUrls(photoUrls)
+        .isOwner(isOwner)
+        .isNegotiable(isNegotiable)
+        .build();
   }
 
   /**
@@ -399,7 +396,7 @@ public class KufarApiClient {
    */
   private String toFullPhotoUrl(String cdnBase, String path) {
     if (path.startsWith("http")) {
-      if (ImageUrlValidator.isAllowedImageUrl(path)) {
+      if (imageUrlValidator.isAllowedImageUrl(path)) {
         return path;
       }
       log.warn("Rejecting photo URL outside the allowed CDN hosts: url={}", path);

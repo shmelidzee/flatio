@@ -1,5 +1,6 @@
 package com.flatio.integration.onliner.client;
 
+import com.flatio.common.util.ImageUrlValidator;
 import com.flatio.domain.listing.Listing;
 import com.flatio.integration.core.ConnectorTransientException;
 import com.flatio.integration.core.RawListing;
@@ -25,6 +26,7 @@ import java.time.OffsetDateTime;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -72,7 +74,10 @@ class OnlinerSaleConnectorTest {
         "/search/apartments",
         50
     );
-    connector = new OnlinerSaleConnector(restClient, properties);
+    // Full domain set, matching how the single shared ImageUrlValidator bean is wired in production
+    // (it validates URLs from every connector, not just this one).
+    connector = new OnlinerSaleConnector(restClient, properties,
+        new ImageUrlValidator(Set.of("onliner.by", "kufar.by", "realt.by")));
   }
 
   // -------------------------------------------------------------------------

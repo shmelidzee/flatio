@@ -1,5 +1,6 @@
 package com.flatio.integration.kufar.client;
 
+import com.flatio.common.util.ImageUrlValidator;
 import com.flatio.integration.core.RawListing;
 import com.flatio.integration.kufar.config.KufarProperties;
 import com.flatio.integration.kufar.dto.KufarAd;
@@ -24,6 +25,7 @@ import java.math.BigDecimal;
 import java.net.URI;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -73,7 +75,10 @@ class KufarApiClientTest {
         new KufarProperties.CategoryConfig("KUFAR_HOUSE_RENT", "BY", "1020", "let"),
         new KufarProperties.CategoryConfig("KUFAR_HOUSE_SALE", "BY", "1020", "sell")
     );
-    apiClient = new KufarApiClient(restClient, properties, adDetailClient);
+    // Full domain set, matching how the single shared ImageUrlValidator bean is wired in production
+    // (it validates URLs from every connector, not just this one).
+    apiClient = new KufarApiClient(restClient, properties, adDetailClient,
+        new ImageUrlValidator(Set.of("onliner.by", "kufar.by", "realt.by")));
     config = properties.apartmentRent();
   }
 
@@ -395,7 +400,8 @@ class KufarApiClientTest {
         new KufarProperties.CategoryConfig("KUFAR_HOUSE_RENT", "BY", "1020", "let"),
         new KufarProperties.CategoryConfig("KUFAR_HOUSE_SALE", "BY", "1020", "sell")
     );
-    var clientWithSlash = new KufarApiClient(restClient, propertiesWithSlash, adDetailClient);
+    var clientWithSlash = new KufarApiClient(restClient, propertiesWithSlash, adDetailClient,
+        new ImageUrlValidator(Set.of("onliner.by", "kufar.by", "realt.by")));
     var image = new KufarImage("1", "adim1/uuid.jpg");
     var ad = new KufarAd(605L, "Квартира", null, 8000000L, "BYR",
         "https://re.kufar.by/vi/605", null, List.of(), List.of(), null,
