@@ -72,7 +72,7 @@ public class TelegramNotificationSender {
    */
   public void sendPending() {
     Instant retryBefore = Instant.now().minus(Duration.ofMinutes(properties.retryDelayMinutes()));
-    List<Notification> batch = notificationRepository.findSendable(
+    List<Notification> batch = notificationRepository.findSendable(DeliveryMode.REALTIME,
         NotificationStatus.PENDING, NotificationStatus.FAILED, retryBefore, PageRequest.of(0, properties.batchSize()));
     if (batch.isEmpty()) {
       return;
@@ -81,9 +81,6 @@ public class TelegramNotificationSender {
     Map<Long, Long> sentThisRunByUserId = new HashMap<>();
     int delivered = 0;
     for (Notification notification : batch) {
-      if (notification.getSubscription().getDeliveryMode() != DeliveryMode.REALTIME) {
-        continue;
-      }
       if (deliverIfUnderLimit(notification, sentThisRunByUserId)) {
         delivered++;
       }

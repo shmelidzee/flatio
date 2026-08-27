@@ -3,6 +3,7 @@ package com.flatio.repository;
 import com.flatio.domain.listing.Listing;
 import com.flatio.domain.notification.Notification;
 import com.flatio.domain.notification.NotificationStatus;
+import com.flatio.domain.subscription.DeliveryMode;
 import com.flatio.domain.subscription.Subscription;
 import com.flatio.domain.subscription.TriggerType;
 import com.flatio.domain.user.User;
@@ -37,8 +38,14 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
       Collection<Subscription> subscriptions, Collection<Listing> listings, Collection<TriggerType> triggerTypes);
 
   /**
-   * Finds notifications ready to be (re)delivered: still {@code PENDING}, or {@code FAILED} and
-   * old enough to retry.
+   * Finds notifications ready to be (re)delivered over Telegram: belonging to a REALTIME
+   * subscription, still {@code PENDING}, or {@code FAILED} and old enough to retry.
+   *
+   * <p>Restricted to {@code deliveryMode = REALTIME} at the query level — not just filtered in
+   * the caller — so that DIGEST/DAILY notifications (unsendable until issue #410 exists) never
+   * occupy a batch slot ahead of a REALTIME one. Without this, a backlog of DIGEST/DAILY
+   * {@code PENDING} rows (oldest-first) would eventually starve REALTIME delivery entirely once
+   * that backlog exceeds the page size.
    *
    * <p>Batches {@code subscription}, {@code subscription.user}, {@code listing}, its
    * {@code source} and {@code currency} in one query via {@code JOIN FETCH} — {@code
@@ -46,11 +53,12 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
    * listing card itself) for every row it processes, so fetching them eagerly here avoids N+1
    * lazy-load queries across the batch.
    *
-   * @param pending     the {@code PENDING} status constant
-   * @param failed      the {@code FAILED} status constant
-   * @param retryBefore a {@code FAILED} notification is only retried once its last update is at
-   *                    or before this instant
-   * @param pageable    caps how many notifications one run processes
+   * @param deliveryMode only subscriptions with this delivery mode are considered
+   * @param pending      the {@code PENDING} status constant
+   * @param failed       the {@code FAILED} status constant
+   * @param retryBefore  a {@code FAILED} notification is only retried once its last update is at
+   *                     or before this instant
+   * @param pageable     caps how many notifications one run processes
    * @return sendable notifications, oldest first, never null
    */
   @Query("SELECT n FROM Notification n "
@@ -59,9 +67,11 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
       + "JOIN FETCH n.listing l "
       + "JOIN FETCH l.source "
       + "JOIN FETCH l.currency "
-      + "WHERE n.status = :pending OR (n.status = :failed AND n.updatedAt <= :retryBefore) "
+      + "WHERE s.deliveryMode = :deliveryMode "
+      + "AND (n.status = :pending OR (n.status = :failed AND n.updatedAt <= :retryBefore)) "
       + "ORDER BY n.createdAt ASC")
   List<Notification> findSendable(
+      @Param("deliveryMode") DeliveryMode deliveryMode,
       @Param("pending") NotificationStatus pending,
       @Param("failed") NotificationStatus failed,
       @Param("retryBefore") Instant retryBefore,

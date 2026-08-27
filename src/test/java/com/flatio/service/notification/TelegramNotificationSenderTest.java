@@ -82,8 +82,8 @@ class TelegramNotificationSenderTest {
   @Test
   void should_do_nothing_when_no_sendable_notifications() {
     // Given
-    when(notificationRepository.findSendable(eq(NotificationStatus.PENDING), eq(NotificationStatus.FAILED),
-        any(Instant.class), any(Pageable.class))).thenReturn(List.of());
+    when(notificationRepository.findSendable(eq(DeliveryMode.REALTIME), eq(NotificationStatus.PENDING),
+        eq(NotificationStatus.FAILED), any(Instant.class), any(Pageable.class))).thenReturn(List.of());
 
     // When
     sender.sendPending();
@@ -93,19 +93,17 @@ class TelegramNotificationSenderTest {
   }
 
   @Test
-  void should_skip_notification_when_delivery_mode_is_not_realtime() throws Exception {
-    // Given
-    var user = buildUser(1L);
-    var notification = buildNotification(user, DeliveryMode.DIGEST, TriggerType.NEW_LISTING);
-    mockBatch(notification);
+  void should_request_only_realtime_deliveries_from_repository() {
+    // Given — DIGEST/DAILY notifications are unsendable until issue #410 exists; filtering them
+    // out at the query level (not in this class) keeps a DIGEST/DAILY backlog from starving
+    // REALTIME delivery out of the batch
+    when(notificationRepository.findSendable(any(), any(), any(), any(), any())).thenReturn(List.of());
 
     // When
     sender.sendPending();
 
     // Then
-    verify(telegramClient, never()).execute(any(SendMessage.class));
-    verify(telegramClient, never()).execute(any(SendPhoto.class));
-    verify(notificationRepository, never()).save(any());
+    verify(notificationRepository).findSendable(eq(DeliveryMode.REALTIME), any(), any(), any(), any());
   }
 
   // -------------------------------------------------------------------------
@@ -245,8 +243,8 @@ class TelegramNotificationSenderTest {
   // -------------------------------------------------------------------------
 
   private void mockBatch(Notification... notifications) {
-    when(notificationRepository.findSendable(eq(NotificationStatus.PENDING), eq(NotificationStatus.FAILED),
-        any(Instant.class), any(Pageable.class))).thenReturn(List.of(notifications));
+    when(notificationRepository.findSendable(eq(DeliveryMode.REALTIME), eq(NotificationStatus.PENDING),
+        eq(NotificationStatus.FAILED), any(Instant.class), any(Pageable.class))).thenReturn(List.of(notifications));
   }
 
   private void mockChatId(User user, String chatId) {
