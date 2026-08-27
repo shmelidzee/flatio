@@ -87,6 +87,8 @@ class SearchResultSenderTest {
 
   private static final String TEST_NO_PHOTO_URL = "https://placeholder.test/no-photo.png";
   private static final byte[] DUMMY_PHOTO_BYTES = new byte[]{0x01, 0x02};
+  private static final String IMAGE_PROCESS_FAILED_MESSAGE =
+      "Error executing SendPhoto query: [400] Bad Request: IMAGE_PROCESS_FAILED";
 
   // Size limits intentionally small so tests don't need to allocate large byte arrays.
   private static final long TEST_MAX_PHOTO_BYTES = 100L;
@@ -264,6 +266,96 @@ class SearchResultSenderTest {
     // Then — text card fallback: 2 SendMessage (text card + navigation)
     verify(telegramClient).execute(any(SendPhoto.class));
     verify(telegramClient, times(2)).execute(any(SendMessage.class));
+  }
+
+  // -------------------------------------------------------------------------
+  // IMAGE_PROCESS_FAILED handling (issue #444)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_retry_with_reencoded_jpeg_when_image_process_failed() throws TelegramApiException, IOException {
+    // Given — a decodable JPEG; Telegram rejects the first attempt, accepts the re-encoded retry
+    byte[] jpegBytes = buildJpegBytes(10, 10);
+    ReflectionTestUtils.setField(searchResultSender, "maxSendPhotoBytes", (long) jpegBytes.length);
+    var listing = buildListing(70L, "https://rms.kufar.by/photo.jpg", "https://kufar.by/70");
+    when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
+    when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing));
+    when(listingFormatter.buildCaption(listing)).thenReturn("caption");
+    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(photoProxyClient.download(anyString(), eq(70L))).thenReturn(Optional.of(jpegBytes));
+    lenient().when(telegramClient.execute(any(EditMessageText.class))).thenReturn(mock());
+    lenient().when(telegramClient.execute(any(SendMessage.class))).thenReturn(mock());
+    when(telegramClient.execute(any(SendPhoto.class)))
+        .thenThrow(new TelegramApiException(IMAGE_PROCESS_FAILED_MESSAGE))
+        .thenReturn(null);
+
+    // When
+    searchResultSender.handle(buildCallback(1L, 100L, 10));
+
+    // Then — one retry with re-encoded bytes succeeds; no placeholder or text-card fallback
+    verify(telegramClient, times(2)).execute(any(SendPhoto.class));
+    verify(telegramClient, times(1)).execute(any(SendMessage.class));
+  }
+
+  @Test
+  void should_send_placeholder_when_image_process_failed_and_bytes_not_decodable() throws TelegramApiException {
+    // Given — download returns bytes that are not a decodable image at all
+    var listing = buildListing(71L, "https://rms.kufar.by/broken.jpg", "https://kufar.by/71");
+    when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
+    when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing));
+    when(listingFormatter.buildCaption(listing)).thenReturn("caption");
+    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(photoProxyClient.download(anyString(), eq(71L))).thenReturn(Optional.of(DUMMY_PHOTO_BYTES));
+    lenient().when(telegramClient.execute(any(EditMessageText.class))).thenReturn(mock());
+    lenient().when(telegramClient.execute(any(SendMessage.class))).thenReturn(mock());
+    when(telegramClient.execute(any(SendPhoto.class)))
+        .thenThrow(new TelegramApiException(IMAGE_PROCESS_FAILED_MESSAGE))
+        .thenReturn(null);
+
+    // When
+    searchResultSender.handle(buildCallback(1L, 100L, 10));
+
+    // Then — undecodable bytes skip the re-encode retry and go straight to the placeholder
+    ArgumentCaptor<SendPhoto> photoCaptor = ArgumentCaptor.forClass(SendPhoto.class);
+    verify(telegramClient, times(2)).execute(photoCaptor.capture());
+    assertThat(photoCaptor.getAllValues().get(1).getPhoto().getAttachName()).isEqualTo(TEST_NO_PHOTO_URL);
+    verify(telegramClient, times(1)).execute(any(SendMessage.class));
+  }
+
+  @Test
+  void should_send_placeholder_when_image_process_failed_persists_after_retry()
+      throws TelegramApiException, IOException {
+    // Given — decodable JPEG, but Telegram rejects both the original and the re-encoded retry
+    byte[] jpegBytes = buildJpegBytes(10, 10);
+    ReflectionTestUtils.setField(searchResultSender, "maxSendPhotoBytes", (long) jpegBytes.length);
+    var listing = buildListing(72L, "https://rms.kufar.by/photo.jpg", "https://kufar.by/72");
+    when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
+    when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing));
+    when(listingFormatter.buildCaption(listing)).thenReturn("caption");
+    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(photoProxyClient.download(anyString(), eq(72L))).thenReturn(Optional.of(jpegBytes));
+    lenient().when(telegramClient.execute(any(EditMessageText.class))).thenReturn(mock());
+    lenient().when(telegramClient.execute(any(SendMessage.class))).thenReturn(mock());
+    when(telegramClient.execute(any(SendPhoto.class)))
+        .thenThrow(new TelegramApiException(IMAGE_PROCESS_FAILED_MESSAGE))
+        .thenThrow(new TelegramApiException(IMAGE_PROCESS_FAILED_MESSAGE))
+        .thenReturn(null);
+
+    // When
+    searchResultSender.handle(buildCallback(1L, 100L, 10));
+
+    // Then — exactly one retry attempted (original + re-encoded), then placeholder — not text
+    ArgumentCaptor<SendPhoto> photoCaptor = ArgumentCaptor.forClass(SendPhoto.class);
+    verify(telegramClient, times(3)).execute(photoCaptor.capture());
+    assertThat(photoCaptor.getAllValues().get(2).getPhoto().getAttachName()).isEqualTo(TEST_NO_PHOTO_URL);
+    verify(telegramClient, times(1)).execute(any(SendMessage.class));
+  }
+
+  private static byte[] buildJpegBytes(int width, int height) throws IOException {
+    var img = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+    var baos = new ByteArrayOutputStream();
+    ImageIO.write(img, "jpeg", baos);
+    return baos.toByteArray();
   }
 
   @Test
