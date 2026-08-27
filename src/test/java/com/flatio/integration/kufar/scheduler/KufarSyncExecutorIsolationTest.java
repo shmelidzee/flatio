@@ -11,10 +11,12 @@ import com.flatio.integration.realt.scheduler.RealtHouseSaleFullSyncJob;
 import com.flatio.integration.realt.scheduler.RealtRoomFullSyncJob;
 import com.flatio.integration.realt.scheduler.RealtRoomSaleFullSyncJob;
 import com.flatio.integration.realt.scheduler.RealtSaleFullSyncJob;
+import com.flatio.integration.nbrb.scheduler.ExchangeRateSyncJob;
 import com.flatio.repository.AdminAuditLogRepository;
 import com.flatio.repository.BlacklistEntryRepository;
 import com.flatio.repository.CityRepository;
 import com.flatio.repository.CurrencyRepository;
+import com.flatio.repository.ExchangeRateRepository;
 import com.flatio.repository.FavoriteRepository;
 import com.flatio.repository.ListingRepository;
 import com.flatio.repository.NotificationRepository;
@@ -139,6 +141,9 @@ class KufarSyncExecutorIsolationTest {
   @MockBean
   private BlacklistEntryRepository blacklistEntryRepository;
 
+  @MockBean
+  private ExchangeRateRepository exchangeRateRepository;
+
   @MockBean(name = "kufarAdDetailRestClient")
   private RestClient restClient;
 
@@ -205,6 +210,12 @@ class KufarSyncExecutorIsolationTest {
 
   @MockBean
   private RealtHouseSaleFullSyncJob realtHouseSaleFullSyncJob;
+
+  // Same reasoning as the *FullSyncJob mocks above (issue #332): ExchangeRateSyncJob has the
+  // identical onApplicationReady() (ApplicationReadyEvent -> @Async("startupSyncExecutor"))
+  // pattern and would otherwise race this test's mock stubbing on its own startup thread.
+  @MockBean
+  private ExchangeRateSyncJob exchangeRateSyncJob;
 
   @Autowired
   private KufarApartmentRentDeltaSyncJob deltaSyncJob;

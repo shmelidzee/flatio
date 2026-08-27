@@ -7,6 +7,7 @@ import com.flatio.repository.AdminAuditLogRepository;
 import com.flatio.repository.BlacklistEntryRepository;
 import com.flatio.repository.CityRepository;
 import com.flatio.repository.CurrencyRepository;
+import com.flatio.repository.ExchangeRateRepository;
 import com.flatio.repository.FavoriteRepository;
 import com.flatio.repository.ListingRepository;
 import com.flatio.repository.NotificationRepository;
@@ -108,6 +109,9 @@ class LogbackProdProfileTest {
 
   @MockBean
   BlacklistEntryRepository blacklistEntryRepository;
+
+  @MockBean
+  ExchangeRateRepository exchangeRateRepository;
 
   @Autowired
   private ApplicationContext applicationContext;
