@@ -1,5 +1,7 @@
 package com.flatio.telegram.formatter;
 
+import com.flatio.domain.listing.ListingStatus;
+import com.flatio.web.dto.ListingResponse;
 import com.flatio.web.dto.ListingSummaryResponse;
 import java.math.BigDecimal;
 import java.time.ZoneId;
@@ -40,6 +42,7 @@ public class ListingFormatter {
   private static final int CAPTION_MAX_LENGTH = 1024;
   private static final String LABEL_NEGOTIABLE = "Договорная";
   private static final String LABEL_ADDRESS_UNKNOWN = "Адрес не указан";
+  private static final String LABEL_LISTING_INACTIVE = "❗️Объявление неактуально";
   private static final DateTimeFormatter PUBLISHED_FORMATTER =
       DateTimeFormatter.ofPattern("HH:mm, dd.MM.yyyy").withZone(ZoneId.of("Europe/Minsk"));
 
@@ -57,6 +60,48 @@ public class ListingFormatter {
       return caption;
     }
     log.warn("Caption exceeds limit ({}), hard-clamping: listingId={}", caption.length(), listing.id());
+    return caption.substring(0, CAPTION_MAX_LENGTH - 1) + "…";
+  }
+
+  /**
+   * Builds the HTML caption for a listing opened via a Telegram deep link (issue #418).
+   *
+   * <p>Unlike {@link #buildCaption}, this works from the full {@link ListingResponse} returned
+   * by a direct by-ID lookup rather than the search-result summary, since a deep link resolves
+   * exactly one listing and is not the product of a filtered search. A listing that has been
+   * deactivated ({@code status != ACTIVE}) is shown with an "неактуально" label instead of being
+   * hidden or treated as an error — the user followed a link to a specific listing and should see
+   * what happened to it.
+   *
+   * @param listing full listing details, never null
+   * @return HTML-formatted caption, at most 1 024 characters, never null
+   */
+  public String buildDeepLinkCaption(ListingResponse listing) {
+    var sb = new StringBuilder();
+    String roomPrefix = buildRoomTypePrefix(listing.rooms(), listing.propertyType());
+    String priceFormatted = listing.priceLabel() != null
+        ? "<b>" + listing.priceLabel() + "</b>"
+        : formatPrice(listing.price(), listing.currency(), null, null);
+
+    if (roomPrefix.isEmpty()) {
+      sb.append(priceFormatted);
+    } else {
+      sb.append(escapeHtml(roomPrefix)).append(" за ").append(priceFormatted);
+    }
+
+    String address = formatLocation(listing.address(), listing.district(), listing.city());
+    if (!address.isEmpty()) {
+      sb.append("\n").append(escapeHtml(address));
+    }
+    if (listing.status() != ListingStatus.ACTIVE) {
+      sb.append("\n\n").append(LABEL_LISTING_INACTIVE);
+    }
+
+    String caption = sb.toString().strip();
+    if (caption.length() <= CAPTION_MAX_LENGTH) {
+      return caption;
+    }
+    log.warn("Deep-link caption exceeds limit ({}), hard-clamping: listingId={}", caption.length(), listing.id());
     return caption.substring(0, CAPTION_MAX_LENGTH - 1) + "…";
   }
 
