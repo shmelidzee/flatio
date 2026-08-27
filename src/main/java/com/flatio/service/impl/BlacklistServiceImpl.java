@@ -101,50 +101,53 @@ public class BlacklistServiceImpl implements BlacklistService {
   /**
    * Validates and canonicalizes a request's raw value against the format required by its type.
    *
+   * <p>Control characters are stripped before any type-specific validation (issue #433, CWE-117)
+   * — every branch below can throw an exception whose message embeds the value, which {@code
+   * GlobalExceptionHandler} logs as-is; sanitizing once here (rather than only in the KEYWORD
+   * branch) keeps a raw {@code \r}/{@code \n} out of that log line regardless of which type
+   * rejects the value.
+   *
    * <p>LISTING values must parse as an existing listing's numeric ID; the canonical decimal form
    * is stored so equivalent inputs (e.g. leading zeros) are deduplicated. SOURCE values must match
    * an existing source's {@code code} (the same identifier exposed to clients elsewhere in the
    * API), since {@code Source.id} is never exposed to clients. KEYWORD values must be a non-blank
-   * string within the length limit, with control characters stripped (issue #433).
+   * string within the length limit.
    */
   private String normalizeValue(BlacklistEntryType type, String rawValue) {
-    String trimmed = rawValue.trim();
+    String sanitized = ControlCharacterUtils.stripControlCharacters(rawValue).trim();
     return switch (type) {
-      case LISTING -> normalizeListingValue(trimmed);
-      case SOURCE -> normalizeSourceValue(trimmed);
-      case KEYWORD -> normalizeKeywordValue(trimmed);
+      case LISTING -> normalizeListingValue(sanitized);
+      case SOURCE -> normalizeSourceValue(sanitized);
+      case KEYWORD -> normalizeKeywordValue(sanitized);
     };
   }
 
-  private String normalizeListingValue(String trimmed) {
-    Long listingId = parseId(BlacklistEntryType.LISTING, trimmed);
+  private String normalizeListingValue(String sanitized) {
+    Long listingId = parseId(BlacklistEntryType.LISTING, sanitized);
     if (!listingRepository.existsById(listingId)) {
       throw new ListingNotFoundException(listingId);
     }
     return listingId.toString();
   }
 
-  private String normalizeSourceValue(String trimmed) {
-    return sourceRepository.findByCode(trimmed)
-        .orElseThrow(() -> new SourceNotFoundException(trimmed))
+  private String normalizeSourceValue(String sanitized) {
+    return sourceRepository.findByCode(sanitized)
+        .orElseThrow(() -> new SourceNotFoundException(sanitized))
         .getCode();
   }
 
-  private String normalizeKeywordValue(String trimmed) {
-    // Strips control characters (CWE-117) before persisting/logging — a keyword containing them
-    // is also meaningless as a literal substring to match against listing text (issue #433).
-    String sanitized = ControlCharacterUtils.stripControlCharacters(trimmed).trim();
+  private String normalizeKeywordValue(String sanitized) {
     if (sanitized.isEmpty() || sanitized.length() > MAX_KEYWORD_LENGTH) {
       throw new BlacklistInvalidValueException(BlacklistEntryType.KEYWORD, sanitized);
     }
     return sanitized;
   }
 
-  private Long parseId(BlacklistEntryType type, String trimmed) {
+  private Long parseId(BlacklistEntryType type, String sanitized) {
     try {
-      return Long.valueOf(trimmed);
+      return Long.valueOf(sanitized);
     } catch (NumberFormatException ex) {
-      throw new BlacklistInvalidValueException(type, trimmed);
+      throw new BlacklistInvalidValueException(type, sanitized);
     }
   }
 

@@ -14,11 +14,16 @@ public final class ControlCharacterUtils {
   }
 
   /**
-   * Removes all Unicode control characters (category {@code Cntrl}, including {@code \r},
-   * {@code \n}, and tab) from the given value.
+   * Removes ASCII control characters ({@code \p{Cntrl}}: {@code U+0000}–{@code U+001F} and
+   * {@code U+007F}, including {@code \r}, {@code \n}, and tab) from the given value.
+   *
+   * <p>Java's {@code \p{Cntrl}} is the POSIX/ASCII class, not the full Unicode {@code Cc}
+   * category — it does not match the C1 control range ({@code U+0080}–{@code U+009F}). Every
+   * control character reachable from a standard keyboard or a typical HTTP client is covered;
+   * C1 codes are exotic enough that a real client is exceptionally unlikely to send them.
    *
    * @param value the raw user-provided text, must not be null
-   * @return the value with all control characters removed
+   * @return the value with all ASCII control characters removed
    */
   public static String stripControlCharacters(String value) {
     return value.replaceAll("\\p{Cntrl}", "");

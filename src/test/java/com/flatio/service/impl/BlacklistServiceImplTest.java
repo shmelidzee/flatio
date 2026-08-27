@@ -197,6 +197,21 @@ class BlacklistServiceImplTest {
   }
 
   @Test
+  void should_strip_control_characters_before_reporting_invalid_listing_value() {
+    // Given — issue #433: the exception message must not carry raw \r/\n into the log line
+    var user = buildUser(1L, UserRole.USER);
+    var request = new CreateBlacklistEntryRequest(BlacklistEntryType.LISTING, "ab\r\nc");
+    when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+
+    // When / Then
+    assertThatThrownBy(() -> blacklistService.create(1L, request))
+        .isInstanceOf(BlacklistInvalidValueException.class)
+        .hasMessageContaining("abc")
+        .hasMessageNotContaining("\r")
+        .hasMessageNotContaining("\n");
+  }
+
+  @Test
   void should_throw_invalid_value_when_keyword_is_blank() {
     // Given — whitespace-only value trims to empty
     var user = buildUser(1L, UserRole.USER);
@@ -255,6 +270,22 @@ class BlacklistServiceImplTest {
         .isInstanceOf(SourceNotFoundException.class)
         .hasMessageContaining("unknown-source");
     verify(blacklistEntryRepository, never()).save(any());
+  }
+
+  @Test
+  void should_strip_control_characters_before_reporting_source_not_found() {
+    // Given — issue #433: the exception message must not carry raw \r/\n into the log line
+    var user = buildUser(1L, UserRole.USER);
+    var request = new CreateBlacklistEntryRequest(BlacklistEntryType.SOURCE, "unkno\r\nwn");
+    when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+    when(sourceRepository.findByCode("unknown")).thenReturn(Optional.empty());
+
+    // When / Then
+    assertThatThrownBy(() -> blacklistService.create(1L, request))
+        .isInstanceOf(SourceNotFoundException.class)
+        .hasMessageContaining("unknown")
+        .hasMessageNotContaining("\r")
+        .hasMessageNotContaining("\n");
   }
 
   // -------------------------------------------------------------------------
