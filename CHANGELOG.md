@@ -8,6 +8,39 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **PR #440 — ExchangeRate: курсы НБ РБ + пересчёт цены в валюту пользователя (issue #415)**
+  - `com.flatio.domain.currency.ExchangeRate` (Flyway `V62`/`V63`) — дневной снапшот курса,
+    `UNIQUE(base_currency, target_currency, effective_date)`
+  - `com.flatio.integration.nbrb` — коннектор к курсам НБ РБ (`GET /exrates/rates/{id}`),
+    `@RateLimiter`/`@CircuitBreaker`/`@Retry` под именем `connector-nbrb`; `ExchangeRateSyncJob`
+    синкает раз в сутки (`flatio.nbrb.sync-cron`, по умолчанию 05:00) + сразу на старте приложения
+  - Ошибка синка одной валюты не прерывает остальные и не затирает последний известный курс —
+    `ExchangeRateServiceImpl` всегда отдаёт последний успешно засинканный курс
+  - `CurrencyRateService.convert(amount, from, to)` — пересчёт с BYN как pivot-валютой (прямой /
+    обратный / через BYN курс)
+  - `GET /api/v1/listings` и `GET /api/v1/listings/{id}` получили параметр `targetCurrency`
+    (по умолчанию `BYN`); ответы содержат `displayPrice`/`displayCurrency`, исходные `price`/
+    `currency` не меняются
+  - Синкается только USD (`flatio.nbrb.currency-ids`) — числовой ID EUR у НБ РБ не был проверен на
+    момент PR, добавление — конфигурационное изменение без кода
+  - `docs/api.md` — `targetCurrency`/`displayPrice`/`displayCurrency` в разделе «Listings»
+- **PR #439 — Применение исключений чёрного списка в поиске и уведомлениях (issue #414)**
+  - Записи чёрного списка (#413) теперь реально применяются: `GET /api/v1/listings` (аутентифицированные
+    запросы) исключает скрытые объявления/источники/объявления со стоп-словами; то же правило —
+    в `NotificationTriggerService` (#48), уведомления по ним не создаются
+  - Specification-путь поиска — коррелированный `NOT EXISTS`-subquery; native FTS-путь — тот же
+    `NOT EXISTS` в SQL-тексте; `NotificationTriggerServiceImpl` — in-memory проверка (батч-загрузка
+    блэклиста через `BlacklistEntryRepository.findByUserIn`, без запроса на пользователя)
+  - Анонимные запросы (`userId=null`) — исключения не применяются
+- **PR #437 — Доставка уведомлений в Telegram, REALTIME режим (issue #49)**
+  - `TelegramNotificationSender.sendPending()` — доставляет `PENDING`-уведомления (#48) владельцу
+    подписки в Telegram для `deliveryMode=REALTIME`; карточка объявления — тот же формат, что и у
+    поиска в боте (#29), с меткой типа триггера
+  - `NotificationDeliveryJob` — `@Scheduled` раз в минуту; ошибка одной доставки не прерывает батч
+  - Часовой лимит на пользователя (`flatio.notifications.realtime.max-per-hour`, по умолчанию 10) —
+    уведомления сверх лимита остаются `PENDING` до следующего прогона
+  - Ошибка Telegram API → `status=FAILED`, повтор через `retry-delay-minutes` (по умолчанию 5 мин)
+  - DIGEST/DAILY подписки не трогает — тот механизм отдельным issue (#410)
 - **PR #431 — Чёрный список: entity + CRUD (объявления, источники, стоп-слова) (issue #413)**
   - `com.flatio.domain.blacklist.BlacklistEntry` (Flyway `V60`/`V61`) — единая полиморфная модель:
     `type` (`LISTING`/`SOURCE`/`KEYWORD`) + строковая `value`, `UNIQUE(user_id, type, value)`
@@ -42,6 +75,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     (Telegram-доставка `PENDING` → `SENT`) — отдельный будущий issue
 
 ### Fixed
+- **PR #441 — Доставка уведомлений в Telegram пропускается для деактивированных пользователей (issue #438)**
+  - `NotificationRepository.findSendable` теперь требует `subscription.user.active = true` — тем же
+    способом, каким там уже отфильтрован `deliveryMode = REALTIME`, на уровне запроса
+  - Запись `Notification` не удаляется и не помечается `FAILED` — при реактивации пользователя
+    доставка возобновится автоматически следующим прогоном
+  - Найдено Security Engineer при ревью PR #437 (issue #49): деактивация пользователя
+    (`AdminUserServiceImpl.update`) не останавливала доставку в Telegram так, как уже останавливает
+    доступ к JWT (issue #365)
 - **PR #409 — Устранён конфликт маршрутов `GET /admin` с Telegram-вебхуком (issue #361)**
   - `telegrambots-springboot-webhook-starter` регистрирует `@PostMapping("/{botPath}")` —
     wildcard-паттерн на один сегмент пути, совпадающий с любым путём вида `/что-угодно`, включая
