@@ -44,7 +44,7 @@ public class PhotoProxyClient {
   /**
    * Downloads photo bytes from the given URL within the configured timeout.
    *
-   * <p>Returns empty when the URL fails the {@link ImageUrlValidator} host allowlist check, on
+   * <p>Returns empty when the URL fails the {@link ImageUrlValidator} SSRF safety check, on
    * HTTP 4xx/5xx responses, connection timeout, read timeout, or any other I/O error. The caller
    * is expected to fall back to a text card on empty result.
    *

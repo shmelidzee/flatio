@@ -6,7 +6,6 @@ import java.net.URISyntaxException;
 import java.net.UnknownHostException;
 import java.util.Locale;
 import java.util.Set;
-import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.ConfigurableEnvironment;
@@ -46,8 +45,6 @@ import org.springframework.stereotype.Component;
 @Component
 @Slf4j
 public class ImageUrlValidator {
-
-  private static final Pattern IPV4_LITERAL_PATTERN = Pattern.compile("^\\d{1,3}(\\.\\d{1,3}){3}$");
 
   @Autowired
   public ImageUrlValidator() {
@@ -112,14 +109,25 @@ public class ImageUrlValidator {
   }
 
   /**
-   * Checks whether a host is {@code localhost}, or a loopback/link-local/private/multicast IP
-   * literal (issue #450) — the classes of address an SSRF guard must never allow, cloud metadata
-   * endpoints included (link-local range). This is the only remaining validation gate after the
-   * source-domain allowlist was removed (issue #455).
+   * Checks whether a host is {@code localhost}, or resolves to a loopback/link-local/private/
+   * any-local/multicast IP address (issue #450) — the classes of address an SSRF guard must never
+   * allow, cloud metadata endpoints included (link-local range). This is the only remaining
+   * validation gate after the source-domain allowlist was removed (issue #455).
    *
-   * <p>Only recognized IP-literal strings are resolved via {@link InetAddress#getByName}; that
-   * call performs no DNS lookup for a literal address, so this never resolves an arbitrary
-   * hostname.
+   * <p><b>DNS-based bypass fix (issue #455, CRITICAL security review finding):</b> every host —
+   * not just an IP literal typed directly into the URL — is resolved via
+   * {@link InetAddress#getAllByName} and rejected if <b>any</b> of the addresses it resolves to
+   * falls into a disallowed range. A domain name whose DNS record is under the attacker's control
+   * (e.g. a listing photo host that resolves to {@code 127.0.0.1} or the cloud metadata endpoint)
+   * is exactly as much an SSRF vector as an IP literal in the URL. Before this fix that vector was
+   * blocked only incidentally by the now-removed source-domain allowlist; the regex pre-filter that
+   * used to skip resolution for anything not already shaped like an IPv4/IPv6 literal also let
+   * alternate IPv4 notations (decimal, hex, short forms) through unresolved.
+   *
+   * <p>A host that fails DNS resolution entirely is rejected (fail closed): a photo URL that
+   * cannot be resolved cannot be a legitimate source CDN photo either, so there is no legitimate
+   * case that would require falling back to "allow", and failing open here would silently reopen
+   * the bypass this method exists to close.
    *
    * @param rawHost the host to check, never null
    * @return true if the host must never be treated as a valid photo URL host
@@ -132,18 +140,21 @@ public class ImageUrlValidator {
     if (host.equals("localhost") || host.endsWith(".localhost")) {
       return true;
     }
-    if (!IPV4_LITERAL_PATTERN.matcher(host).matches() && !host.contains(":")) {
-      return false;
-    }
     try {
-      InetAddress address = InetAddress.getByName(host);
-      return address.isLoopbackAddress()
-          || address.isLinkLocalAddress()
-          || address.isSiteLocalAddress()
-          || address.isAnyLocalAddress()
-          || address.isMulticastAddress();
-    } catch (UnknownHostException e) {
+      InetAddress[] addresses = InetAddress.getAllByName(host);
+      for (InetAddress address : addresses) {
+        if (address.isLoopbackAddress()
+            || address.isLinkLocalAddress()
+            || address.isSiteLocalAddress()
+            || address.isAnyLocalAddress()
+            || address.isMulticastAddress()) {
+          return true;
+        }
+      }
       return false;
+    } catch (UnknownHostException e) {
+      log.warn("Rejecting photo URL host that failed DNS resolution: host={}, error={}", host, e.getMessage());
+      return true;
     }
   }
 }

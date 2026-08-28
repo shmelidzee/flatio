@@ -313,7 +313,7 @@ public class OnlinerSaleConnector implements ListingConnector {
    *
    * @param photoUrl raw photo URL from Onliner API, may be null
    * @return decoded original URL, the input URL unchanged if not an imgproxy URL, or null on
-   *     failure or if the resolved URL is not on an allowlisted host (issue #364)
+   *     failure or if the resolved URL fails the SSRF safety check
    */
   private String resolvePhotoUrl(String photoUrl) {
     if (photoUrl == null) {
