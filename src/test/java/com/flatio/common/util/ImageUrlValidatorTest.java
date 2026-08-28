@@ -19,6 +19,17 @@ import static org.assertj.core.api.Assertions.assertThatNoException;
  * placeholder, so it was removed entirely per product-owner direction. The only remaining gate is
  * the loopback/private/link-local address guard from issue #450 — every test here asserts against
  * that guard, not against any notion of an allowed domain.
+ *
+ * <p><b>Positive (should-be-allowed) hostname cases now require live DNS resolution (issue #455,
+ * fb6790f):</b> {@code isDisallowedHost} resolves every host, not just IP literals, so an
+ * "allowed" assertion for an ordinary hostname is only true if that hostname actually resolves at
+ * test-run time — a fictional/example fixture domain (e.g. {@code random-photo-cdn.example.com},
+ * {@code d1a2b3c4.cloudfront.net}) now fails to resolve and is wrongly rejected regardless of test
+ * environment, because those domains do not exist in DNS anywhere, not because of any local
+ * network restriction. The hostname fixtures below were chosen to be real, stable, long-lived
+ * public domains unrelated to any Flatio connector so this suite stays deterministic; see the
+ * class-level recommendation in the issue #455 QA report to make {@code isDisallowedHost}'s
+ * resolver injectable so this class of test does not need live network access at all.
  */
 class ImageUrlValidatorTest {
 
@@ -38,13 +49,18 @@ class ImageUrlValidatorTest {
       "https://onliner.by/photo.jpg",
       "https://content.onliner.by/photo.jpg",
       "https://kufar.by/photo.jpg",
-      "https://img01.kufar.by/photo.jpg",
+      // Kufar's actual configured photo-cdn-base-url host (application.yml: connector.kufar.
+      // photo-cdn-base-url) — real and resolvable, unlike the fictional "img01.kufar.by" this
+      // fixture previously used, which does not exist in DNS and made this case flaky/slow.
+      "https://rms.kufar.by/photo.jpg",
       "https://realt.by/photo.jpg",
       "https://cdn.realt.by/photo.jpg",
       // Not a registrable subdomain of any source in application.yml — this is exactly the class
       // of legitimate, unrelated CDN host that the removed allowlist heuristic used to reject.
-      "https://d1a2b3c4.cloudfront.net/photo.jpg",
-      "https://random-photo-cdn.example.com/photo.jpg"
+      // Real, stable public hosts (not fictional example.com/cloudfront.net fixtures) so
+      // resolution — required by every host since fb6790f — succeeds deterministically.
+      "https://raw.githubusercontent.com/photo.jpg",
+      "https://i.imgur.com/photo.jpg"
   })
   void should_return_true_when_url_is_https_with_public_host(String url) {
     // When
@@ -195,6 +211,34 @@ class ImageUrlValidatorTest {
   }
 
   // -------------------------------------------------------------------------
+  // Alternate IPv4 literal notations (security review MEDIUM finding, issue #455) — the removed
+  // IPV4_LITERAL_PATTERN regex pre-filter only recognized dotted-decimal (e.g. "127.0.0.1") before
+  // deciding whether to resolve a host at all. InetAddress#getAllByName parses several other
+  // classic inet_aton-style IPv4 notations as pure numeric literals — no DNS lookup involved, so
+  // this is deterministic and safe to assert without network access. Verified on this JDK
+  // (21.0.9): decimal and "short form" notations below both parse locally in 0-3ms.
+  //
+  // Hex notation ("0x7f000001") is intentionally NOT covered here: on this JDK it is not
+  // recognized as an IPv4 literal by InetAddress at all (throws UnknownHostException). It would
+  // still end up rejected by isAllowedImageUrl, but only via the fail-closed
+  // unresolvable-host branch, not because it resolves to a loopback address — and unlike the pure
+  // numeric literals below, whether "0x7f000001" is treated as a literal or as a hostname that
+  // needs an actual DNS query is not guaranteed to be identical across JDK/OS resolver
+  // implementations, so asserting on it here would not be a deterministic unit test.
+  @ParameterizedTest
+  @ValueSource(strings = {
+      "https://2130706433/photo.jpg", // decimal notation for 127.0.0.1
+      "https://127.1/photo.jpg"       // short form for 127.0.0.1
+  })
+  void should_return_false_when_host_is_alternate_ipv4_notation_for_loopback(String url) {
+    // When
+    boolean result = validator.isAllowedImageUrl(url);
+
+    // Then
+    assertThat(result).isFalse();
+  }
+
+  // -------------------------------------------------------------------------
   // Legacy constructors (Set<String>, ConfigurableEnvironment) — retained only for source
   // compatibility with call sites/tests written against the pre-#455 API (issue #455).
   // -------------------------------------------------------------------------
@@ -205,7 +249,7 @@ class ImageUrlValidatorTest {
     var legacyValidator = new ImageUrlValidator(Set.of("onliner.by"));
 
     // When / Then — a host outside the legacy set is still accepted (allowlist removed)
-    assertThat(legacyValidator.isAllowedImageUrl("https://random-photo-cdn.example.com/photo.jpg")).isTrue();
+    assertThat(legacyValidator.isAllowedImageUrl("https://raw.githubusercontent.com/photo.jpg")).isTrue();
     // And the SSRF guard still applies regardless of the legacy argument
     assertThat(legacyValidator.isAllowedImageUrl("https://127.0.0.1/photo.jpg")).isFalse();
   }
@@ -228,7 +272,7 @@ class ImageUrlValidatorTest {
     var legacyValidator = new ImageUrlValidator(environment);
 
     // Then — hosts unrelated to any configured connector are still accepted
-    assertThat(legacyValidator.isAllowedImageUrl("https://random-photo-cdn.example.com/photo.jpg")).isTrue();
+    assertThat(legacyValidator.isAllowedImageUrl("https://raw.githubusercontent.com/photo.jpg")).isTrue();
     // And the SSRF guard still applies regardless of connector configuration
     assertThat(legacyValidator.isAllowedImageUrl("https://192.168.1.10/photo.jpg")).isFalse();
   }

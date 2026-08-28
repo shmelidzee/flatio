@@ -420,8 +420,12 @@ class KufarApiClientTest {
   @Test
   @SuppressWarnings("unchecked")
   void should_not_prepend_cdn_url_when_path_is_already_absolute() {
-    // Given — path already starts with https:// (defensive guard against already-migrated data)
-    var image = new KufarImage("1", "https://other-cdn.kufar.by/img/1.jpg");
+    // Given — path already starts with https:// (defensive guard against already-migrated data).
+    // Uses a real, resolvable host distinct from the configured photo-cdn-base-url
+    // ("rms.kufar.by") so the assertion is deterministic under ImageUrlValidator's DNS-resolving
+    // SSRF guard (issue #455, fb6790f) — the fictional "other-cdn.kufar.by" this fixture
+    // previously used does not exist in DNS and was rejected outright, emptying photoUrls.
+    var image = new KufarImage("1", "https://raw.githubusercontent.com/img/1.jpg");
     var ad = new KufarAd(604L, "Квартира", null, 8000000L, "BYR",
         "https://re.kufar.by/vi/604", null, List.of(), List.of(), null,
         List.of(image), "2024-01-15T10:00:00+03:00");
@@ -431,7 +435,7 @@ class KufarApiClientTest {
     List<RawListing> result = apiClient.fetchAll(config, "RENT", "APARTMENT", "Fallback");
 
     // Then — URL used as-is, no double-prepend
-    assertThat(result.get(0).photoUrls()).containsExactly("https://other-cdn.kufar.by/img/1.jpg");
+    assertThat(result.get(0).photoUrls()).containsExactly("https://raw.githubusercontent.com/img/1.jpg");
   }
 
   // -------------------------------------------------------------------------
