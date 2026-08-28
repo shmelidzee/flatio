@@ -138,6 +138,64 @@ class FlatioBotTest {
   }
 
   // -------------------------------------------------------------------------
+  // Section callback routing (issue #456)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_delegate_to_favorites_handler_when_action_favorites_callback_received() throws TelegramApiException {
+    // Given
+    var telegramClient = mock(TelegramClient.class);
+    var favoritesCallbackHandler = mock(FavoritesCallbackHandler.class);
+    var favoritesMessage = mock(SendMessage.class);
+    when(favoritesCallbackHandler.handle(any())).thenReturn(favoritesMessage);
+    var bot = buildBotWithFavoritesHandler(telegramClient, favoritesCallbackHandler, executor);
+    var update = buildCallbackUpdate(1, 100L, "action:favorites");
+
+    // When
+    bot.handleUpdate(update);
+
+    // Then
+    verify(favoritesCallbackHandler).handle(update.getCallbackQuery());
+    verify(telegramClient).execute(favoritesMessage);
+  }
+
+  @Test
+  void should_delegate_to_subscriptions_handler_when_action_subscriptions_callback_received() throws TelegramApiException {
+    // Given
+    var telegramClient = mock(TelegramClient.class);
+    var subscriptionsCallbackHandler = mock(SubscriptionsCallbackHandler.class);
+    var subscriptionsMessage = mock(SendMessage.class);
+    when(subscriptionsCallbackHandler.handle(any())).thenReturn(subscriptionsMessage);
+    var bot = buildBotWithSubscriptionsHandler(telegramClient, subscriptionsCallbackHandler, executor);
+    var update = buildCallbackUpdate(1, 100L, "action:subscriptions");
+
+    // When
+    bot.handleUpdate(update);
+
+    // Then
+    verify(subscriptionsCallbackHandler).handle(update.getCallbackQuery());
+    verify(telegramClient).execute(subscriptionsMessage);
+  }
+
+  @Test
+  void should_delegate_to_blacklist_handler_when_action_blacklist_callback_received() throws TelegramApiException {
+    // Given
+    var telegramClient = mock(TelegramClient.class);
+    var blacklistCallbackHandler = mock(BlacklistCallbackHandler.class);
+    var blacklistMessage = mock(SendMessage.class);
+    when(blacklistCallbackHandler.handle(any())).thenReturn(blacklistMessage);
+    var bot = buildBotWithBlacklistHandler(telegramClient, blacklistCallbackHandler, executor);
+    var update = buildCallbackUpdate(1, 100L, "action:blacklist");
+
+    // When
+    bot.handleUpdate(update);
+
+    // Then
+    verify(blacklistCallbackHandler).handle(update.getCallbackQuery());
+    verify(telegramClient).execute(blacklistMessage);
+  }
+
+  // -------------------------------------------------------------------------
   // Blocked-by-user handling (issue #383)
   // -------------------------------------------------------------------------
 
@@ -249,6 +307,58 @@ class FlatioBotTest {
         mock(FavoritesCallbackHandler.class),
         mock(SubscriptionsCallbackHandler.class),
         mock(BlacklistCallbackHandler.class),
+        mock(SearchFilterWizard.class),
+        executor
+    );
+  }
+
+  private static FlatioBot buildBotWithFavoritesHandler(
+      TelegramClient telegramClient, FavoritesCallbackHandler favoritesCallbackHandler, ThreadPoolTaskExecutor executor) {
+    return new FlatioBot(
+        telegramClient,
+        mock(StartCommandHandler.class),
+        mock(HelpCommandHandler.class),
+        mock(SearchCommandHandler.class),
+        mock(FilterCallbackHandler.class),
+        mock(SearchResultSender.class),
+        favoritesCallbackHandler,
+        mock(SubscriptionsCallbackHandler.class),
+        mock(BlacklistCallbackHandler.class),
+        mock(SearchFilterWizard.class),
+        executor
+    );
+  }
+
+  private static FlatioBot buildBotWithSubscriptionsHandler(
+      TelegramClient telegramClient, SubscriptionsCallbackHandler subscriptionsCallbackHandler,
+      ThreadPoolTaskExecutor executor) {
+    return new FlatioBot(
+        telegramClient,
+        mock(StartCommandHandler.class),
+        mock(HelpCommandHandler.class),
+        mock(SearchCommandHandler.class),
+        mock(FilterCallbackHandler.class),
+        mock(SearchResultSender.class),
+        mock(FavoritesCallbackHandler.class),
+        subscriptionsCallbackHandler,
+        mock(BlacklistCallbackHandler.class),
+        mock(SearchFilterWizard.class),
+        executor
+    );
+  }
+
+  private static FlatioBot buildBotWithBlacklistHandler(
+      TelegramClient telegramClient, BlacklistCallbackHandler blacklistCallbackHandler, ThreadPoolTaskExecutor executor) {
+    return new FlatioBot(
+        telegramClient,
+        mock(StartCommandHandler.class),
+        mock(HelpCommandHandler.class),
+        mock(SearchCommandHandler.class),
+        mock(FilterCallbackHandler.class),
+        mock(SearchResultSender.class),
+        mock(FavoritesCallbackHandler.class),
+        mock(SubscriptionsCallbackHandler.class),
+        blacklistCallbackHandler,
         mock(SearchFilterWizard.class),
         executor
     );
