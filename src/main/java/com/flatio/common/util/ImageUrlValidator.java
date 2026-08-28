@@ -35,7 +35,10 @@ import org.springframework.stereotype.Component;
  *
  * <p>The {@link #ImageUrlValidator(Set)} and {@link #ImageUrlValidator(ConfigurableEnvironment)}
  * constructors are retained only so call sites and tests written against the pre-#455 API keep
- * compiling; neither argument affects validation any more — see their Javadoc.
+ * compiling; neither argument affects validation any more — see their Javadoc. Both are marked
+ * {@code @Deprecated(forRemoval = true)} (issue #461) so new call sites are steered towards
+ * {@link #ImageUrlValidator()}; no current call site in the codebase still uses either — only
+ * {@code ImageUrlValidatorTest} exercises them, deliberately, to keep asserting the no-op contract.
  *
  * <p>Applied at every point a photo URL crosses a trust boundary: where connectors accept an
  * already-absolute URL from a source's API response instead of building one from a configured
@@ -74,7 +77,9 @@ public class ImageUrlValidator {
    * domains. The set no longer affects validation — see the class Javadoc.
    *
    * @param legacyAllowedHostSuffixes ignored, retained only for backward source compatibility
+   * @deprecated no-op since issue #455; use {@link #ImageUrlValidator()} (issue #461)
    */
+  @Deprecated(forRemoval = true)
   public ImageUrlValidator(Set<String> legacyAllowedHostSuffixes) {
     this();
   }
@@ -86,7 +91,9 @@ public class ImageUrlValidator {
    * see the class Javadoc.
    *
    * @param environment ignored, retained only for backward source compatibility
+   * @deprecated no-op since issue #455; use {@link #ImageUrlValidator()} (issue #461)
    */
+  @Deprecated(forRemoval = true)
   public ImageUrlValidator(ConfigurableEnvironment environment) {
     this();
   }

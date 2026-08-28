@@ -309,6 +309,9 @@ class ImageUrlValidatorTest {
   // rather than hostnames to stay network-free.
   // -------------------------------------------------------------------------
 
+  // Both legacy constructors are @Deprecated(forRemoval = true) since issue #461 — suppressed here
+  // because these four tests exist specifically to keep asserting their no-op contract.
+  @SuppressWarnings({"deprecation", "removal"})
   @Test
   void should_behave_like_default_constructor_when_using_legacy_set_constructor() {
     // Given — the legacy allowlist argument is ignored entirely, even a narrow one
@@ -321,6 +324,7 @@ class ImageUrlValidatorTest {
     assertThat(legacyValidator.isAllowedImageUrl("https://127.0.0.1/photo.jpg")).isFalse();
   }
 
+  @SuppressWarnings({"deprecation", "removal"})
   @Test
   void should_not_throw_when_using_legacy_set_constructor_with_empty_set() {
     // When / Then — an empty legacy allowlist must not narrow validation or throw
@@ -328,6 +332,7 @@ class ImageUrlValidatorTest {
     assertThat(new ImageUrlValidator(Set.of()).isAllowedImageUrl("https://" + PUBLIC_IP + "/photo.jpg")).isTrue();
   }
 
+  @SuppressWarnings({"deprecation", "removal"})
   @Test
   void should_behave_like_default_constructor_when_using_legacy_environment_constructor() {
     // Given — mirrors the shape of application.yml's connector.* block; none of it is scanned any more
@@ -345,6 +350,7 @@ class ImageUrlValidatorTest {
     assertThat(legacyValidator.isAllowedImageUrl("https://192.168.1.10/photo.jpg")).isFalse();
   }
 
+  @SuppressWarnings({"deprecation", "removal"})
   @Test
   void should_not_widen_ssrf_guard_when_legacy_environment_points_connector_at_localhost() {
     // Given — the exact scenario from issue #450: a local override (e.g. application-local.yml)
