@@ -39,6 +39,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
  *       ({@code index.html}, JS, CSS — see {@code AdminSpaWebConfig}), not the API. The SPA
  *       itself calls the JWT-protected {@code /api/v1/admin/**} endpoints once loaded</li>
  *   <li>Swagger UI, OpenAPI docs, and Actuator health/info — publicly accessible</li>
+ *   <li>{@code /actuator/prometheus} — requires {@code ADMIN} role, same as
+ *       {@code /api/v1/admin/**} (issue #417); a scraper must present an admin-role bearer JWT</li>
  *   <li>{@code POST /<bot-token>} — publicly accessible; this is the Telegram webhook
  *       endpoint (see {@code TelegramWebhookConfig}). Telegram cannot send a JWT, and the
  *       token-as-path is itself the access control for this endpoint</li>
@@ -88,6 +90,7 @@ public class SecurityConfig {
                 "/v3/api-docs/**", "/api-docs/**",
                 "/actuator/health/**", "/actuator/info"
             ).permitAll()
+            .requestMatchers("/actuator/prometheus").hasRole("ADMIN")
             .requestMatchers(HttpMethod.POST, "/" + botConfig.token()).permitAll()
             .anyRequest().denyAll()
         )

@@ -42,6 +42,8 @@ dependencies {
   implementation("org.springframework.boot:spring-boot-starter-data-jpa")
   implementation("org.springframework.boot:spring-boot-starter-validation")
   implementation("org.springframework.boot:spring-boot-starter-actuator")
+  // Exposes Micrometer metrics in Prometheus text format at /actuator/prometheus (issue #417)
+  implementation("io.micrometer:micrometer-registry-prometheus")
   implementation("org.springframework.boot:spring-boot-starter-aop")
   implementation("org.springframework.boot:spring-boot-starter-security")
   implementation("io.jsonwebtoken:jjwt-api:$jjwtVersion")

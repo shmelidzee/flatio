@@ -39,12 +39,24 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        # prometheus (issue #417): text-format metrics scrape endpoint, protected like the other
+        # admin endpoints — see SecurityConfig
+        include: health,info,metrics,prometheus
   endpoint:
     health:
       show-details: when-authorized
       probes:
         enabled: true
+  metrics:
+    tags:
+      application: flatio
+    distribution:
+      # Percentile histogram for /listings latency (NFR-PERF-1: p95 < 500ms, p99 < 1000ms) — the
+      # Grafana dashboard's latency panel needs real buckets, not just an average from count/sum.
+      percentiles-histogram:
+        http.server.requests: true
+      percentiles:
+        http.server.requests: 0.5,0.95,0.99
 
 springdoc:
   api-docs:
@@ -324,6 +336,9 @@ flatio:
     # add EUR (or others) here once its NBRb numeric ID has been confirmed.
     currency-ids:
       USD: ${NBRB_CURRENCY_ID_USD:431}
+  metrics:
+    active-listings:
+      refresh-rate-ms: ${FLATIO_METRICS_ACTIVE_LISTINGS_REFRESH_RATE_MS:60000}
 
 resilience4j:
   ratelimiter:

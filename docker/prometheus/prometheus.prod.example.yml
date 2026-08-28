@@ -1,0 +1,16 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: flatio-app
+    metrics_path: /actuator/prometheus
+    scheme: http
+    # Same admin-role JWT requirement as local dev — see docker/prometheus/prometheus.yml.
+    # A production scrape target needs a token that does not expire every hour; issuing a
+    # long-lived service credential for this is an open follow-up, not solved by this file.
+    authorization:
+      credentials_file: /etc/prometheus/flatio-token
+    static_configs:
+      # "flatio-app" is the compose service name — same Docker network, no host mapping needed
+      - targets: ["flatio-app:8080"]

@@ -14,6 +14,7 @@ import com.flatio.telegram.formatter.ListingFormatter;
 import com.flatio.telegram.handler.PhotoProxyClient;
 import com.flatio.web.dto.ListingSummaryResponse;
 import com.flatio.web.mapper.ListingMapper;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.io.ByteArrayInputStream;
 import java.time.Duration;
 import java.time.Instant;
@@ -64,6 +65,7 @@ public class TelegramNotificationSender {
   private final PhotoProxyClient photoProxyClient;
   private final TelegramClient telegramClient;
   private final NotificationDeliveryProperties properties;
+  private final MeterRegistry meterRegistry;
 
   /**
    * Selects a batch of sendable notifications and attempts to deliver each REALTIME one,
@@ -171,10 +173,14 @@ public class TelegramNotificationSender {
     notification.setStatus(NotificationStatus.SENT);
     notification.setSentAt(Instant.now());
     notificationRepository.save(notification);
+    meterRegistry.counter("flatio.notifications.sent", "triggerType", notification.getTriggerType().name())
+        .increment();
   }
 
   private void markFailed(Notification notification) {
     notification.setStatus(NotificationStatus.FAILED);
     notificationRepository.save(notification);
+    meterRegistry.counter("flatio.notifications.failed", "triggerType", notification.getTriggerType().name())
+        .increment();
   }
 }

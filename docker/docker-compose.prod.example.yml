@@ -53,6 +53,37 @@ services:
     networks:
       - frontend
 
+  # Metrics/dashboard stack (issue #417) — internal only, not exposed via nginx/public ports here;
+  # reach them with an SSH tunnel (or add an nginx location block) until that access model is
+  # decided. See docs/local-setup.md "Metrics & Dashboards".
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    restart: unless-stopped
+    depends_on:
+      - flatio-app
+    volumes:
+      - ./prometheus/prometheus.prod.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/flatio-token.txt:/etc/prometheus/flatio-token:ro
+      - prometheus_data:/prometheus
+    networks:
+      - backend
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards/json:ro
+      - grafana_data:/var/lib/grafana
+    networks:
+      - backend
+
   certbot:
     image: certbot/certbot:latest
     volumes:
@@ -68,6 +99,8 @@ volumes:
   postgres_data:
   certbot_www:
   certbot_certs:
+  prometheus_data:
+  grafana_data:
 
 networks:
   backend:

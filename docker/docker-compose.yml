@@ -15,5 +15,36 @@ services:
       timeout: 5s
       retries: 5
 
+  # Metrics/dashboard stack (issue #417) — the app itself is not containerized here (it runs via
+  # "./gradlew bootRun" on the host per docs/local-setup.md), so Prometheus scrapes it through
+  # host.docker.internal. See docs/local-setup.md "Metrics & Dashboards" for how to authenticate
+  # the scrape against /actuator/prometheus, which requires an ADMIN-role JWT like any other
+  # admin endpoint (SecurityConfig).
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/flatio-token.txt:/etc/prometheus/flatio-token:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: flatio_local
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards/json:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
 volumes:
   postgres_data:
+  grafana_data:

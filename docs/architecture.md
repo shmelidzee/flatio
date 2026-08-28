@@ -558,3 +558,26 @@ responses (retrying an already-rate-limited caller only makes it worse).
 - OpenAPI spec: `/v3/api-docs`
 
 See `docs/api.md` for endpoint reference.
+
+---
+
+## Observability (issue #417)
+
+Micrometer + `micrometer-registry-prometheus` publish metrics at `/actuator/prometheus`,
+protected the same way as `/api/v1/admin/**` (`ADMIN`-role bearer JWT — `SecurityConfig`), not
+left open like `/actuator/health`/`/actuator/info`.
+
+| Metric | Type | Tags | Published from |
+|---|---|---|---|
+| `flatio.sync.duration` | Timer | `source`, `syncType`, `status` | `SyncRunServiceImpl#record` — the single point every connector sync job (Onliner/Realt/Kufar, full and delta) funnels through, so no individual job needed instrumenting |
+| `flatio.sync.runs` | Counter | `source`, `syncType`, `status` | same as above |
+| `flatio.listings.active` | MultiGauge | `source` | `ActiveListingsMetricsJob` (`scheduler`), refreshed on `flatio.metrics.active-listings.refresh-rate-ms` (default 60s) from `ListingRepository#countActiveGroupedBySource` |
+| `http.server.requests` | Timer (with p50/p95/p99 histogram) | `uri`, `method`, `status` | Spring Boot's default Micrometer web instrumentation; percentile histogram enabled for this metric only (`management.metrics.distribution.percentiles-histogram`) to back the `/api/v1/listings` latency panel (NFR-PERF-1: p95 < 500ms, p99 < 1000ms) |
+| `flatio.notifications.sent` / `flatio.notifications.failed` | Counter | `triggerType` | `TelegramNotificationSender#markSent` / `#markFailed` |
+
+Local dev: `docker/docker-compose.yml` runs Prometheus + Grafana, with a dashboard
+(`docker/grafana/dashboards/flatio-overview.json`) provisioned automatically. Prod: the same
+service definitions live in `docker/docker-compose.prod.example.yml`, on the internal network
+only. Full setup and the scrape-token caveat (an `ADMIN` JWT expires after 1h, so continuous
+production scraping needs a longer-lived credential — an open follow-up, not yet solved) are in
+`docs/local-setup.md`, "Metrics & Dashboards".

@@ -24,6 +24,7 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -165,6 +166,14 @@ class SecurityConfigTest {
                 "/api/v1/auth/telegram-login-widget was rejected by Spring Security with 403 Forbidden");
           }
         });
+  }
+
+  @Test
+  void should_return_forbidden_when_getting_actuator_prometheus_without_auth() throws Exception {
+    // Given / When / Then — issue #417: /actuator/prometheus requires ADMIN role, same as
+    // /api/v1/admin/**, not the permitAll() rule that covers /actuator/health and /actuator/info
+    mockMvc.perform(get("/actuator/prometheus"))
+        .andExpect(status().isForbidden());
   }
 
   @Test

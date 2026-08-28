@@ -117,6 +117,27 @@ public interface ListingRepository extends JpaRepository<Listing, Long>, JpaSpec
   long countBySource(Source source);
 
   /**
+   * Counts {@code ACTIVE} listings grouped by source code, for the "active listings per source"
+   * Prometheus gauge (issue #417).
+   *
+   * <p>One aggregate query rather than one {@code countBySource} call per registered source —
+   * the source count grows as new markets/connectors are added.
+   *
+   * @return one row per source with at least one {@code ACTIVE} listing, never null
+   */
+  @Query("SELECT l.source.code AS sourceCode, COUNT(l) AS activeCount FROM Listing l "
+      + "WHERE l.status = com.flatio.domain.listing.ListingStatus.ACTIVE GROUP BY l.source.code")
+  List<ActiveListingCount> countActiveGroupedBySource();
+
+  /** Projection for {@link #countActiveGroupedBySource()} — one row per source. */
+  interface ActiveListingCount {
+
+    String getSourceCode();
+
+    long getActiveCount();
+  }
+
+  /**
    * Finds listings that need reverse geocoding: coordinates are known but city is not yet set,
    * and the number of prior failed geocoding attempts has not reached {@code maxAttempts}.
    *

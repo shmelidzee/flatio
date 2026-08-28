@@ -96,6 +96,11 @@ frontend/admin/*.tsbuildinfo
 # Продакшн compose с реальными портами и секретами
 docker/docker-compose.prod.yml
 
+# Prometheus scrape token и продовый scrape-конфиг (issue #417) — реальные креды/хосты,
+# копируются из *.example локально/на VPS, никогда не коммитятся
+docker/prometheus/flatio-token.txt
+docker/prometheus/prometheus.prod.yml
+
 # ============================================================
 # Claude Code
 # ============================================================
