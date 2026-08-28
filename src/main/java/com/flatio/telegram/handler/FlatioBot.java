@@ -1,6 +1,9 @@
 package com.flatio.telegram.handler;
 
+import com.flatio.telegram.callback.BlacklistCallbackHandler;
+import com.flatio.telegram.callback.FavoritesCallbackHandler;
 import com.flatio.telegram.callback.FilterCallbackHandler;
+import com.flatio.telegram.callback.SubscriptionsCallbackHandler;
 import com.flatio.telegram.command.HelpCommandHandler;
 import com.flatio.telegram.command.SearchCommandHandler;
 import com.flatio.telegram.command.StartCommandHandler;
@@ -37,6 +40,9 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
  *   <li>{@code action:help} callback — {@link HelpCommandHandler}</li>
  *   <li>{@code FILTER:SEARCH} callback — {@link SearchResultSender}</li>
  *   <li>{@code PAGE:*} callbacks — {@link SearchResultSender}</li>
+ *   <li>{@code action:favorites} callback — {@link FavoritesCallbackHandler} (issue #456)</li>
+ *   <li>{@code action:subscriptions} callback — {@link SubscriptionsCallbackHandler} (issue #456)</li>
+ *   <li>{@code action:blacklist} callback — {@link BlacklistCallbackHandler} (issue #456)</li>
  * </ul>
  */
 @Component
@@ -59,6 +65,9 @@ public class FlatioBot {
   private final SearchCommandHandler searchCommandHandler;
   private final FilterCallbackHandler filterCallbackHandler;
   private final SearchResultSender searchResultSender;
+  private final FavoritesCallbackHandler favoritesCallbackHandler;
+  private final SubscriptionsCallbackHandler subscriptionsCallbackHandler;
+  private final BlacklistCallbackHandler blacklistCallbackHandler;
   private final SearchFilterWizard wizard;
   private final ThreadPoolTaskExecutor telegramUpdateExecutor;
 
@@ -194,6 +203,27 @@ public class FlatioBot {
       } catch (TelegramApiException e) {
         logOrHandleBlocked(e, callbackQuery.getFrom().getId(),
             "Failed to send main menu: chatId={}", callbackQuery.getMessage().getChatId());
+      }
+    } else if (FavoritesCallbackHandler.ACTION_FAVORITES.equals(data)) {
+      try {
+        telegramClient.execute(favoritesCallbackHandler.handle(callbackQuery));
+      } catch (TelegramApiException e) {
+        logOrHandleBlocked(e, callbackQuery.getFrom().getId(),
+            "Failed to send favorites list: chatId={}", callbackQuery.getMessage().getChatId());
+      }
+    } else if (SubscriptionsCallbackHandler.ACTION_SUBSCRIPTIONS.equals(data)) {
+      try {
+        telegramClient.execute(subscriptionsCallbackHandler.handle(callbackQuery));
+      } catch (TelegramApiException e) {
+        logOrHandleBlocked(e, callbackQuery.getFrom().getId(),
+            "Failed to send subscriptions list: chatId={}", callbackQuery.getMessage().getChatId());
+      }
+    } else if (BlacklistCallbackHandler.ACTION_BLACKLIST.equals(data)) {
+      try {
+        telegramClient.execute(blacklistCallbackHandler.handle(callbackQuery));
+      } catch (TelegramApiException e) {
+        logOrHandleBlocked(e, callbackQuery.getFrom().getId(),
+            "Failed to send blacklist: chatId={}", callbackQuery.getMessage().getChatId());
       }
     } else if (FilterCallbackHandler.ACTION_SEARCH.equals(data) || data.startsWith(FILTER_CALLBACK_PREFIX)) {
       try {
