@@ -37,15 +37,24 @@ class PhotoProxyClientTest {
   @Mock
   private RestClient.ResponseSpec responseSpec;
 
+  // Mocked rather than constructed for real (issue #455 QA follow-up): this class tests that
+  // PhotoProxyClient correctly calls ImageUrlValidator and honors its verdict, not
+  // ImageUrlValidator's own loopback/private/link-local/DNS-resolution logic — that is already
+  // exhaustively covered in its own unit test (ImageUrlValidatorTest). A real instance would
+  // otherwise require a live DNS lookup to "cdn.onliner.by" on every happy-path test run, which is
+  // unnecessary here and unsafe for a network-restricted CI.
+  @Mock
+  private ImageUrlValidator imageUrlValidator;
+
   private PhotoProxyClient photoProxyClient;
 
   @BeforeEach
   @SuppressWarnings("unchecked")
   void setUp() {
-    // No source-domain allowlist exists any more (issue #455); ImageUrlValidator only rejects
-    // loopback/private/link-local hosts and non-https schemes.
-    photoProxyClient = new PhotoProxyClient(restClient, new ImageUrlValidator());
-    // lenient: the SSRF-guard tests below short-circuit before restClient is touched
+    photoProxyClient = new PhotoProxyClient(restClient, imageUrlValidator);
+    // lenient: only the SSRF-guard/scheme tests below override this to false, and short-circuit
+    // before restClient is touched
+    lenient().when(imageUrlValidator.isAllowedImageUrl(anyString())).thenReturn(true);
     lenient().when(restClient.get()).thenReturn(uriSpec);
     lenient().doReturn(headersSpec).when(uriSpec).uri(anyString());
     lenient().when(headersSpec.retrieve()).thenReturn(responseSpec);
@@ -116,7 +125,10 @@ class PhotoProxyClientTest {
 
   @Test
   void should_return_empty_when_url_points_to_loopback_host() {
-    // When — attacker-controlled listing photo URL pointing at a loopback address (SSRF, #364/#450)
+    // Given — attacker-controlled listing photo URL pointing at a loopback address (SSRF, #364/#450)
+    when(imageUrlValidator.isAllowedImageUrl("https://127.0.0.1/photo.jpg")).thenReturn(false);
+
+    // When
     var result = photoProxyClient.download("https://127.0.0.1/photo.jpg", 42L);
 
     // Then — rejected before any outbound request is attempted
@@ -126,7 +138,10 @@ class PhotoProxyClientTest {
 
   @Test
   void should_return_empty_when_url_points_to_link_local_cloud_metadata_host() {
-    // When — attacker-controlled listing photo URL pointing at the cloud metadata endpoint
+    // Given — attacker-controlled listing photo URL pointing at the cloud metadata endpoint
+    when(imageUrlValidator.isAllowedImageUrl("https://169.254.169.254/latest/meta-data/")).thenReturn(false);
+
+    // When
     var result = photoProxyClient.download("https://169.254.169.254/latest/meta-data/", 42L);
 
     // Then — rejected before any outbound request is attempted
@@ -136,7 +151,10 @@ class PhotoProxyClientTest {
 
   @Test
   void should_return_empty_when_url_uses_non_https_schema() {
-    // When — SSRF vector: plain http bypassing TLS-only CDNs
+    // Given — SSRF vector: plain http bypassing TLS-only CDNs
+    when(imageUrlValidator.isAllowedImageUrl("http://cdn.onliner.by/photo.jpg")).thenReturn(false);
+
+    // When
     var result = photoProxyClient.download("http://cdn.onliner.by/photo.jpg", 42L);
 
     // Then

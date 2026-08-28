@@ -26,7 +26,6 @@ import java.time.OffsetDateTime;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Function;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,6 +43,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -63,6 +64,15 @@ class OnlinerSaleConnectorTest {
   @Mock
   private RestClient.ResponseSpec responseSpec;
 
+  // Mocked rather than constructed for real (issue #455 QA follow-up): none of the fixtures below
+  // exercise SSRF rejection — every photo URL here is expected to end up accepted — and
+  // ImageUrlValidator's own loopback/private/link-local/DNS-resolution behavior is already
+  // exhaustively covered in its own unit test (ImageUrlValidatorTest). A real instance would
+  // otherwise require a live DNS lookup to real onliner.by/realt.by/imgproxy hosts on every test
+  // run, which is unnecessary here and unsafe for a network-restricted CI.
+  @Mock
+  private ImageUrlValidator imageUrlValidator;
+
   private OnlinerSaleConnector connector;
 
   @BeforeEach
@@ -74,10 +84,8 @@ class OnlinerSaleConnectorTest {
         "/search/apartments",
         50
     );
-    // Full domain set, matching how the single shared ImageUrlValidator bean is wired in production
-    // (it validates URLs from every connector, not just this one).
-    connector = new OnlinerSaleConnector(restClient, properties,
-        new ImageUrlValidator(Set.of("onliner.by", "kufar.by", "realt.by")));
+    lenient().when(imageUrlValidator.isAllowedImageUrl(anyString())).thenReturn(true);
+    connector = new OnlinerSaleConnector(restClient, properties, imageUrlValidator);
   }
 
   // -------------------------------------------------------------------------

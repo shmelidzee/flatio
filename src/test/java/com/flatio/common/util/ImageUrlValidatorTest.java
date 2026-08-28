@@ -1,5 +1,7 @@
 package com.flatio.common.util;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,24 +22,35 @@ import static org.assertj.core.api.Assertions.assertThatNoException;
  * the loopback/private/link-local address guard from issue #450 — every test here asserts against
  * that guard, not against any notion of an allowed domain.
  *
- * <p><b>Positive (should-be-allowed) hostname cases now require live DNS resolution (issue #455,
- * fb6790f):</b> {@code isDisallowedHost} resolves every host, not just IP literals, so an
- * "allowed" assertion for an ordinary hostname is only true if that hostname actually resolves at
- * test-run time — a fictional/example fixture domain (e.g. {@code random-photo-cdn.example.com},
- * {@code d1a2b3c4.cloudfront.net}) now fails to resolve and is wrongly rejected regardless of test
- * environment, because those domains do not exist in DNS anywhere, not because of any local
- * network restriction. The hostname fixtures below were chosen to be real, stable, long-lived
- * public domains unrelated to any Flatio connector so this suite stays deterministic; see the
- * class-level recommendation in the issue #455 QA report to make {@code isDisallowedHost}'s
- * resolver injectable so this class of test does not need live network access at all.
+ * <p><b>Deterministic, network-free DNS coverage (issue #455 QA follow-up, package-private
+ * {@link ImageUrlValidator#ImageUrlValidator(ImageUrlValidator.HostResolver)} constructor):</b>
+ * {@code isDisallowedHost} resolves every host via an injected {@link ImageUrlValidator.HostResolver}
+ * seam rather than calling {@link InetAddress#getAllByName} directly. Tests that need an "ordinary
+ * external hostname" case use a fabricated domain (e.g. {@code cdn.example-source.test}) paired with
+ * a fake resolver, instead of a real public host — this is what lets the DNS-based SSRF bypass (a
+ * domain the attacker controls DNS for, resolving to a loopback/private/metadata address) and the
+ * fail-closed {@link UnknownHostException} path be asserted deterministically, without any live
+ * network access. Tests that only need an IP literal directly in the URL (127.0.0.1, 10.0.0.5, the
+ * alternate IPv4 notations, {@code localhost}, ...) stay on the plain no-arg constructor: an IP
+ * literal is parsed locally by {@link InetAddress#getAllByName} with no DNS round-trip, so that path
+ * was already network-free before this seam existed.
  */
 class ImageUrlValidatorTest {
 
+  private static final String PUBLIC_IP = "93.184.216.34";
+
   private ImageUrlValidator validator;
+  private ImageUrlValidator publicHostValidator;
 
   @BeforeEach
   void setUp() {
+    // Real resolver — safe here because every case exercised against it below uses either an IP
+    // literal (parsed locally, no DNS) or the localhost fast path (no resolver call at all).
     validator = new ImageUrlValidator();
+    // Fake resolver — returns an ordinary public address for any host at all, so an arbitrary
+    // fabricated external domain can stand in for "a legitimate source CDN host" without a live
+    // DNS lookup.
+    publicHostValidator = new ImageUrlValidator(resolverReturning(PUBLIC_IP));
   }
 
   // -------------------------------------------------------------------------
@@ -46,25 +59,16 @@ class ImageUrlValidatorTest {
 
   @ParameterizedTest
   @ValueSource(strings = {
-      "https://onliner.by/photo.jpg",
-      "https://content.onliner.by/photo.jpg",
-      "https://kufar.by/photo.jpg",
-      // Kufar's actual configured photo-cdn-base-url host (application.yml: connector.kufar.
-      // photo-cdn-base-url) — real and resolvable, unlike the fictional "img01.kufar.by" this
-      // fixture previously used, which does not exist in DNS and made this case flaky/slow.
-      "https://rms.kufar.by/photo.jpg",
-      "https://realt.by/photo.jpg",
-      "https://cdn.realt.by/photo.jpg",
+      "https://cdn.example-source.test/photo.jpg",
+      "https://photos.another-cdn.test/photo.jpg",
+      "https://static.random-listing-host.test/photo.jpg",
       // Not a registrable subdomain of any source in application.yml — this is exactly the class
       // of legitimate, unrelated CDN host that the removed allowlist heuristic used to reject.
-      // Real, stable public hosts (not fictional example.com/cloudfront.net fixtures) so
-      // resolution — required by every host since fb6790f — succeeds deterministically.
-      "https://raw.githubusercontent.com/photo.jpg",
-      "https://i.imgur.com/photo.jpg"
+      "https://assets.unrelated-cdn.test/photo.jpg"
   })
   void should_return_true_when_url_is_https_with_public_host(String url) {
     // When
-    boolean result = validator.isAllowedImageUrl(url);
+    boolean result = publicHostValidator.isAllowedImageUrl(url);
 
     // Then
     assertThat(result).isTrue();
@@ -118,7 +122,7 @@ class ImageUrlValidatorTest {
   @Test
   void should_be_case_insensitive_for_scheme() {
     // When
-    boolean result = validator.isAllowedImageUrl("HTTPS://CDN.ONLINER.BY/photo.jpg");
+    boolean result = publicHostValidator.isAllowedImageUrl("HTTPS://CDN.EXAMPLE-SOURCE.TEST/photo.jpg");
 
     // Then
     assertThat(result).isTrue();
@@ -239,8 +243,70 @@ class ImageUrlValidatorTest {
   }
 
   // -------------------------------------------------------------------------
+  // DNS-based SSRF bypass (CRITICAL security review finding, issue #455, fb6790f) — a domain the
+  // attacker controls DNS for, whose record resolves to a loopback/private/link-local address, is
+  // exactly as much an SSRF vector as an IP literal typed directly into the URL. This is the one
+  // scenario that genuinely requires a resolver seam to test deterministically: the malicious
+  // behavior only exists in what DNS *returns* for an otherwise ordinary-looking external hostname.
+  // -------------------------------------------------------------------------
+
+  @ParameterizedTest
+  @ValueSource(strings = {
+      "127.0.0.1",       // loopback
+      "10.0.0.5",        // private (RFC1918)
+      "192.168.1.10",    // private (RFC1918)
+      "169.254.169.254", // link-local — cloud metadata endpoint
+      "0.0.0.0",         // any-local
+      "224.0.0.1"        // multicast
+  })
+  void should_return_false_when_external_host_resolves_to_disallowed_address(String maliciousIp) {
+    // Given — a fabricated external CDN domain whose DNS record is under the attacker's control,
+    // pointing at an internal/loopback/metadata address instead of the CDN it appears to be
+    var dnsBypassValidator = new ImageUrlValidator(resolverReturning(maliciousIp));
+
+    // When
+    boolean result = dnsBypassValidator.isAllowedImageUrl("https://attacker-controlled-cdn.test/photo.jpg");
+
+    // Then
+    assertThat(result).isFalse();
+  }
+
+  @Test
+  void should_return_false_when_any_of_multiple_resolved_addresses_is_disallowed() {
+    // Given — a host resolving to more than one address (common for real CDNs); only one of them
+    // needs to be disallowed for the host as a whole to be rejected
+    var dnsBypassValidator = new ImageUrlValidator(resolverReturning(PUBLIC_IP, "127.0.0.1"));
+
+    // When
+    boolean result = dnsBypassValidator.isAllowedImageUrl("https://multi-address-cdn.test/photo.jpg");
+
+    // Then
+    assertThat(result).isFalse();
+  }
+
+  // -------------------------------------------------------------------------
+  // Fail-closed on unresolvable host (issue #455) — a photo URL whose host cannot be resolved at
+  // all cannot be a legitimate source CDN photo either, so it must be rejected rather than allowed.
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_return_false_when_dns_resolution_fails() {
+    // Given — resolver simulates a host that fails DNS resolution entirely, without any real
+    // network timeout
+    var unresolvableValidator = new ImageUrlValidator(resolverThrowing());
+
+    // When
+    boolean result = unresolvableValidator.isAllowedImageUrl("https://nonexistent-cdn.test/photo.jpg");
+
+    // Then
+    assertThat(result).isFalse();
+  }
+
+  // -------------------------------------------------------------------------
   // Legacy constructors (Set<String>, ConfigurableEnvironment) — retained only for source
-  // compatibility with call sites/tests written against the pre-#455 API (issue #455).
+  // compatibility with call sites/tests written against the pre-#455 API (issue #455). Both
+  // delegate to the real production resolver, so assertions here use public/private IP literals
+  // rather than hostnames to stay network-free.
   // -------------------------------------------------------------------------
 
   @Test
@@ -248,8 +314,9 @@ class ImageUrlValidatorTest {
     // Given — the legacy allowlist argument is ignored entirely, even a narrow one
     var legacyValidator = new ImageUrlValidator(Set.of("onliner.by"));
 
-    // When / Then — a host outside the legacy set is still accepted (allowlist removed)
-    assertThat(legacyValidator.isAllowedImageUrl("https://raw.githubusercontent.com/photo.jpg")).isTrue();
+    // When / Then — a host outside the legacy set is still accepted (allowlist removed); a public
+    // IP literal is used instead of a hostname so this assertion does not depend on live DNS
+    assertThat(legacyValidator.isAllowedImageUrl("https://" + PUBLIC_IP + "/photo.jpg")).isTrue();
     // And the SSRF guard still applies regardless of the legacy argument
     assertThat(legacyValidator.isAllowedImageUrl("https://127.0.0.1/photo.jpg")).isFalse();
   }
@@ -258,7 +325,7 @@ class ImageUrlValidatorTest {
   void should_not_throw_when_using_legacy_set_constructor_with_empty_set() {
     // When / Then — an empty legacy allowlist must not narrow validation or throw
     assertThatNoException().isThrownBy(() -> new ImageUrlValidator(Set.of()));
-    assertThat(new ImageUrlValidator(Set.of()).isAllowedImageUrl("https://onliner.by/photo.jpg")).isTrue();
+    assertThat(new ImageUrlValidator(Set.of()).isAllowedImageUrl("https://" + PUBLIC_IP + "/photo.jpg")).isTrue();
   }
 
   @Test
@@ -271,8 +338,9 @@ class ImageUrlValidatorTest {
     // When
     var legacyValidator = new ImageUrlValidator(environment);
 
-    // Then — hosts unrelated to any configured connector are still accepted
-    assertThat(legacyValidator.isAllowedImageUrl("https://raw.githubusercontent.com/photo.jpg")).isTrue();
+    // Then — hosts unrelated to any configured connector are still accepted; a public IP literal
+    // avoids a live DNS dependency
+    assertThat(legacyValidator.isAllowedImageUrl("https://" + PUBLIC_IP + "/photo.jpg")).isTrue();
     // And the SSRF guard still applies regardless of connector configuration
     assertThat(legacyValidator.isAllowedImageUrl("https://192.168.1.10/photo.jpg")).isFalse();
   }
@@ -289,5 +357,35 @@ class ImageUrlValidatorTest {
 
     // Then
     assertThat(legacyValidator.isAllowedImageUrl("https://localhost/photo.jpg")).isFalse();
+  }
+
+  // -------------------------------------------------------------------------
+  // Helpers — fake HostResolver
+  // -------------------------------------------------------------------------
+
+  /**
+   * Builds a fake {@link ImageUrlValidator.HostResolver} that resolves any host to the given IP
+   * literals, regardless of what host is asked for. Each literal is parsed by
+   * {@link InetAddress#getByName(String)} locally — since it is already a numeric address, no DNS
+   * lookup is performed — so this stays network-free.
+   */
+  private static ImageUrlValidator.HostResolver resolverReturning(String... ipLiterals) {
+    return host -> {
+      var addresses = new InetAddress[ipLiterals.length];
+      for (int i = 0; i < ipLiterals.length; i++) {
+        addresses[i] = InetAddress.getByName(ipLiterals[i]);
+      }
+      return addresses;
+    };
+  }
+
+  /**
+   * Builds a fake {@link ImageUrlValidator.HostResolver} that simulates a host failing DNS
+   * resolution entirely, without any real network call or timeout.
+   */
+  private static ImageUrlValidator.HostResolver resolverThrowing() {
+    return host -> {
+      throw new UnknownHostException("Simulated DNS failure for host: " + host);
+    };
   }
 }

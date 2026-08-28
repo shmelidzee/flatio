@@ -25,13 +25,13 @@ import java.math.BigDecimal;
 import java.net.URI;
 import java.time.Instant;
 import java.util.List;
-import java.util.Set;
 import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -57,6 +57,16 @@ class KufarApiClientTest {
   @Mock
   private KufarAdDetailClient adDetailClient;
 
+  // Mocked rather than constructed for real (issue #455 QA follow-up): KufarApiClient only calls
+  // isAllowedImageUrl for the one already-absolute-photo-path case below, and ImageUrlValidator's
+  // own SSRF/DNS-resolution behavior is already exhaustively covered in its own unit test
+  // (ImageUrlValidatorTest). Constructing a real instance here would either need a live DNS lookup
+  // for a fictional fixture host, or reach into ImageUrlValidator's package-private fake-resolver
+  // constructor from a different package — a plain mock keeps this test isolated to KufarApiClient
+  // and fully deterministic, per the "one class in isolation" unit test principle.
+  @Mock
+  private ImageUrlValidator imageUrlValidator;
+
   private KufarApiClient apiClient;
   private KufarProperties.CategoryConfig config;
 
@@ -75,10 +85,7 @@ class KufarApiClientTest {
         new KufarProperties.CategoryConfig("KUFAR_HOUSE_RENT", "BY", "1020", "let"),
         new KufarProperties.CategoryConfig("KUFAR_HOUSE_SALE", "BY", "1020", "sell")
     );
-    // Full domain set, matching how the single shared ImageUrlValidator bean is wired in production
-    // (it validates URLs from every connector, not just this one).
-    apiClient = new KufarApiClient(restClient, properties, adDetailClient,
-        new ImageUrlValidator(Set.of("onliner.by", "kufar.by", "realt.by")));
+    apiClient = new KufarApiClient(restClient, properties, adDetailClient, imageUrlValidator);
     config = properties.apartmentRent();
   }
 
@@ -400,8 +407,7 @@ class KufarApiClientTest {
         new KufarProperties.CategoryConfig("KUFAR_HOUSE_RENT", "BY", "1020", "let"),
         new KufarProperties.CategoryConfig("KUFAR_HOUSE_SALE", "BY", "1020", "sell")
     );
-    var clientWithSlash = new KufarApiClient(restClient, propertiesWithSlash, adDetailClient,
-        new ImageUrlValidator(Set.of("onliner.by", "kufar.by", "realt.by")));
+    var clientWithSlash = new KufarApiClient(restClient, propertiesWithSlash, adDetailClient, imageUrlValidator);
     var image = new KufarImage("1", "adim1/uuid.jpg");
     var ad = new KufarAd(605L, "Квартира", null, 8000000L, "BYR",
         "https://re.kufar.by/vi/605", null, List.of(), List.of(), null,
@@ -421,21 +427,23 @@ class KufarApiClientTest {
   @SuppressWarnings("unchecked")
   void should_not_prepend_cdn_url_when_path_is_already_absolute() {
     // Given — path already starts with https:// (defensive guard against already-migrated data).
-    // Uses a real, resolvable host distinct from the configured photo-cdn-base-url
-    // ("rms.kufar.by") so the assertion is deterministic under ImageUrlValidator's DNS-resolving
-    // SSRF guard (issue #455, fb6790f) — the fictional "other-cdn.kufar.by" this fixture
-    // previously used does not exist in DNS and was rejected outright, emptying photoUrls.
-    var image = new KufarImage("1", "https://raw.githubusercontent.com/img/1.jpg");
+    // Back to the original fictional fixture host (restored after issue #455 QA follow-up): the
+    // SSRF check itself (imageUrlValidator.isAllowedImageUrl) is a mock here, not the real
+    // ImageUrlValidator, so this test no longer depends on the fixture host actually resolving in
+    // DNS — it only asserts that KufarApiClient trusts the validator's verdict and does not
+    // re-derive or double-prepend the URL when the path is already absolute.
+    var image = new KufarImage("1", "https://other-cdn.kufar.by/img/1.jpg");
     var ad = new KufarAd(604L, "Квартира", null, 8000000L, "BYR",
         "https://re.kufar.by/vi/604", null, List.of(), List.of(), null,
         List.of(image), "2024-01-15T10:00:00+03:00");
     mockRestClientReturning(buildResponseWithAds(List.of(ad)));
+    when(imageUrlValidator.isAllowedImageUrl(anyString())).thenReturn(true);
 
     // When
     List<RawListing> result = apiClient.fetchAll(config, "RENT", "APARTMENT", "Fallback");
 
     // Then — URL used as-is, no double-prepend
-    assertThat(result.get(0).photoUrls()).containsExactly("https://raw.githubusercontent.com/img/1.jpg");
+    assertThat(result.get(0).photoUrls()).containsExactly("https://other-cdn.kufar.by/img/1.jpg");
   }
 
   // -------------------------------------------------------------------------
