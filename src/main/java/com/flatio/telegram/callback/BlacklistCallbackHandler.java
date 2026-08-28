@@ -1,5 +1,6 @@
 package com.flatio.telegram.callback;
 
+import com.flatio.common.util.TelegramHtmlEscaper;
 import com.flatio.domain.blacklist.BlacklistEntryType;
 import com.flatio.service.BlacklistService;
 import com.flatio.service.UserService;
@@ -69,7 +70,7 @@ public class BlacklistCallbackHandler {
     int index = 1;
     for (var item : items) {
       sb.append(index++).append(". ").append(typeLabel(item.type()))
-          .append(": ").append(escapeHtml(item.value())).append("\n");
+          .append(": ").append(TelegramHtmlEscaper.escapeHtml(item.value())).append("\n");
     }
     return sb.toString();
   }
@@ -83,10 +84,6 @@ public class BlacklistCallbackHandler {
       case SOURCE -> "Источник";
       case KEYWORD -> "Стоп-слово";
     };
-  }
-
-  private String escapeHtml(String text) {
-    return text == null ? "" : text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
   }
 
   private SendMessage buildMessage(String chatId, String text) {

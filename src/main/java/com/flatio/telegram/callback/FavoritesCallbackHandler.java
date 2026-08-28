@@ -1,5 +1,6 @@
 package com.flatio.telegram.callback;
 
+import com.flatio.common.util.TelegramHtmlEscaper;
 import com.flatio.service.FavoriteService;
 import com.flatio.service.UserService;
 import com.flatio.telegram.keyboard.MainMenuKeyboardFactory;
@@ -66,7 +67,7 @@ public class FavoritesCallbackHandler {
     var sb = new StringBuilder();
     int index = 1;
     for (var item : items) {
-      sb.append(index++).append(". ").append(escapeHtml(item.listing().title()))
+      sb.append(index++).append(". ").append(TelegramHtmlEscaper.escapeHtml(item.listing().title()))
           .append(" — ").append(formatPrice(item)).append("\n");
     }
     return sb.toString();
@@ -79,10 +80,6 @@ public class FavoritesCallbackHandler {
     }
     String currency = item.listing().currency() != null ? item.listing().currency() : "";
     return price.stripTrailingZeros().toPlainString() + " " + currency;
-  }
-
-  private String escapeHtml(String text) {
-    return text == null ? "" : text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
   }
 
   private SendMessage buildMessage(String chatId, String text) {

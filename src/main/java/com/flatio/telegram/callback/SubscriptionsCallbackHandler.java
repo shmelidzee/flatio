@@ -1,5 +1,6 @@
 package com.flatio.telegram.callback;
 
+import com.flatio.common.util.TelegramHtmlEscaper;
 import com.flatio.domain.subscription.DeliveryMode;
 import com.flatio.service.SubscriptionService;
 import com.flatio.service.UserService;
@@ -67,7 +68,7 @@ public class SubscriptionsCallbackHandler {
     var sb = new StringBuilder();
     int index = 1;
     for (var item : items) {
-      sb.append(index++).append(". ").append(escapeHtml(item.name()))
+      sb.append(index++).append(". ").append(TelegramHtmlEscaper.escapeHtml(item.name()))
           .append(" — ").append(statusLabel(item.active()))
           .append(" (").append(deliveryModeLabel(item.deliveryMode())).append(")\n");
     }
@@ -87,10 +88,6 @@ public class SubscriptionsCallbackHandler {
       case DIGEST -> "дайджест";
       case DAILY -> "раз в день";
     };
-  }
-
-  private String escapeHtml(String text) {
-    return text == null ? "" : text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
   }
 
   private SendMessage buildMessage(String chatId, String text) {

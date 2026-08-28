@@ -1,5 +1,6 @@
 package com.flatio.telegram.formatter;
 
+import com.flatio.common.util.TelegramHtmlEscaper;
 import com.flatio.domain.listing.ListingStatus;
 import com.flatio.telegram.config.SourceDisplayProperties;
 import com.flatio.web.dto.ListingResponse;
@@ -95,12 +96,12 @@ public class ListingFormatter {
     if (roomPrefix.isEmpty()) {
       sb.append(priceFormatted);
     } else {
-      sb.append(escapeHtml(roomPrefix)).append(" за ").append(priceFormatted);
+      sb.append(TelegramHtmlEscaper.escapeHtml(roomPrefix)).append(" за ").append(priceFormatted);
     }
 
     String address = formatLocation(listing.address(), listing.district(), listing.city());
     if (!address.isEmpty()) {
-      sb.append("\n").append(escapeHtml(address));
+      sb.append("\n").append(TelegramHtmlEscaper.escapeHtml(address));
     }
     if (listing.status() != ListingStatus.ACTIVE) {
       sb.append("\n\n").append(LABEL_LISTING_INACTIVE);
@@ -160,12 +161,12 @@ public class ListingFormatter {
     if (roomPrefix.isEmpty()) {
       sb.append(priceFormatted);
     } else {
-      sb.append(escapeHtml(roomPrefix)).append(" за ").append(priceFormatted);
+      sb.append(TelegramHtmlEscaper.escapeHtml(roomPrefix)).append(" за ").append(priceFormatted);
     }
 
     String address = formatLocation(listing.address(), listing.district(), listing.city());
     if (!address.isEmpty()) {
-      sb.append("\n").append(escapeHtml(address));
+      sb.append("\n").append(TelegramHtmlEscaper.escapeHtml(address));
     } else if (isAddressUnknownLabelEnabled(listing.sourceId())) {
       sb.append("\n").append(LABEL_ADDRESS_UNKNOWN);
     }
@@ -275,10 +276,6 @@ public class ListingFormatter {
           .replace(",", " ");
     }
     return stripped.toPlainString();
-  }
-
-  private String escapeHtml(String text) {
-    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
   }
 
   private String capitalize(String s) {
