@@ -1,6 +1,7 @@
 package com.flatio.telegram.callback;
 
 import com.flatio.common.util.TelegramHtmlEscaper;
+import com.flatio.common.util.TelegramPrivateChatGuard;
 import com.flatio.domain.subscription.DeliveryMode;
 import com.flatio.service.SubscriptionService;
 import com.flatio.service.UserService;
@@ -23,6 +24,10 @@ import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
  * {@code /api/v1/subscriptions} endpoint (Telegram and REST API share services, per project
  * architecture rules). Shows a read-only summary of the user's subscriptions; per-item management
  * (pause, resume, edit, delete) is out of scope for this issue and left to a follow-up (#TBD-SUB).
+ *
+ * <p>Restricted to private chats (issue #463): subscriptions are personal data, so a request made
+ * from a group/supergroup/channel is answered with a redirect to a private chat instead of the
+ * actual list — see {@link TelegramPrivateChatGuard}.
  */
 @Component
 @Slf4j
@@ -49,6 +54,11 @@ public class SubscriptionsCallbackHandler {
   public SendMessage handle(CallbackQuery callbackQuery) {
     Long telegramId = callbackQuery.getFrom().getId();
     String chatId = String.valueOf(callbackQuery.getMessage().getChatId());
+
+    if (!TelegramPrivateChatGuard.isPrivateChat(callbackQuery)) {
+      log.debug("action:subscriptions callback rejected outside a private chat: chatId={}", chatId);
+      return buildMessage(chatId, TelegramPrivateChatGuard.PRIVATE_CHAT_REQUIRED_TEXT);
+    }
 
     var user = userService.findByTelegramId(telegramId);
     if (user.isEmpty()) {

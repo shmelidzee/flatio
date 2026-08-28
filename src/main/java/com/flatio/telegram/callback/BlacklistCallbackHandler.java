@@ -1,6 +1,7 @@
 package com.flatio.telegram.callback;
 
 import com.flatio.common.util.TelegramHtmlEscaper;
+import com.flatio.common.util.TelegramPrivateChatGuard;
 import com.flatio.domain.blacklist.BlacklistEntryType;
 import com.flatio.service.BlacklistService;
 import com.flatio.service.UserService;
@@ -24,6 +25,10 @@ import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
  * architecture rules). Shows a read-only summary of the user's blacklist entries; per-item
  * management (remove) and adding new entries from the bot is out of scope for this issue and
  * left to a follow-up (#TBD-BL).
+ *
+ * <p>Restricted to private chats (issue #463): the blacklist is personal data, so a request made
+ * from a group/supergroup/channel is answered with a redirect to a private chat instead of the
+ * actual list — see {@link TelegramPrivateChatGuard}.
  */
 @Component
 @Slf4j
@@ -50,6 +55,11 @@ public class BlacklistCallbackHandler {
   public SendMessage handle(CallbackQuery callbackQuery) {
     Long telegramId = callbackQuery.getFrom().getId();
     String chatId = String.valueOf(callbackQuery.getMessage().getChatId());
+
+    if (!TelegramPrivateChatGuard.isPrivateChat(callbackQuery)) {
+      log.debug("action:blacklist callback rejected outside a private chat: chatId={}", chatId);
+      return buildMessage(chatId, TelegramPrivateChatGuard.PRIVATE_CHAT_REQUIRED_TEXT);
+    }
 
     var user = userService.findByTelegramId(telegramId);
     if (user.isEmpty()) {
