@@ -4,15 +4,12 @@ import com.flatio.common.exception.ListingNotFoundException;
 import com.flatio.service.ListingService;
 import com.flatio.service.UserService;
 import com.flatio.telegram.formatter.ListingFormatter;
-import java.util.List;
+import com.flatio.telegram.keyboard.MainMenuKeyboardFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Update;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardRow;
 
 /**
  * Handles the {@code /start} Telegram command.
@@ -40,6 +37,7 @@ public class StartCommandHandler {
   private final UserService userService;
   private final ListingService listingService;
   private final ListingFormatter listingFormatter;
+  private final MainMenuKeyboardFactory mainMenuKeyboardFactory;
 
   /**
    * Processes a {@code /start} update and returns either a listing card (deep link payload) or
@@ -138,23 +136,10 @@ public class StartCommandHandler {
         ? "Привет, " + firstName + "!"
         : "Привет!";
 
-    var searchButton = InlineKeyboardButton.builder()
-        .text("Искать")
-        .callbackData("action:search")
-        .build();
-    var helpButton = InlineKeyboardButton.builder()
-        .text("Помощь")
-        .callbackData("action:help")
-        .build();
-
-    var keyboard = InlineKeyboardMarkup.builder()
-        .keyboardRow(new InlineKeyboardRow(searchButton, helpButton))
-        .build();
-
     return SendMessage.builder()
         .chatId(chatId)
         .text(greeting + "\n\nДобро пожаловать в Flatio — агрегатор объявлений о недвижимости.")
-        .replyMarkup(keyboard)
+        .replyMarkup(mainMenuKeyboardFactory.build())
         .build();
   }
 }

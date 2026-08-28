@@ -1,5 +1,6 @@
 package com.flatio.telegram.keyboard;
 
+import com.flatio.common.util.TelegramHtmlEscaper;
 import com.flatio.domain.listing.DealType;
 import com.flatio.config.SellPriceFilterProperties;
 import com.flatio.telegram.state.FilterStep;
@@ -182,13 +183,9 @@ public class FilterKeyboardFactory {
         .append("Цена: ").append(priceLabel(state.getPriceMin(), state.getPriceMax())).append("\n")
         .append("Продавец: ").append(ownerOnlyLabel(state.getOwnerOnly()));
     if (state.getQuery() != null && !state.getQuery().isBlank()) {
-      sb.append("\nКлючевые слова: «").append(escapeHtml(state.getQuery())).append("»");
+      sb.append("\nКлючевые слова: «").append(TelegramHtmlEscaper.escapeHtml(state.getQuery())).append("»");
     }
     return sb.toString();
-  }
-
-  private String escapeHtml(String text) {
-    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
   }
 
   private String dealTypeLabel(DealType dealType) {
