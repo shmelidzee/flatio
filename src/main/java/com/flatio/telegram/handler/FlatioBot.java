@@ -206,7 +206,19 @@ public class FlatioBot {
     }
 
     answerCallbackQuery(callbackQuery.getId());
+    dispatchSectionOrSearchCallback(callbackQuery, data);
+  }
 
+  /**
+   * Dispatches every callback pre-dating the {@code FAV:}/{@code SUB:}/{@code BL:} management
+   * callbacks (issues #457–#459): search execution/pagination, help, main menu, opening the three
+   * read-only sections (issue #456), and the filter wizard. Split out of
+   * {@link #handleCallbackQuery} to keep both methods within the method-length limit.
+   *
+   * @param callbackQuery the incoming callback query, never null
+   * @param data          the callback data, never null
+   */
+  private void dispatchSectionOrSearchCallback(CallbackQuery callbackQuery, String data) {
     if (FILTER_SEARCH_CALLBACK.equals(data)) {
       searchResultSender.handle(callbackQuery);
     } else if (SearchCommandHandler.ACTION_USE_LAST_SEARCH.equals(data)) {
