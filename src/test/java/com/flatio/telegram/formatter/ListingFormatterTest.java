@@ -1260,6 +1260,27 @@ class ListingFormatterTest {
   }
 
   // -------------------------------------------------------------------------
+  // buildSearchCardKeyboard (issues #457, #459)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_build_search_card_keyboard_with_open_favorite_and_hide_buttons() {
+    // Given
+    var url = "https://kufar.by/listing/42";
+
+    // When
+    var keyboard = listingFormatter.buildSearchCardKeyboard(url, 42L, "kufar");
+
+    // Then
+    var rows = keyboard.getKeyboard();
+    assertThat(rows).hasSize(3);
+    assertThat(rows.get(0).get(0).getUrl()).isEqualTo(url);
+    assertThat(rows.get(1).get(0).getCallbackData()).isEqualTo("FAV:ADD:42");
+    assertThat(rows.get(2).get(0).getCallbackData()).isEqualTo("BL:HIDE_LISTING:42");
+    assertThat(rows.get(2).get(1).getCallbackData()).isEqualTo("BL:HIDE_SOURCE:kufar");
+  }
+
+  // -------------------------------------------------------------------------
   // helpers
   // -------------------------------------------------------------------------
 

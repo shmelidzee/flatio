@@ -118,7 +118,7 @@ class SearchResultSenderTest {
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
     when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
-    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
 
     // When
     searchResultSender.handle(buildCallback(1L, 100L, 10));
@@ -143,7 +143,7 @@ class SearchResultSenderTest {
     when(wizard.getState(100L)).thenReturn(Optional.of(defaultState));
     when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
-    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
     lenient().when(telegramClient.execute(any(EditMessageText.class))).thenReturn(mock());
     when(telegramClient.execute(any(SendPhoto.class))).thenThrow(buildBlockedException());
 
@@ -165,7 +165,7 @@ class SearchResultSenderTest {
     when(wizard.getState(101L)).thenReturn(Optional.of(defaultState));
     when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
-    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
     lenient().when(telegramClient.execute(any(EditMessageText.class))).thenReturn(mock());
     when(telegramClient.execute(any(SendPhoto.class)))
         .thenThrow(new TelegramApiException("network error"));
@@ -195,7 +195,7 @@ class SearchResultSenderTest {
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
     when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
-    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
 
     // When
     searchResultSender.handle(buildCallback(1L, 100L, 10));
@@ -213,7 +213,7 @@ class SearchResultSenderTest {
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
     when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
-    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
     when(photoProxyClient.download(anyString(), eq(3L))).thenReturn(Optional.empty());
 
     // When
@@ -235,7 +235,7 @@ class SearchResultSenderTest {
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
     when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
-    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
     when(photoProxyClient.download(anyString(), eq(3L))).thenReturn(Optional.empty());
     lenient().when(telegramClient.execute(any(EditMessageText.class))).thenReturn(mock());
     when(telegramClient.execute(any(SendPhoto.class)))
@@ -256,7 +256,7 @@ class SearchResultSenderTest {
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
     when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
-    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
     lenient().when(telegramClient.execute(any(EditMessageText.class))).thenReturn(mock());
     when(telegramClient.execute(any(SendPhoto.class)))
         .thenThrow(new TelegramApiException("Binary upload rejected"));
@@ -282,7 +282,7 @@ class SearchResultSenderTest {
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
     when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
-    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
     when(photoProxyClient.download(anyString(), eq(70L))).thenReturn(Optional.of(jpegBytes));
     lenient().when(telegramClient.execute(any(EditMessageText.class))).thenReturn(mock());
     lenient().when(telegramClient.execute(any(SendMessage.class))).thenReturn(mock());
@@ -305,7 +305,7 @@ class SearchResultSenderTest {
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
     when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
-    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
     when(photoProxyClient.download(anyString(), eq(71L))).thenReturn(Optional.of(DUMMY_PHOTO_BYTES));
     lenient().when(telegramClient.execute(any(EditMessageText.class))).thenReturn(mock());
     lenient().when(telegramClient.execute(any(SendMessage.class))).thenReturn(mock());
@@ -334,7 +334,7 @@ class SearchResultSenderTest {
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
     when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
-    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
     when(photoProxyClient.download(anyString(), eq(73L))).thenReturn(Optional.of(bombPng));
     lenient().when(telegramClient.execute(any(EditMessageText.class))).thenReturn(mock());
     lenient().when(telegramClient.execute(any(SendMessage.class))).thenReturn(mock());
@@ -363,7 +363,7 @@ class SearchResultSenderTest {
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
     when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
-    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
     when(photoProxyClient.download(anyString(), eq(72L))).thenReturn(Optional.of(jpegBytes));
     lenient().when(telegramClient.execute(any(EditMessageText.class))).thenReturn(mock());
     lenient().when(telegramClient.execute(any(SendMessage.class))).thenReturn(mock());
@@ -440,7 +440,7 @@ class SearchResultSenderTest {
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
     when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
-    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
     when(photoProxyClient.download(anyString(), eq(50L))).thenReturn(Optional.of(oversizedBytes));
 
     // When
@@ -460,7 +460,7 @@ class SearchResultSenderTest {
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
     when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
-    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
     when(photoProxyClient.download(anyString(), eq(51L))).thenReturn(Optional.of(tooLargeBytes));
 
     // When
@@ -480,7 +480,7 @@ class SearchResultSenderTest {
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
     when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
-    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
     when(photoProxyClient.download(anyString(), eq(52L))).thenReturn(Optional.of(oversizedBytes));
     lenient().when(telegramClient.execute(any(EditMessageText.class))).thenReturn(mock());
     when(telegramClient.execute(any(SendDocument.class)))
@@ -572,7 +572,7 @@ class SearchResultSenderTest {
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
     when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
-    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
     when(photoProxyClient.download(anyString(), eq(60L))).thenReturn(Optional.of(notJpegBytes));
 
     // When
@@ -698,7 +698,7 @@ class SearchResultSenderTest {
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
     when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
-    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
 
     // When
     searchResultSender.handle(buildCallback(1L, 100L, 10));
@@ -722,7 +722,7 @@ class SearchResultSenderTest {
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
     when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing1, listing2, listing3));
     when(listingFormatter.buildCaption(any())).thenReturn("caption");
-    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
 
     // When
     assertThatNoException().isThrownBy(
@@ -747,7 +747,7 @@ class SearchResultSenderTest {
     when(listingFormatter.buildCaption(listing1)).thenThrow(new RuntimeException("unexpected caption error"));
     when(listingFormatter.buildCaption(listing2)).thenReturn("caption");
     when(listingFormatter.buildCaption(listing3)).thenReturn("caption");
-    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
 
     // When / Then — no exception propagated to caller
     assertThatNoException().isThrownBy(
@@ -772,7 +772,7 @@ class SearchResultSenderTest {
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
     when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing1, listing2, listing3));
     when(listingFormatter.buildCaption(any())).thenReturn("caption");
-    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
     lenient().when(telegramClient.execute(any(EditMessageText.class))).thenReturn(mock());
     when(telegramClient.execute(any(SendPhoto.class)))
         .thenThrow(new TelegramApiException("Telegram error"))
@@ -800,7 +800,7 @@ class SearchResultSenderTest {
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
     when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
-    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
 
     // When
     searchResultSender.handle(buildCallback(1L, 100L, 10));
@@ -820,7 +820,7 @@ class SearchResultSenderTest {
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
     when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
-    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
 
     // When
     searchResultSender.handle(buildCallback(1L, 100L, 10));
@@ -840,7 +840,7 @@ class SearchResultSenderTest {
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
     when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
-    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
 
     // When
     searchResultSender.handle(buildCallback(1L, 100L, 10));
@@ -865,7 +865,7 @@ class SearchResultSenderTest {
     var listing = buildListing(30L, null, "https://realt.by/30");
     when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
-    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
 
     // When
     searchResultSender.handleLastSearch(buildCallback(1L, 100L, 10));
@@ -922,7 +922,7 @@ class SearchResultSenderTest {
     when(wizard.getState(1L)).thenReturn(Optional.of(state));
     when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
-    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
 
     // When
     searchResultSender.handle(buildCallback(1L, 100L, 10));
@@ -944,7 +944,7 @@ class SearchResultSenderTest {
     var criteriaCaptor = ArgumentCaptor.forClass(ListingSearchCriteria.class);
     when(listingService.search(criteriaCaptor.capture(), any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
-    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
 
     // When
     searchResultSender.handle(buildCallback(1L, 100L, 10));
@@ -974,7 +974,7 @@ class SearchResultSenderTest {
     when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
     when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing));
     when(listingFormatter.buildCaption(listing)).thenReturn("caption");
-    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
     doThrow(new RuntimeException("DB error")).when(userSavedSearchService).save(anyLong(), any());
 
     // When / Then — no exception propagated, results are still delivered

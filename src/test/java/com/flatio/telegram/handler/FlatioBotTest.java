@@ -12,6 +12,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.telegram.telegrambots.meta.api.methods.AnswerCallbackQuery;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.ApiResponse;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
@@ -24,6 +25,7 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
 
 import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -142,12 +144,11 @@ class FlatioBotTest {
   // -------------------------------------------------------------------------
 
   @Test
-  void should_delegate_to_favorites_handler_when_action_favorites_callback_received() throws TelegramApiException {
-    // Given
+  void should_delegate_to_favorites_handler_when_action_favorites_callback_received() {
+    // Given — since #457, the handler self-renders the list (one message per item + navigation);
+    // FlatioBot only routes the callback and answers it, it no longer sends a returned message.
     var telegramClient = mock(TelegramClient.class);
     var favoritesCallbackHandler = mock(FavoritesCallbackHandler.class);
-    var favoritesMessage = mock(SendMessage.class);
-    when(favoritesCallbackHandler.handle(any())).thenReturn(favoritesMessage);
     var bot = buildBotWithFavoritesHandler(telegramClient, favoritesCallbackHandler, executor);
     var update = buildCallbackUpdate(1, 100L, "action:favorites");
 
@@ -156,16 +157,13 @@ class FlatioBotTest {
 
     // Then
     verify(favoritesCallbackHandler).handle(update.getCallbackQuery());
-    verify(telegramClient).execute(favoritesMessage);
   }
 
   @Test
-  void should_delegate_to_subscriptions_handler_when_action_subscriptions_callback_received() throws TelegramApiException {
-    // Given
+  void should_delegate_to_subscriptions_handler_when_action_subscriptions_callback_received() {
+    // Given — since #458, the handler self-renders the list; see the favorites test above.
     var telegramClient = mock(TelegramClient.class);
     var subscriptionsCallbackHandler = mock(SubscriptionsCallbackHandler.class);
-    var subscriptionsMessage = mock(SendMessage.class);
-    when(subscriptionsCallbackHandler.handle(any())).thenReturn(subscriptionsMessage);
     var bot = buildBotWithSubscriptionsHandler(telegramClient, subscriptionsCallbackHandler, executor);
     var update = buildCallbackUpdate(1, 100L, "action:subscriptions");
 
@@ -174,16 +172,13 @@ class FlatioBotTest {
 
     // Then
     verify(subscriptionsCallbackHandler).handle(update.getCallbackQuery());
-    verify(telegramClient).execute(subscriptionsMessage);
   }
 
   @Test
-  void should_delegate_to_blacklist_handler_when_action_blacklist_callback_received() throws TelegramApiException {
-    // Given
+  void should_delegate_to_blacklist_handler_when_action_blacklist_callback_received() {
+    // Given — since #459, the handler self-renders the list; see the favorites test above.
     var telegramClient = mock(TelegramClient.class);
     var blacklistCallbackHandler = mock(BlacklistCallbackHandler.class);
-    var blacklistMessage = mock(SendMessage.class);
-    when(blacklistCallbackHandler.handle(any())).thenReturn(blacklistMessage);
     var bot = buildBotWithBlacklistHandler(telegramClient, blacklistCallbackHandler, executor);
     var update = buildCallbackUpdate(1, 100L, "action:blacklist");
 
@@ -192,7 +187,110 @@ class FlatioBotTest {
 
     // Then
     verify(blacklistCallbackHandler).handle(update.getCallbackQuery());
-    verify(telegramClient).execute(blacklistMessage);
+  }
+
+  // -------------------------------------------------------------------------
+  // FAV:/SUB:/BL: management callback routing (issues #457, #458, #459)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_answer_callback_with_toast_when_fav_add_callback_received() throws TelegramApiException {
+    // Given
+    var telegramClient = mock(TelegramClient.class);
+    var favoritesCallbackHandler = mock(FavoritesCallbackHandler.class);
+    when(favoritesCallbackHandler.handleAdd(any())).thenReturn("⭐ Добавлено в избранное");
+    var bot = buildBotWithFavoritesHandler(telegramClient, favoritesCallbackHandler, executor);
+    var update = buildCallbackUpdate(1, 100L, "FAV:ADD:42");
+
+    // When
+    bot.handleUpdate(update);
+
+    // Then — the toast text returned by the handler is used to answer the callback query
+    verify(favoritesCallbackHandler).handleAdd(update.getCallbackQuery());
+    verify(telegramClient).execute(argThat((AnswerCallbackQuery a) ->
+        "⭐ Добавлено в избранное".equals(a.getText())));
+  }
+
+  @Test
+  void should_delegate_to_favorites_page_handler_when_fav_page_callback_received() {
+    // Given
+    var telegramClient = mock(TelegramClient.class);
+    var favoritesCallbackHandler = mock(FavoritesCallbackHandler.class);
+    var bot = buildBotWithFavoritesHandler(telegramClient, favoritesCallbackHandler, executor);
+    var update = buildCallbackUpdate(1, 100L, "FAV:PAGE:NEXT");
+
+    // When
+    bot.handleUpdate(update);
+
+    // Then
+    verify(favoritesCallbackHandler).handlePage(update.getCallbackQuery());
+  }
+
+  @Test
+  void should_delegate_to_subscribe_from_filter_handler_when_sub_create_from_filter_callback_received() {
+    // Given
+    var telegramClient = mock(TelegramClient.class);
+    var subscriptionsCallbackHandler = mock(SubscriptionsCallbackHandler.class);
+    var bot = buildBotWithSubscriptionsHandler(telegramClient, subscriptionsCallbackHandler, executor);
+    var update = buildCallbackUpdate(1, 100L, "SUB:CREATE_FROM_FILTER");
+
+    // When
+    bot.handleUpdate(update);
+
+    // Then
+    verify(subscriptionsCallbackHandler).handleCreateFromFilter(update.getCallbackQuery());
+  }
+
+  @Test
+  void should_answer_callback_with_toast_when_bl_delete_callback_received() throws TelegramApiException {
+    // Given
+    var telegramClient = mock(TelegramClient.class);
+    var blacklistCallbackHandler = mock(BlacklistCallbackHandler.class);
+    when(blacklistCallbackHandler.handleDelete(any())).thenReturn("🗑 Запись удалена из чёрного списка");
+    var bot = buildBotWithBlacklistHandler(telegramClient, blacklistCallbackHandler, executor);
+    var update = buildCallbackUpdate(1, 100L, "BL:DELETE:7");
+
+    // When
+    bot.handleUpdate(update);
+
+    // Then
+    verify(blacklistCallbackHandler).handleDelete(update.getCallbackQuery());
+    verify(telegramClient).execute(argThat((AnswerCallbackQuery a) ->
+        "🗑 Запись удалена из чёрного списка".equals(a.getText())));
+  }
+
+  // -------------------------------------------------------------------------
+  // Free-text routing for subscription-name / stop-word prompts (issues #458, #459)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_forward_free_text_to_subscriptions_handler_when_awaiting_subscription_name() {
+    // Given
+    var subscriptionsCallbackHandler = mock(SubscriptionsCallbackHandler.class);
+    when(subscriptionsCallbackHandler.isAwaitingSubscriptionName(777L)).thenReturn(true);
+    var bot = buildBotWithSubscriptionsHandler(mock(TelegramClient.class), subscriptionsCallbackHandler, executor);
+    var update = buildTextUpdate(1, 777L, "2-комнатные в центре");
+
+    // When
+    bot.handleUpdate(update);
+
+    // Then
+    verify(subscriptionsCallbackHandler).handleSubscriptionNameText(777L, "777", "2-комнатные в центре");
+  }
+
+  @Test
+  void should_forward_free_text_to_blacklist_handler_when_awaiting_keyword() {
+    // Given
+    var blacklistCallbackHandler = mock(BlacklistCallbackHandler.class);
+    when(blacklistCallbackHandler.isAwaitingKeyword(777L)).thenReturn(true);
+    var bot = buildBotWithBlacklistHandler(mock(TelegramClient.class), blacklistCallbackHandler, executor);
+    var update = buildTextUpdate(1, 777L, "новостройка");
+
+    // When
+    bot.handleUpdate(update);
+
+    // Then
+    verify(blacklistCallbackHandler).handleKeywordText(777L, "777", "новостройка");
   }
 
   // -------------------------------------------------------------------------
