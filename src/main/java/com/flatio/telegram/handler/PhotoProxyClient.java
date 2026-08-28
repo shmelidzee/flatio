@@ -24,6 +24,9 @@ import org.springframework.web.client.RestClient;
  * check is deliberately duplicated here even though connectors validate on ingestion too: it is
  * the only place that can catch a URL that reached the database before its connector-level
  * validation existed, or through any future code path that skips that validation.
+ *
+ * <p>As of issue #455, {@link ImageUrlValidator} no longer restricts photos by source domain —
+ * only loopback/private/link-local hosts are rejected. See its Javadoc for the rationale.
  */
 @Component
 @Slf4j
@@ -41,7 +44,7 @@ public class PhotoProxyClient {
   /**
    * Downloads photo bytes from the given URL within the configured timeout.
    *
-   * <p>Returns empty when the URL fails the {@link ImageUrlValidator} host allowlist check, on
+   * <p>Returns empty when the URL fails the {@link ImageUrlValidator} SSRF safety check, on
    * HTTP 4xx/5xx responses, connection timeout, read timeout, or any other I/O error. The caller
    * is expected to fall back to a text card on empty result.
    *
@@ -51,7 +54,7 @@ public class PhotoProxyClient {
    */
   public Optional<byte[]> download(String url, Long listingId) {
     if (!imageUrlValidator.isAllowedImageUrl(url)) {
-      log.warn("Refusing to download photo from a non-allowlisted host: listingId={}, url={}", listingId, url);
+      log.warn("Refusing to download photo that failed SSRF validation: listingId={}, url={}", listingId, url);
       return Optional.empty();
     }
     try {
