@@ -46,8 +46,24 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class ImageUrlValidator {
 
+  private final HostResolver hostResolver;
+
   @Autowired
   public ImageUrlValidator() {
+    this(InetAddress::getAllByName);
+  }
+
+  /**
+   * Package-private constructor allowing tests to substitute a fake DNS resolver, so
+   * {@link #isDisallowedHost} can be exercised deterministically — a fabricated host resolving to
+   * a private/loopback address, or an {@link UnknownHostException} fail-closed path — without a
+   * live DNS round-trip (issue #455 QA finding: relying on real external hosts made the unit test
+   * suite slow, flaky, and network-dependent).
+   *
+   * @param hostResolver resolver used in place of {@link InetAddress#getAllByName}
+   */
+  ImageUrlValidator(HostResolver hostResolver) {
+    this.hostResolver = hostResolver;
     log.info("ImageUrlValidator initialized (issue #455): HTTPS photo URLs are accepted for any "
         + "host that is not loopback/private/link-local; the source-domain allowlist was removed");
   }
@@ -97,7 +113,7 @@ public class ImageUrlValidator {
         log.warn("Rejecting photo URL with no host: url={}", url);
         return false;
       }
-      if (isDisallowedHost(host)) {
+      if (isDisallowedHost(host, hostResolver)) {
         log.warn("Rejecting photo URL pointing to a loopback/private/link-local host: url={}, host={}", url, host);
         return false;
       }
@@ -130,9 +146,11 @@ public class ImageUrlValidator {
    * the bypass this method exists to close.
    *
    * @param rawHost the host to check, never null
+   * @param resolver DNS resolver used to look up {@code rawHost}; the production code path always
+   *     passes {@link InetAddress#getAllByName}, tests may substitute a fake
    * @return true if the host must never be treated as a valid photo URL host
    */
-  private static boolean isDisallowedHost(String rawHost) {
+  private static boolean isDisallowedHost(String rawHost, HostResolver resolver) {
     String host = rawHost.toLowerCase(Locale.ROOT);
     if (host.startsWith("[") && host.endsWith("]")) {
       host = host.substring(1, host.length() - 1);
@@ -141,7 +159,7 @@ public class ImageUrlValidator {
       return true;
     }
     try {
-      InetAddress[] addresses = InetAddress.getAllByName(host);
+      InetAddress[] addresses = resolver.resolve(host);
       for (InetAddress address : addresses) {
         if (address.isLoopbackAddress()
             || address.isLinkLocalAddress()
@@ -156,5 +174,19 @@ public class ImageUrlValidator {
       log.warn("Rejecting photo URL host that failed DNS resolution: host={}, error={}", host, e.getMessage());
       return true;
     }
+  }
+
+  /**
+   * DNS resolution seam (issue #455) so {@link #isDisallowedHost} does not depend directly on
+   * {@link InetAddress#getAllByName}. Production code always wires
+   * {@code InetAddress::getAllByName}; tests may substitute a fake resolver via the
+   * package-private {@link #ImageUrlValidator(HostResolver)} constructor to assert against a
+   * fabricated hostname resolving to a private/loopback address, or an {@link UnknownHostException}
+   * fail-closed path, without a live DNS lookup.
+   */
+  @FunctionalInterface
+  interface HostResolver {
+
+    InetAddress[] resolve(String host) throws UnknownHostException;
   }
 }
