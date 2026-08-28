@@ -8,6 +8,48 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **PR #468 — Метрики и дашборд Micrometer/Prometheus/Grafana (issue #417)**
+  - `micrometer-registry-prometheus` подключён; `/actuator/prometheus` защищён `hasRole("ADMIN")` —
+    так же, как `/api/v1/admin/**` (`SecurityConfig`), а не оставлен открытым как
+    `/actuator/health`/`/actuator/info`
+  - `flatio.sync.duration` (Timer) и `flatio.sync.runs` (Counter), теги `source`/`syncType`/`status` —
+    инструментированы один раз в `SyncRunServiceImpl#record`, через который проходят все 26
+    коннекторных sync-job'ов (Onliner/Realt/Kufar, full и delta), без правки каждого из них
+  - `flatio.listings.active` (MultiGauge по `source`) — новый `ActiveListingsMetricsJob`
+    (`scheduler`) обновляет по расписанию из новой агрегатной query
+    `ListingRepository#countActiveGroupedBySource`
+  - `flatio.notifications.sent`/`flatio.notifications.failed` (Counter, тег `triggerType`) —
+    в `TelegramNotificationSender#markSent`/`#markFailed`
+  - `http.server.requests` — percentile histogram (p50/p95/p99) включён специально для этой
+    метрики, чтобы панель latency `/api/v1/listings` опиралась на реальные перцентили (NFR-PERF-1)
+  - `docker/docker-compose.yml`: сервисы Prometheus + Grafana для локальной разработки, дашборд
+    «Flatio — Overview» (`docker/grafana/dashboards/`) провижинится автоматически; прод-конфиг —
+    по аналогии с `docker-compose.prod.yml` (`docker/docker-compose.prod.example.yml`,
+    `docker/prometheus/prometheus.prod.example.yml`, реальные версии в `.gitignore`)
+  - Открытый вопрос задокументирован, не скрыт: admin-JWT для скрейпа живёт 1 час, для
+    непрерывного прод-скрейпа нужен долгоживущий credential — отдельный follow-up
+
+### Security
+- **PR #467 — Персональные разделы Telegram-бота ограничены приватными чатами (issue #463, follow-up #456)**
+  - `FavoritesCallbackHandler`/`SubscriptionsCallbackHandler`/`BlacklistCallbackHandler` отправляли
+    избранное/подписки/чёрный список в тот же `chatId`, откуда пришёл callback, без проверки типа
+    чата — если бы бот когда-либо был добавлен в групповой чат, эти персональные данные ушли бы
+    всем участникам группы (ownership user→data был и остаётся корректным, риск был в контексте
+    показа, не в подмене данных)
+  - Новый `TelegramPrivateChatGuard` (`common.util`, по аналогии с `TelegramHtmlEscaper`) —
+    проверка `chat.isUserChat()` в начале каждого из трёх `handle()`, до любого обращения к
+    `UserService`/данным; в группе/канале — редирект «откройте бота в личных сообщениях»
+  - `action:search`/`action:help`/`action:menu`/deep link (#418) не тронуты — персональных данных
+    не содержат, решение явно задокументировано в PR
+- **PR #466 — `ImageUrlValidator`: `@Deprecated` на legacy-конструкторах, зафиксировано решение по TOCTOU (issue #461, follow-up #455)**
+  - `ImageUrlValidator(Set<String>)`/`ImageUrlValidator(ConfigurableEnvironment)` (no-op с #455)
+    помечены `@Deprecated(forRemoval = true)`
+  - DNS-rebinding TOCTOU риск (резолв в момент валидации ≠ резолв в момент фактического HTTP-запроса)
+    принят как есть с обоснованием — зафиксировано комментарием в issue #461, полноценный mitigation
+    (pinning резолвленного IP через слои `RestClient`) создал бы больше архитектурного риска, чем
+    закрывает, при узком и малополезном для атакующего окне
+
+### Added
 - **PR #462 — Пункты главного меню Telegram-бота: избранное, подписки, чёрный список (issue #456)**
   - Приветственное меню бота получило три новые кнопки — «⭐ Избранное», «🔔 Мои подписки», «🚫 Чёрный
     список» — собранные новым `MainMenuKeyboardFactory` (`telegram.keyboard`), который заменил
