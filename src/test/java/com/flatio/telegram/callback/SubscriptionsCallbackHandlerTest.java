@@ -18,6 +18,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
+import org.telegram.telegrambots.meta.api.objects.chat.Chat;
 import org.telegram.telegrambots.meta.api.objects.message.Message;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 
@@ -142,6 +143,22 @@ class SubscriptionsCallbackHandlerTest {
         .isEqualTo("action:subscriptions");
   }
 
+  @Test
+  void should_return_private_chat_required_message_when_chat_is_not_private() {
+    // Given — issue #463: subscriptions are personal data, must not be shown in a group/channel
+    lenient().when(keyboardFactory.buildBackToMenu()).thenReturn(mock(InlineKeyboardMarkup.class));
+    var callback = buildCallback(1L, 100L, false);
+
+    // When
+    var result = handler.handle(callback);
+
+    // Then — redirected to a private chat, no user/data lookup performed
+    assertThat(result.getText()).isEqualTo("🔒 Этот раздел содержит личные данные и доступен только в переписке "
+        + "с ботом один на один. Откройте бота в личных сообщениях, чтобы посмотреть его.");
+    verify(userService, never()).findByTelegramId(any());
+    verify(subscriptionService, never()).findByUser(any(), any());
+  }
+
   // -------------------------------------------------------------------------
   // helpers
   // -------------------------------------------------------------------------
@@ -159,11 +176,19 @@ class SubscriptionsCallbackHandlerTest {
   }
 
   private CallbackQuery buildCallback(Long telegramId, Long chatId) {
+    return buildCallback(telegramId, chatId, true);
+  }
+
+  private CallbackQuery buildCallback(Long telegramId, Long chatId, boolean isPrivateChat) {
     var from = mock(org.telegram.telegrambots.meta.api.objects.User.class);
-    when(from.getId()).thenReturn(telegramId);
+    lenient().when(from.getId()).thenReturn(telegramId);
+
+    var chat = mock(Chat.class);
+    lenient().when(chat.isUserChat()).thenReturn(isPrivateChat);
 
     var message = mock(Message.class);
-    when(message.getChatId()).thenReturn(chatId);
+    lenient().when(message.getChatId()).thenReturn(chatId);
+    lenient().when(message.getChat()).thenReturn(chat);
 
     var callback = mock(CallbackQuery.class);
     when(callback.getFrom()).thenReturn(from);
