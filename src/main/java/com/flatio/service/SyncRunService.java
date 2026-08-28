@@ -32,6 +32,28 @@ public interface SyncRunService {
   Optional<Instant> findLastSuccessfulRunAt(String sourceId);
 
   /**
+   * Checks whether the given source has ever recorded a sync run, of any outcome.
+   *
+   * <p>Used to distinguish "just added, hasn't had a chance to run yet" from "has been trying
+   * and failing" when evaluating the source-health alert rules (issue #419) — a brand new source
+   * must not trigger a false "no successful sync" alert before its first scheduled run.
+   *
+   * @param sourceId connector source identifier
+   * @return true if at least one run (success or failure) has been recorded
+   */
+  boolean hasAnyRun(String sourceId);
+
+  /**
+   * Computes the failure rate over the most recent {@code windowSize} runs for a source.
+   *
+   * @param sourceId   connector source identifier
+   * @param windowSize maximum number of most recent runs to consider, newest first
+   * @return the fraction of those runs with {@code FAILURE} status, or empty if the source has
+   *     no runs recorded yet
+   */
+  Optional<Double> calculateRecentFailureRate(String sourceId, int windowSize);
+
+  /**
    * Deletes old sync run records, keeping only the most recent {@code keepPerSource}
    * runs for each registered source.
    *

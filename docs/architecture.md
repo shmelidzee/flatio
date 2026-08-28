@@ -582,3 +582,30 @@ service definitions live in `docker/docker-compose.prod.example.yml`, on the int
 only. Full setup and the scrape-token caveat (an `ADMIN` JWT expires after 1h, so continuous
 production scraping needs a longer-lived credential — an open follow-up, not yet solved) are in
 `docs/local-setup.md`, "Metrics & Dashboards".
+
+### Source-health alerting (issue #419)
+
+`SourceAlertCheckJob` (`scheduler`) evaluates two rules for every active source on a configurable
+cron (`flatio.alerts.cron`, default every 15 minutes), reading directly from the `sync_runs` table
+via `SyncRunService` rather than through Prometheus Alertmanager — the alternative issue #419
+named — since Alertmanager would need its own service in `docker-compose.yml` and a separate
+rules config for exactly the two rules already expressible against the data Prometheus's own sync
+metrics (above) are derived from:
+
+| Rule | Config | Default |
+|---|---|---|
+| No successful sync within the last N hours | `flatio.alerts.no-success-hours` | 3 |
+| Failure rate over the last N runs exceeds a threshold | `flatio.alerts.error-rate-window-runs` / `flatio.alerts.error-rate-threshold` | 5 runs / 50% |
+
+A source with zero runs ever recorded (just added, hasn't had a scheduled run yet) is exempt from
+the first rule until its first run — see `SyncRunService#hasAnyRun`.
+
+**Delivery and deduplication.** `SourceAlertNotifier` sends failure/recovery messages to
+`flatio.alerts.telegram.chat-id` (env: `FLATIO_ALERTS_TELEGRAM_CHAT_ID`) — unlike the bot token,
+this has no required default, so an environment that has not opted into alerting does not fail to
+start; the checker still evaluates and logs, it just doesn't send. `SourceAlertService` persists
+one `source_alert_state` row per `(sourceId, alertType)` (`V64__create_source_alert_state.sql`) to
+avoid re-notifying on every 15-minute check while a problem is ongoing — a repeat notification for
+an already-active alert only goes out after `flatio.alerts.cooldown-hours` (default 6) since the
+last one — and to detect recovery: the next check where a rule stops matching flips that row back
+to resolved and sends a separate "recovered" notification.

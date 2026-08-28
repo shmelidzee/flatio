@@ -25,4 +25,11 @@ public interface SourceRepository extends JpaRepository<Source, Long> {
    */
   @Query("SELECT s FROM Source s JOIN FETCH s.country WHERE s.country.code = :countryCode AND s.active = true")
   List<Source> findActiveByCountryCode(@Param("countryCode") String countryCode);
+
+  /**
+   * Finds all active sources across every market, regardless of country.
+   *
+   * @return list of active sources, never null
+   */
+  List<Source> findByActiveTrue();
 }

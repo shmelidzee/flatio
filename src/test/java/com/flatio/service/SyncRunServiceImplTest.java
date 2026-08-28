@@ -9,6 +9,7 @@ import com.flatio.service.domain.SyncRunRequest;
 import com.flatio.service.impl.SyncRunServiceImpl;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,6 +18,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -195,6 +197,89 @@ class SyncRunServiceImplTest {
 
     // Then — correct source and SUCCESS status are passed
     verify(syncRunRepository).findTopBySourceIdAndStatusOrderByFinishedAtDesc("REALT", SyncRunStatus.SUCCESS);
+  }
+
+  // -------------------------------------------------------------------------
+  // hasAnyRun
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_return_true_when_source_has_at_least_one_run() {
+    // Given
+    when(syncRunRepository.findTopBySourceIdOrderByStartedAtDesc("REALT"))
+        .thenReturn(Optional.of(new SyncRun()));
+
+    // When
+    boolean result = syncRunService.hasAnyRun("REALT");
+
+    // Then
+    assertThat(result).isTrue();
+  }
+
+  @Test
+  void should_return_false_when_source_has_never_run() {
+    // Given
+    when(syncRunRepository.findTopBySourceIdOrderByStartedAtDesc("NEW_SOURCE")).thenReturn(Optional.empty());
+
+    // When
+    boolean result = syncRunService.hasAnyRun("NEW_SOURCE");
+
+    // Then
+    assertThat(result).isFalse();
+  }
+
+  // -------------------------------------------------------------------------
+  // calculateRecentFailureRate
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_return_empty_when_source_has_no_runs_for_failure_rate() {
+    // Given
+    when(syncRunRepository.findBySourceIdOrderByStartedAtDesc(eq("REALT"), any()))
+        .thenReturn(new PageImpl<>(List.of()));
+
+    // When
+    Optional<Double> result = syncRunService.calculateRecentFailureRate("REALT", 5);
+
+    // Then
+    assertThat(result).isEmpty();
+  }
+
+  @Test
+  void should_calculate_failure_rate_over_recent_runs() {
+    // Given — 2 of 4 recent runs failed
+    var runs = List.of(
+        buildRun(SyncRunStatus.SUCCESS), buildRun(SyncRunStatus.FAILURE),
+        buildRun(SyncRunStatus.SUCCESS), buildRun(SyncRunStatus.FAILURE)
+    );
+    when(syncRunRepository.findBySourceIdOrderByStartedAtDesc(eq("REALT"), any()))
+        .thenReturn(new PageImpl<>(runs));
+
+    // When
+    Optional<Double> result = syncRunService.calculateRecentFailureRate("REALT", 5);
+
+    // Then
+    assertThat(result).isPresent().contains(0.5);
+  }
+
+  @Test
+  void should_return_zero_failure_rate_when_all_recent_runs_succeeded() {
+    // Given
+    var runs = List.of(buildRun(SyncRunStatus.SUCCESS), buildRun(SyncRunStatus.SUCCESS));
+    when(syncRunRepository.findBySourceIdOrderByStartedAtDesc(eq("REALT"), any()))
+        .thenReturn(new PageImpl<>(runs));
+
+    // When
+    Optional<Double> result = syncRunService.calculateRecentFailureRate("REALT", 5);
+
+    // Then
+    assertThat(result).isPresent().contains(0.0);
+  }
+
+  private SyncRun buildRun(SyncRunStatus status) {
+    var run = new SyncRun();
+    run.setStatus(status);
+    return run;
   }
 
   // -------------------------------------------------------------------------

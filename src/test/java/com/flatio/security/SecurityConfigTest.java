@@ -9,6 +9,7 @@ import com.flatio.repository.FavoriteRepository;
 import com.flatio.repository.ListingRepository;
 import com.flatio.repository.NotificationRepository;
 import com.flatio.repository.PriceHistoryRepository;
+import com.flatio.repository.SourceAlertStateRepository;
 import com.flatio.repository.SourceRepository;
 import com.flatio.repository.SubscriptionRepository;
 import com.flatio.repository.SyncRunRepository;
@@ -86,6 +87,9 @@ class SecurityConfigTest {
 
   @MockBean
   SyncRunRepository syncRunRepository;
+
+  @MockBean
+  SourceAlertStateRepository sourceAlertStateRepository;
 
   @MockBean
   SubscriptionRepository subscriptionRepository;
