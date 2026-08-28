@@ -1,0 +1,156 @@
+package com.flatio.telegram.callback;
+
+import com.flatio.domain.user.User;
+import com.flatio.service.FavoriteService;
+import com.flatio.service.UserService;
+import com.flatio.telegram.keyboard.MainMenuKeyboardFactory;
+import com.flatio.web.dto.FavoriteResponse;
+import com.flatio.web.dto.ListingSummaryResponse;
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
+import org.telegram.telegrambots.meta.api.objects.message.Message;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+/**
+ * Unit tests for {@link FavoritesCallbackHandler} (issue #456).
+ */
+@ExtendWith(MockitoExtension.class)
+class FavoritesCallbackHandlerTest {
+
+  @Mock
+  private UserService userService;
+
+  @Mock
+  private FavoriteService favoriteService;
+
+  @Mock
+  private MainMenuKeyboardFactory keyboardFactory;
+
+  @InjectMocks
+  private FavoritesCallbackHandler handler;
+
+  @Test
+  void should_return_formatted_favorites_list_when_user_has_favorites() {
+    // Given
+    var user = buildUser(7L);
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
+    var favorite = buildFavoriteResponse(3L, "Квартира в центре", BigDecimal.valueOf(50_000), "USD");
+    when(favoriteService.findByUser(eq(7L), any())).thenReturn(new PageImpl<>(List.of(favorite)));
+    lenient().when(keyboardFactory.buildBackToMenu()).thenReturn(mock(InlineKeyboardMarkup.class));
+    var callback = buildCallback(1L, 100L);
+
+    // When
+    var result = handler.handle(callback);
+
+    // Then
+    assertThat(result.getText()).contains("Избранное");
+    assertThat(result.getText()).contains("Квартира в центре");
+    assertThat(result.getText()).contains("50000 USD");
+  }
+
+  @Test
+  void should_return_empty_message_when_user_has_no_favorites() {
+    // Given
+    var user = buildUser(8L);
+    when(userService.findByTelegramId(2L)).thenReturn(Optional.of(user));
+    when(favoriteService.findByUser(eq(8L), any())).thenReturn(Page.empty());
+    lenient().when(keyboardFactory.buildBackToMenu()).thenReturn(mock(InlineKeyboardMarkup.class));
+    var callback = buildCallback(2L, 200L);
+
+    // When
+    var result = handler.handle(callback);
+
+    // Then
+    assertThat(result.getText()).isEqualTo("⭐ У вас пока нет избранных объявлений.");
+  }
+
+  @Test
+  void should_return_empty_message_when_user_is_not_registered() {
+    // Given
+    when(userService.findByTelegramId(3L)).thenReturn(Optional.empty());
+    lenient().when(keyboardFactory.buildBackToMenu()).thenReturn(mock(InlineKeyboardMarkup.class));
+    var callback = buildCallback(3L, 300L);
+
+    // When
+    var result = handler.handle(callback);
+
+    // Then — graceful message, no exception, service never consulted
+    assertThat(result.getText()).isEqualTo("⭐ У вас пока нет избранных объявлений.");
+    verify(favoriteService, never()).findByUser(any(), any());
+  }
+
+  @Test
+  void should_use_back_to_menu_keyboard_in_reply() {
+    // Given
+    var user = buildUser(9L);
+    when(userService.findByTelegramId(4L)).thenReturn(Optional.of(user));
+    when(favoriteService.findByUser(eq(9L), any())).thenReturn(Page.empty());
+    var expectedKeyboard = mock(InlineKeyboardMarkup.class);
+    when(keyboardFactory.buildBackToMenu()).thenReturn(expectedKeyboard);
+    var callback = buildCallback(4L, 400L);
+
+    // When
+    var result = handler.handle(callback);
+
+    // Then
+    assertThat(result.getReplyMarkup()).isSameAs(expectedKeyboard);
+  }
+
+  @Test
+  void should_expose_action_favorites_matching_main_menu_keyboard_factory_constant() {
+    // Then — the callback action id this handler is routed for by FlatioBot
+    assertThat(FavoritesCallbackHandler.ACTION_FAVORITES)
+        .isEqualTo(MainMenuKeyboardFactory.ACTION_FAVORITES)
+        .isEqualTo("action:favorites");
+  }
+
+  // -------------------------------------------------------------------------
+  // helpers
+  // -------------------------------------------------------------------------
+
+  private User buildUser(Long id) {
+    var user = new User();
+    user.setId(id);
+    return user;
+  }
+
+  private FavoriteResponse buildFavoriteResponse(Long id, String title, BigDecimal price, String currency) {
+    var listing = new ListingSummaryResponse(
+        1L, title, price, currency, null, null, 2, "APARTMENT", null, "Минск", null, null,
+        "realt", null, null, null, false
+    );
+    return new FavoriteResponse(id, listing, price, price, BigDecimal.ZERO, false, false, Instant.now());
+  }
+
+  private CallbackQuery buildCallback(Long telegramId, Long chatId) {
+    var from = mock(org.telegram.telegrambots.meta.api.objects.User.class);
+    when(from.getId()).thenReturn(telegramId);
+
+    var message = mock(Message.class);
+    when(message.getChatId()).thenReturn(chatId);
+
+    var callback = mock(CallbackQuery.class);
+    when(callback.getFrom()).thenReturn(from);
+    when(callback.getMessage()).thenReturn(message);
+    return callback;
+  }
+}

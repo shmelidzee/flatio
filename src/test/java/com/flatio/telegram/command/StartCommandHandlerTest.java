@@ -4,6 +4,7 @@ import com.flatio.common.exception.ListingNotFoundException;
 import com.flatio.service.ListingService;
 import com.flatio.service.UserService;
 import com.flatio.telegram.formatter.ListingFormatter;
+import com.flatio.telegram.keyboard.MainMenuKeyboardFactory;
 import com.flatio.web.dto.ListingResponse;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -36,6 +37,9 @@ class StartCommandHandlerTest {
 
   @Mock
   private ListingFormatter listingFormatter;
+
+  @Mock
+  private MainMenuKeyboardFactory mainMenuKeyboardFactory;
 
   @InjectMocks
   private StartCommandHandler handler;
@@ -97,38 +101,40 @@ class StartCommandHandlerTest {
     assertThat(result.getText()).startsWith("Привет!");
   }
 
+  // -------------------------------------------------------------------------
+  // Main menu keyboard delegation (issue #456) — the keyboard's own structure
+  // (rows, texts, callback data) is covered by MainMenuKeyboardFactoryTest;
+  // here we only verify StartCommandHandler wires the factory's output in.
+  // -------------------------------------------------------------------------
+
   @Test
-  void should_include_reply_markup_with_two_buttons() {
+  void should_use_main_menu_keyboard_when_welcome_message_built() {
     // Given
     var update = buildUpdate(500L, "eve", "Eve", 88L);
     when(userService.findOrCreate(anyLong(), any(), any()))
         .thenReturn(new com.flatio.domain.user.User());
+    var expectedKeyboard = mock(InlineKeyboardMarkup.class);
+    when(mainMenuKeyboardFactory.build()).thenReturn(expectedKeyboard);
 
     // When
     SendMessage result = handler.handle(update);
 
     // Then
-    assertThat(result.getReplyMarkup()).isNotNull();
-    var keyboard = (InlineKeyboardMarkup) result.getReplyMarkup();
-    assertThat(keyboard.getKeyboard()).hasSize(1);
-    assertThat(keyboard.getKeyboard().get(0)).hasSize(2);
+    assertThat(result.getReplyMarkup()).isSameAs(expectedKeyboard);
   }
 
   @Test
-  void should_set_search_and_help_callback_data_on_buttons() {
+  void should_use_main_menu_keyboard_when_building_menu_message() {
     // Given
-    var update = buildUpdate(600L, "frank", "Frank", 11L);
-    when(userService.findOrCreate(anyLong(), any(), any()))
-        .thenReturn(new com.flatio.domain.user.User());
+    var expectedKeyboard = mock(InlineKeyboardMarkup.class);
+    when(mainMenuKeyboardFactory.build()).thenReturn(expectedKeyboard);
 
     // When
-    SendMessage result = handler.handle(update);
+    SendMessage result = handler.buildMenuMessage("100");
 
     // Then
-    var keyboard = (InlineKeyboardMarkup) result.getReplyMarkup();
-    var row = keyboard.getKeyboard().get(0);
-    assertThat(row.get(0).getCallbackData()).isEqualTo("action:search");
-    assertThat(row.get(1).getCallbackData()).isEqualTo("action:help");
+    assertThat(result.getChatId()).isEqualTo("100");
+    assertThat(result.getReplyMarkup()).isSameAs(expectedKeyboard);
   }
 
   // -------------------------------------------------------------------------
