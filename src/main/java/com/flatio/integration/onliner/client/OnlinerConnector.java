@@ -361,7 +361,7 @@ public class OnlinerConnector implements ListingConnector {
    *
    * @param photoUrl raw photo URL from Onliner API, may be null
    * @return decoded original URL, the input URL unchanged if not an imgproxy URL, or null if the
-   *     input is null, decoding fails, or the resolved URL fails the host allowlist check
+   *     input is null, decoding fails, or the resolved URL fails the SSRF safety check
    */
   private String resolvePhotoUrl(String photoUrl) {
     if (photoUrl == null) {
@@ -409,7 +409,7 @@ public class OnlinerConnector implements ListingConnector {
     if (imageUrlValidator.isAllowedImageUrl(url)) {
       return url;
     }
-    log.warn("Rejecting photo URL outside the allowed CDN hosts: url={}", url);
+    log.warn("Rejecting photo URL that failed SSRF validation: url={}", url);
     return null;
   }
 

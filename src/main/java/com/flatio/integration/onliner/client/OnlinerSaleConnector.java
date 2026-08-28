@@ -353,7 +353,7 @@ public class OnlinerSaleConnector implements ListingConnector {
     if (imageUrlValidator.isAllowedImageUrl(url)) {
       return url;
     }
-    log.warn("Rejecting photo URL outside the allowed CDN hosts: url={}", url);
+    log.warn("Rejecting photo URL that failed SSRF validation: url={}", url);
     return null;
   }
 

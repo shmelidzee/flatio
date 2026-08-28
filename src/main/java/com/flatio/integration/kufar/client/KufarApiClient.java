@@ -392,14 +392,15 @@ public class KufarApiClient {
    *
    * @param cdnBase configured CDN base URL, may be null/blank
    * @param path    image path or absolute URL from the ad's {@code images} array, never blank
-   * @return the resolved photo URL, or {@code null} if an absolute path fails the allowlist check
+   * @return the resolved photo URL, or {@code null} if an absolute path fails the SSRF safety
+   *     check
    */
   private String toFullPhotoUrl(String cdnBase, String path) {
     if (path.startsWith("http")) {
       if (imageUrlValidator.isAllowedImageUrl(path)) {
         return path;
       }
-      log.warn("Rejecting photo URL outside the allowed CDN hosts: url={}", path);
+      log.warn("Rejecting photo URL that failed SSRF validation: url={}", path);
       return null;
     }
     if (cdnBase == null || cdnBase.isBlank()) {
