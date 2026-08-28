@@ -93,9 +93,9 @@ com.flatio
 │       └── scheduler/   # OnlinerDeltaSyncJob (every 10 min), OnlinerFullSyncJob (daily 02:00)
 ├── telegram/            # Telegram Bot
 │   ├── handler/         # FlatioBot — диспетчер апдейтов (глобальный try-catch, параллельный dispatch через TelegramExecutorConfig); SearchResultSender — отправка карточек с валидацией URL и photo/text fallback
-│   ├── command/         # StartCommandHandler — /start (+ deep link `/start listing_<id>` → карточка объявления по ссылке, issue #418); HelpCommandHandler — /help и action:help callback
-│   ├── callback/        # FilterCallbackHandler — обработка callback FILTER:*
-│   ├── keyboard/        # FilterKeyboardFactory — InlineKeyboardMarkup для шагов wizard
+│   ├── command/         # StartCommandHandler — /start (+ deep link `/start listing_<id>` → карточка объявления по ссылке, issue #418), приветственное меню строится через MainMenuKeyboardFactory (issue #456); HelpCommandHandler — /help и action:help callback
+│   ├── callback/        # FilterCallbackHandler — обработка callback FILTER:*; FavoritesCallbackHandler/SubscriptionsCallbackHandler/BlacklistCallbackHandler — обработка action:favorites/action:subscriptions/action:blacklist из главного меню, переиспользуют FavoriteService/SubscriptionService/BlacklistService (issue #456)
+│   ├── keyboard/        # FilterKeyboardFactory — InlineKeyboardMarkup для шагов wizard; MainMenuKeyboardFactory — клавиатура приветственного меню (Искать/Помощь/⭐ Избранное/🔔 Мои подписки/🚫 Чёрный список) + кнопка «🏠 Главное меню» для возврата из секций (issue #456)
 │   ├── state/           # FSM и пользовательские сценарии: FilterStep (enum шагов), SearchFilterState (in-memory состояние), SearchFilterWizard (управление переходами); SearchSession (пагинация результатов, TTL 30 мин)
 │   ├── formatter/       # ListingFormatter — форматирование ListingSummaryResponse (поиск) и ListingResponse (deep link, issue #418) в HTML-caption и InlineKeyboardMarkup; имя источника и флаг «адрес не указан» читаются из SourceDisplayProperties (issue #423), не хардкожены
 │   └── config/          # BotConfig (@ConfigurationProperties) + BotConfiguration (@EnableConfigurationProperties); BotCommandsRegistrar (@PostConstruct, регистрирует /start, /search, /help); TelegramStartupValidator (@PostConstruct, валидирует токен и вебхук); SourceDisplayProperties (@ConfigurationProperties, telegram.source-display.sources — per-источник display name + address-unknown флаг, issue #423)

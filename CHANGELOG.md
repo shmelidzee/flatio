@@ -7,6 +7,39 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **PR #462 — Пункты главного меню Telegram-бота: избранное, подписки, чёрный список (issue #456)**
+  - Приветственное меню бота получило три новые кнопки — «⭐ Избранное», «🔔 Мои подписки», «🚫 Чёрный
+    список» — собранные новым `MainMenuKeyboardFactory` (`telegram.keyboard`), который заменил
+    инлайновую сборку клавиатуры внутри `StartCommandHandler`
+  - `FavoritesCallbackHandler`/`SubscriptionsCallbackHandler`/`BlacklistCallbackHandler`
+    (`telegram.callback`) обрабатывают callback'и `action:favorites`/`action:subscriptions`/
+    `action:blacklist` через уже существующие `FavoriteService`/`SubscriptionService`/
+    `BlacklistService` — Telegram и REST API по-прежнему используют один сервисный слой, новой
+    бизнес-логики не добавлено
+  - Каждая секция показывает read-only сводку (до 10 последних записей) и клавиатуру «🏠 Главное
+    меню» для возврата; управление отдельными записями (удаление, редактирование) — вне охвата
+    issue
+  - Дублированное HTML-экранирование в `ListingFormatter`/`FilterKeyboardFactory` вынесено в общий
+    `TelegramHtmlEscaper` (`common.util`)
+
+### Fixed
+- **PR #460 — Убран allowlist доменов CDN у фото объявлений, оставлена только SSRF-проверка адреса (issue #455)**
+  - PR #449 (issue #424) вывел allowlist фото-хостов из `connector.*.base-url`/`photo-cdn-base-url`
+    (registrable-домен каждого коннектора) вместо статического списка; в проде это отклоняло
+    легитимные фото с CDN-домена, не сводящегося к тому же registrable-домену — регрессия, из-за
+    которой большинство карточек объявлений в Telegram показывались как плейсхолдер вместо фото
+  - По прямому решению владельца продукта (issue #455) ограничение по домену источника убрано
+    полностью: `ImageUrlValidator` больше не строит allowlist из конфигурации коннекторов —
+    единственная проверка теперь адресная, `isDisallowedHost()` (loopback/private/link-local,
+    issue #450)
+  - При security-ревью PR обнаружен и закрыт DNS-based обход: раньше резолвился только явный
+    IP-литерал прямо в URL, теперь **любой** хост резолвится через инъецируемый `HostResolver`
+    (в проде — `InetAddress::getAllByName`) и отклоняется, если хотя бы один из адресов попадает в
+    запрещённый диапазон; хост, не резолвящийся вовсе, отклоняется (fail-closed)
+  - Тесты переведены на фейковый DNS-резолвер вместо обращения к реальным внешним хостам —
+    устраняет медленный и сетезависимый набор тестов
+
 ### Security
 - **PR #453 — Защита от decompression-bomb фото и loopback/приватных записей в SSRF allowlist (issues #446, #450)**
   - **#446** — `SearchResultSender.compressPhoto()`/`normalizeForTelegram()` декодировали фото через
