@@ -339,6 +339,19 @@ flatio:
   metrics:
     active-listings:
       refresh-rate-ms: ${FLATIO_METRICS_ACTIVE_LISTINGS_REFRESH_RATE_MS:60000}
+  alerts:
+    cron: ${FLATIO_ALERTS_CRON:0 */15 * * * *}
+    # "0 successful syncs in the last N hours" rule (issue #419)
+    no-success-hours: ${FLATIO_ALERTS_NO_SUCCESS_HOURS:3}
+    # "failure rate over the last N runs exceeds threshold" rule
+    error-rate-window-runs: ${FLATIO_ALERTS_ERROR_RATE_WINDOW_RUNS:5}
+    error-rate-threshold: ${FLATIO_ALERTS_ERROR_RATE_THRESHOLD:0.5}
+    # Minimum time between repeat notifications for the same still-active alert
+    cooldown-hours: ${FLATIO_ALERTS_COOLDOWN_HOURS:6}
+    telegram:
+      # Empty by default (no default chat to alert without explicit opt-in) — the checker job
+      # evaluates the rules and logs regardless, but skips sending until this is set.
+      chat-id: ${FLATIO_ALERTS_TELEGRAM_CHAT_ID:}
 
 resilience4j:
   ratelimiter:

@@ -10,9 +10,11 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -84,6 +86,23 @@ public class SyncRunServiceImpl implements SyncRunService {
     return syncRunRepository
         .findTopBySourceIdAndStatusOrderByFinishedAtDesc(sourceId, SyncRunStatus.SUCCESS)
         .map(SyncRun::getFinishedAt);
+  }
+
+  @Override
+  public boolean hasAnyRun(String sourceId) {
+    return syncRunRepository.findTopBySourceIdOrderByStartedAtDesc(sourceId).isPresent();
+  }
+
+  @Override
+  public Optional<Double> calculateRecentFailureRate(String sourceId, int windowSize) {
+    List<SyncRun> recentRuns = syncRunRepository
+        .findBySourceIdOrderByStartedAtDesc(sourceId, PageRequest.of(0, windowSize))
+        .getContent();
+    if (recentRuns.isEmpty()) {
+      return Optional.empty();
+    }
+    long failures = recentRuns.stream().filter(run -> run.getStatus() == SyncRunStatus.FAILURE).count();
+    return Optional.of((double) failures / recentRuns.size());
   }
 
   @Override
