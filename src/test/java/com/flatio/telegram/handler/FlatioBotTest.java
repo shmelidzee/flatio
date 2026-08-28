@@ -1,6 +1,9 @@
 package com.flatio.telegram.handler;
 
+import com.flatio.telegram.callback.BlacklistCallbackHandler;
+import com.flatio.telegram.callback.FavoritesCallbackHandler;
 import com.flatio.telegram.callback.FilterCallbackHandler;
+import com.flatio.telegram.callback.SubscriptionsCallbackHandler;
 import com.flatio.telegram.command.HelpCommandHandler;
 import com.flatio.telegram.command.SearchCommandHandler;
 import com.flatio.telegram.command.StartCommandHandler;
@@ -150,7 +153,9 @@ class FlatioBotTest {
     var bot = new FlatioBot(
         telegramClient, startCommandHandler, mock(HelpCommandHandler.class),
         mock(SearchCommandHandler.class), mock(FilterCallbackHandler.class),
-        searchResultSender, wizard, executor
+        searchResultSender, mock(FavoritesCallbackHandler.class),
+        mock(SubscriptionsCallbackHandler.class), mock(BlacklistCallbackHandler.class),
+        wizard, executor
     );
     var update = buildTextUpdate(1, 777L, "/start");
 
@@ -174,7 +179,9 @@ class FlatioBotTest {
     var bot = new FlatioBot(
         telegramClient, startCommandHandler, mock(HelpCommandHandler.class),
         mock(SearchCommandHandler.class), mock(FilterCallbackHandler.class),
-        searchResultSender, wizard, executor
+        searchResultSender, mock(FavoritesCallbackHandler.class),
+        mock(SubscriptionsCallbackHandler.class), mock(BlacklistCallbackHandler.class),
+        wizard, executor
     );
     var update = buildTextUpdate(1, 778L, "/start");
 
@@ -221,6 +228,9 @@ class FlatioBotTest {
         mock(SearchCommandHandler.class),
         mock(FilterCallbackHandler.class),
         searchResultSender,
+        mock(FavoritesCallbackHandler.class),
+        mock(SubscriptionsCallbackHandler.class),
+        mock(BlacklistCallbackHandler.class),
         mock(SearchFilterWizard.class),
         executor
     );
@@ -236,6 +246,9 @@ class FlatioBotTest {
         mock(SearchCommandHandler.class),
         mock(FilterCallbackHandler.class),
         searchResultSender,
+        mock(FavoritesCallbackHandler.class),
+        mock(SubscriptionsCallbackHandler.class),
+        mock(BlacklistCallbackHandler.class),
         mock(SearchFilterWizard.class),
         executor
     );
