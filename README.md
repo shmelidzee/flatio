@@ -76,6 +76,12 @@ cp src/main/resources/application-local.yml.example src/main/resources/applicati
 | `RATE_LIMIT_ADMIN_API_REQUESTS` | Лимит запросов на `/api/v1/admin/**` за период, на одного администратора | `240` |
 | `RATE_LIMIT_ADMIN_API_REFRESH_SECONDS` | Период обновления лимита `/api/v1/admin/**`, секунды | `60` |
 | `FLATIO_METRICS_ACTIVE_LISTINGS_REFRESH_RATE_MS` | Период обновления Prometheus-метрики `flatio.listings.active`, миллисекунды | `60000` |
+| `FLATIO_ALERTS_CRON` | Cron-расписание проверки алёртов по источникам | `0 */15 * * * *` |
+| `FLATIO_ALERTS_NO_SUCCESS_HOURS` | Порог правила «0 успешных синков за N часов» | `3` |
+| `FLATIO_ALERTS_ERROR_RATE_WINDOW_RUNS` | Размер скользящего окна (число последних синков) для правила по доле ошибок | `5` |
+| `FLATIO_ALERTS_ERROR_RATE_THRESHOLD` | Порог доли неудачных синков в окне (0.5 = 50%) | `0.5` |
+| `FLATIO_ALERTS_COOLDOWN_HOURS` | Минимальный интервал между повторными уведомлениями по одному и тому же активному алёрту | `6` |
+| `FLATIO_ALERTS_TELEGRAM_CHAT_ID` | Telegram chat_id служебного чата для алёртов; пусто — алёрты не отправляются (только логируются) | — (не обязательна) |
 
 При локальной разработке значения по умолчанию применяются автоматически, если переменные не заданы.
 `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` и `JWT_SECRET_KEY` не имеют дефолтов — приложение не стартует без них.
