@@ -1,0 +1,18 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: flatio-app
+    metrics_path: /actuator/prometheus
+    scheme: http
+    # /actuator/prometheus requires an ADMIN-role bearer JWT, same as every other admin endpoint
+    # (SecurityConfig, issue #417). Mint one via the app's normal Telegram auth flow for a user
+    # with the ADMIN role and paste it into docker/prometheus/flatio-token.txt (gitignored,
+    # copy docker/prometheus/flatio-token.txt.example) — see docs/local-setup.md
+    # "Metrics & Dashboards". Access tokens expire after 1h; for local dev, re-mint and restart
+    # the prometheus container when scraping starts failing with 401/403.
+    authorization:
+      credentials_file: /etc/prometheus/flatio-token
+    static_configs:
+      - targets: ["host.docker.internal:8080"]
