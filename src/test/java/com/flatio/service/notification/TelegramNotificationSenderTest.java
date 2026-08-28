@@ -16,6 +16,7 @@ import com.flatio.telegram.formatter.ListingFormatter;
 import com.flatio.telegram.handler.PhotoProxyClient;
 import com.flatio.web.dto.ListingSummaryResponse;
 import com.flatio.web.mapper.ListingMapper;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -65,13 +66,15 @@ class TelegramNotificationSenderTest {
   private TelegramClient telegramClient;
 
   private TelegramNotificationSender sender;
+  private SimpleMeterRegistry meterRegistry;
 
   @BeforeEach
   void setUp() {
     var properties = new NotificationDeliveryProperties(50, 10, 5);
+    meterRegistry = new SimpleMeterRegistry();
     sender = new TelegramNotificationSender(
         notificationRepository, userAuthProviderRepository, listingMapper, listingFormatter,
-        photoProxyClient, telegramClient, properties
+        photoProxyClient, telegramClient, properties, meterRegistry
     );
   }
 
@@ -172,6 +175,7 @@ class TelegramNotificationSenderTest {
     verify(notificationRepository).save(savedCaptor.capture());
     assertThat(savedCaptor.getValue().getStatus()).isEqualTo(NotificationStatus.SENT);
     assertThat(savedCaptor.getValue().getSentAt()).isNotNull();
+    assertThat(meterRegistry.counter("flatio.notifications.sent", "triggerType", "NEW_LISTING").count()).isEqualTo(1.0);
   }
 
   // -------------------------------------------------------------------------
@@ -197,6 +201,7 @@ class TelegramNotificationSenderTest {
     // Then
     verify(notificationRepository).save(savedCaptor.capture());
     assertThat(savedCaptor.getValue().getStatus()).isEqualTo(NotificationStatus.FAILED);
+    assertThat(meterRegistry.counter("flatio.notifications.failed", "triggerType", "NEW_LISTING").count()).isEqualTo(1.0);
   }
 
   @Test
@@ -214,6 +219,7 @@ class TelegramNotificationSenderTest {
     // Then
     verify(notificationRepository).save(savedCaptor.capture());
     assertThat(savedCaptor.getValue().getStatus()).isEqualTo(NotificationStatus.FAILED);
+    assertThat(meterRegistry.counter("flatio.notifications.failed", "triggerType", "NEW_LISTING").count()).isEqualTo(1.0);
   }
 
   // -------------------------------------------------------------------------

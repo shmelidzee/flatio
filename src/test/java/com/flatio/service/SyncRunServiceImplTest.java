@@ -7,12 +7,14 @@ import com.flatio.repository.SyncRunRepository;
 import com.flatio.service.domain.BatchIngestResult;
 import com.flatio.service.domain.SyncRunRequest;
 import com.flatio.service.impl.SyncRunServiceImpl;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -28,8 +30,14 @@ class SyncRunServiceImplTest {
   @Mock
   private SyncRunRepository syncRunRepository;
 
-  @InjectMocks
+  private SimpleMeterRegistry meterRegistry;
   private SyncRunServiceImpl syncRunService;
+
+  @BeforeEach
+  void setUp() {
+    meterRegistry = new SimpleMeterRegistry();
+    syncRunService = new SyncRunServiceImpl(syncRunRepository, meterRegistry);
+  }
 
   // -------------------------------------------------------------------------
   // record
@@ -60,6 +68,16 @@ class SyncRunServiceImplTest {
     assertThat(saved.getListingsAdded()).isEqualTo(5);
     assertThat(saved.getListingsUpdated()).isEqualTo(3);
     assertThat(saved.getListingsErrors()).isEqualTo(1);
+
+    var timer = meterRegistry.find("flatio.sync.duration")
+        .tags("source", "ONLINER", "syncType", "DELTA", "status", "SUCCESS").timer();
+    assertThat(timer).isNotNull();
+    assertThat(timer.count()).isEqualTo(1);
+    assertThat(timer.totalTime(TimeUnit.SECONDS)).isEqualTo(30.0);
+    var counter = meterRegistry.find("flatio.sync.runs")
+        .tags("source", "ONLINER", "syncType", "DELTA", "status", "SUCCESS").counter();
+    assertThat(counter).isNotNull();
+    assertThat(counter.count()).isEqualTo(1.0);
   }
 
   @Test
@@ -81,6 +99,11 @@ class SyncRunServiceImplTest {
     assertThat(saved.getListingsFetched()).isZero();
     assertThat(saved.getListingsAdded()).isZero();
     assertThat(saved.getListingsErrors()).isZero();
+
+    var counter = meterRegistry.find("flatio.sync.runs")
+        .tags("source", "ONLINER", "syncType", "FULL", "status", "FAILURE").counter();
+    assertThat(counter).isNotNull();
+    assertThat(counter.count()).isEqualTo(1.0);
   }
 
   // -------------------------------------------------------------------------
