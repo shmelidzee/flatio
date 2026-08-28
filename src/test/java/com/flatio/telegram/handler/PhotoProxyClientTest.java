@@ -1,7 +1,6 @@
 package com.flatio.telegram.handler;
 
 import com.flatio.common.util.ImageUrlValidator;
-import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -43,10 +42,10 @@ class PhotoProxyClientTest {
   @BeforeEach
   @SuppressWarnings("unchecked")
   void setUp() {
-    // Full domain set, matching how the single shared ImageUrlValidator bean is wired in production.
-    photoProxyClient = new PhotoProxyClient(restClient,
-        new ImageUrlValidator(Set.of("onliner.by", "kufar.by", "realt.by")));
-    // lenient: the not-allowlisted-host tests below short-circuit before restClient is touched
+    // No source-domain allowlist exists any more (issue #455); ImageUrlValidator only rejects
+    // loopback/private/link-local hosts and non-https schemes.
+    photoProxyClient = new PhotoProxyClient(restClient, new ImageUrlValidator());
+    // lenient: the SSRF-guard tests below short-circuit before restClient is touched
     lenient().when(restClient.get()).thenReturn(uriSpec);
     lenient().doReturn(headersSpec).when(uriSpec).uri(anyString());
     lenient().when(headersSpec.retrieve()).thenReturn(responseSpec);
@@ -116,9 +115,19 @@ class PhotoProxyClientTest {
   }
 
   @Test
-  void should_return_empty_when_url_is_not_on_allowlisted_host() {
-    // When — attacker-controlled listing photo URL pointing at a non-allowlisted host (SSRF, #364)
-    var result = photoProxyClient.download("https://internal.example.com/photo.jpg", 42L);
+  void should_return_empty_when_url_points_to_loopback_host() {
+    // When — attacker-controlled listing photo URL pointing at a loopback address (SSRF, #364/#450)
+    var result = photoProxyClient.download("https://127.0.0.1/photo.jpg", 42L);
+
+    // Then — rejected before any outbound request is attempted
+    assertThat(result).isEmpty();
+    verifyNoInteractions(restClient);
+  }
+
+  @Test
+  void should_return_empty_when_url_points_to_link_local_cloud_metadata_host() {
+    // When — attacker-controlled listing photo URL pointing at the cloud metadata endpoint
+    var result = photoProxyClient.download("https://169.254.169.254/latest/meta-data/", 42L);
 
     // Then — rejected before any outbound request is attempted
     assertThat(result).isEmpty();
