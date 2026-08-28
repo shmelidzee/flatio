@@ -74,6 +74,58 @@ only ever talks to Vite, not the backend directly.
 
 ---
 
+## Metrics & Dashboards
+
+Micrometer + `micrometer-registry-prometheus` expose metrics at `/actuator/prometheus` (issue
+#417). Like every other admin endpoint, it requires an `ADMIN`-role bearer JWT (`SecurityConfig`)
+— there is no separate unauthenticated scrape path.
+
+### 1. Prepare the scrape token
+
+Prometheus cannot log in interactively, so it scrapes with a token minted ahead of time:
+
+```bash
+cp docker/prometheus/flatio-token.txt.example docker/prometheus/flatio-token.txt
+```
+
+Replace the placeholder with a real JWT for a user with the `ADMIN` role (obtained through the
+normal Telegram auth flow). The file is bind-mounted read-only into the Prometheus container —
+**create it before the first `docker compose up`**; otherwise Docker creates an empty directory
+at that path instead of a file, and Prometheus fails to start.
+
+Access tokens expire after 1h (project standard). For local dev this is a known limitation, not
+solved by this file: re-mint the token and restart the `prometheus` container
+(`docker compose -f docker/docker-compose.yml restart prometheus`) when scraping starts failing
+with 401/403. Continuous production scraping needs a longer-lived credential — an open follow-up,
+see `docker/prometheus/prometheus.prod.example.yml`.
+
+### 2. Start the stack
+
+```bash
+docker compose -f docker/docker-compose.yml up -d prometheus grafana
+```
+
+- Prometheus UI: http://localhost:9090
+- Grafana: http://localhost:3001 (login `admin` / `flatio_local`, from `docker-compose.yml` — for
+  local dev only, never reused in production)
+
+The "Flatio — Overview" dashboard is provisioned automatically
+(`docker/grafana/provisioning/`, `docker/grafana/dashboards/flatio-overview.json`) and visualizes:
+per-source sync duration and outcome, active listings per source, `/api/v1/listings` latency
+(p50/p95/p99 — see NFR-PERF-1), and notification delivery sent/failed counts.
+
+### Production
+
+`docker/docker-compose.prod.example.yml` includes `prometheus`/`grafana` service definitions
+following the same pattern as the rest of the prod compose file: copy it to
+`docker-compose.prod.yml` on the VPS (already `.gitignore`d) and also copy
+`docker/prometheus/prometheus.prod.example.yml` to `docker/prometheus/prometheus.prod.yml`
+(gitignored) with the real scrape target. Both services stay on the internal `backend` network
+only — no public port is opened for them here; reach them via an SSH tunnel until a public access
+model (nginx location block, VPN, etc.) is decided.
+
+---
+
 ## Load Testing
 
 NFR-PERF-1 (issue #37): `GET /api/v1/listings` must keep p95 < 500ms and p99 < 1000ms
