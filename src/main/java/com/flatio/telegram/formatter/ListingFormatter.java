@@ -2,6 +2,8 @@ package com.flatio.telegram.formatter;
 
 import com.flatio.common.util.TelegramHtmlEscaper;
 import com.flatio.domain.listing.ListingStatus;
+import com.flatio.telegram.callback.BlacklistCallbackHandler;
+import com.flatio.telegram.callback.FavoritesCallbackHandler;
 import com.flatio.telegram.config.SourceDisplayProperties;
 import com.flatio.web.dto.ListingResponse;
 import com.flatio.web.dto.ListingSummaryResponse;
@@ -128,6 +130,42 @@ public class ListingFormatter {
         .build();
     return InlineKeyboardMarkup.builder()
         .keyboardRow(new InlineKeyboardRow(button))
+        .build();
+  }
+
+  /**
+   * Builds the inline keyboard for a listing card shown in search results (issues #457, #459).
+   *
+   * <p>Extends {@link #buildKeyboard(String)}'s single "open listing" button with a row of
+   * personalization actions — add to favorites, hide this listing, hide its source. Kept
+   * separate from {@link #buildKeyboard(String)}, which is also used by
+   * {@code TelegramNotificationSender} and the deep-link flow and must keep its existing
+   * single-button shape for those call sites.
+   *
+   * @param sourceUrl the URL to the original listing on the source platform, never null
+   * @param listingId the listing's internal ID, used for the favorites/hide-listing actions, never null
+   * @param sourceId  the listing's source platform code, used for the hide-source action, never null
+   * @return InlineKeyboardMarkup with the open-listing button plus favorites/blacklist actions, never null
+   */
+  public InlineKeyboardMarkup buildSearchCardKeyboard(String sourceUrl, Long listingId, String sourceId) {
+    var openButton = InlineKeyboardButton.builder().text("Открыть объявление →").url(sourceUrl).build();
+    var favoriteButton = InlineKeyboardButton.builder()
+        .text("⭐ В избранное")
+        .callbackData(FavoritesCallbackHandler.ADD_PREFIX + listingId)
+        .build();
+    var hideListingButton = InlineKeyboardButton.builder()
+        .text("🚫 Скрыть объявление")
+        .callbackData(BlacklistCallbackHandler.HIDE_LISTING_PREFIX + listingId)
+        .build();
+    var hideSourceButton = InlineKeyboardButton.builder()
+        .text("🚫 Скрыть источник")
+        .callbackData(BlacklistCallbackHandler.HIDE_SOURCE_PREFIX + sourceId)
+        .build();
+
+    return InlineKeyboardMarkup.builder()
+        .keyboardRow(new InlineKeyboardRow(openButton))
+        .keyboardRow(new InlineKeyboardRow(favoriteButton))
+        .keyboardRow(new InlineKeyboardRow(hideListingButton, hideSourceButton))
         .build();
   }
 

@@ -43,6 +43,11 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
  *   <li>{@code action:favorites} callback — {@link FavoritesCallbackHandler} (issue #456)</li>
  *   <li>{@code action:subscriptions} callback — {@link SubscriptionsCallbackHandler} (issue #456)</li>
  *   <li>{@code action:blacklist} callback — {@link BlacklistCallbackHandler} (issue #456)</li>
+ *   <li>{@code FAV:*} callbacks — {@link FavoritesCallbackHandler} (issue #457)</li>
+ *   <li>{@code SUB:*} callbacks — {@link SubscriptionsCallbackHandler} (issue #458)</li>
+ *   <li>{@code BL:*} callbacks — {@link BlacklistCallbackHandler} (issue #459)</li>
+ *   <li>Free text while a subscription-name or stop-word prompt is pending — forwarded to
+ *       {@link SubscriptionsCallbackHandler}/{@link BlacklistCallbackHandler} (issues #458, #459)</li>
  * </ul>
  */
 @Component
@@ -169,18 +174,37 @@ public class FlatioBot {
   }
 
   private void handleFreeText(Long userId, String chatId, String text) {
-    if (!filterCallbackHandler.isAtKeywordStep(userId)) {
-      return;
-    }
-    try {
-      telegramClient.execute(filterCallbackHandler.handleKeywordText(userId, chatId, text));
-    } catch (TelegramApiException e) {
-      logOrHandleBlocked(e, userId, "Failed to send DONE step after keyword input: chatId={}", chatId);
+    if (filterCallbackHandler.isAtKeywordStep(userId)) {
+      try {
+        telegramClient.execute(filterCallbackHandler.handleKeywordText(userId, chatId, text));
+      } catch (TelegramApiException e) {
+        logOrHandleBlocked(e, userId, "Failed to send DONE step after keyword input: chatId={}", chatId);
+      }
+    } else if (subscriptionsCallbackHandler.isAwaitingSubscriptionName(userId)) {
+      subscriptionsCallbackHandler.handleSubscriptionNameText(userId, chatId, text);
+    } else if (blacklistCallbackHandler.isAwaitingKeyword(userId)) {
+      blacklistCallbackHandler.handleKeywordText(userId, chatId, text);
     }
   }
 
   private void handleCallbackQuery(CallbackQuery callbackQuery) {
     String data = callbackQuery.getData();
+
+    // FAV:/SUB:/BL: callbacks answer the callback query themselves, often with a custom toast
+    // text (e.g. "Добавлено в избранное") — they must not be pre-answered with empty text below.
+    if (data.startsWith(FavoritesCallbackHandler.CALLBACK_PREFIX)) {
+      handleFavoritesCallback(callbackQuery, data);
+      return;
+    }
+    if (data.startsWith(SubscriptionsCallbackHandler.CALLBACK_PREFIX)) {
+      handleSubscriptionsCallback(callbackQuery, data);
+      return;
+    }
+    if (data.startsWith(BlacklistCallbackHandler.CALLBACK_PREFIX)) {
+      handleBlacklistCallback(callbackQuery, data);
+      return;
+    }
+
     answerCallbackQuery(callbackQuery.getId());
 
     if (FILTER_SEARCH_CALLBACK.equals(data)) {
@@ -205,26 +229,11 @@ public class FlatioBot {
             "Failed to send main menu: chatId={}", callbackQuery.getMessage().getChatId());
       }
     } else if (FavoritesCallbackHandler.ACTION_FAVORITES.equals(data)) {
-      try {
-        telegramClient.execute(favoritesCallbackHandler.handle(callbackQuery));
-      } catch (TelegramApiException e) {
-        logOrHandleBlocked(e, callbackQuery.getFrom().getId(),
-            "Failed to send favorites list: chatId={}", callbackQuery.getMessage().getChatId());
-      }
+      favoritesCallbackHandler.handle(callbackQuery);
     } else if (SubscriptionsCallbackHandler.ACTION_SUBSCRIPTIONS.equals(data)) {
-      try {
-        telegramClient.execute(subscriptionsCallbackHandler.handle(callbackQuery));
-      } catch (TelegramApiException e) {
-        logOrHandleBlocked(e, callbackQuery.getFrom().getId(),
-            "Failed to send subscriptions list: chatId={}", callbackQuery.getMessage().getChatId());
-      }
+      subscriptionsCallbackHandler.handle(callbackQuery);
     } else if (BlacklistCallbackHandler.ACTION_BLACKLIST.equals(data)) {
-      try {
-        telegramClient.execute(blacklistCallbackHandler.handle(callbackQuery));
-      } catch (TelegramApiException e) {
-        logOrHandleBlocked(e, callbackQuery.getFrom().getId(),
-            "Failed to send blacklist: chatId={}", callbackQuery.getMessage().getChatId());
-      }
+      blacklistCallbackHandler.handle(callbackQuery);
     } else if (FilterCallbackHandler.ACTION_SEARCH.equals(data) || data.startsWith(FILTER_CALLBACK_PREFIX)) {
       try {
         telegramClient.execute(filterCallbackHandler.handle(callbackQuery));
@@ -234,6 +243,73 @@ public class FlatioBot {
       } catch (Exception e) {
         log.error("Unexpected error handling filter callback: data={}", data, e);
       }
+    }
+  }
+
+  /**
+   * Routes a {@code FAV:*} callback (issue #457) — pagination is self-rendered by the handler,
+   * while the add/remove actions answer the callback with a toast built from the handler's result.
+   *
+   * @param callbackQuery the incoming callback query, never null
+   * @param data          the callback data, never null
+   */
+  private void handleFavoritesCallback(CallbackQuery callbackQuery, String data) {
+    if (data.startsWith(FavoritesCallbackHandler.PAGE_PREFIX)) {
+      answerCallbackQuery(callbackQuery.getId());
+      favoritesCallbackHandler.handlePage(callbackQuery);
+    } else if (data.startsWith(FavoritesCallbackHandler.ADD_PREFIX)) {
+      answerCallbackQuery(callbackQuery.getId(), favoritesCallbackHandler.handleAdd(callbackQuery));
+    } else if (data.startsWith(FavoritesCallbackHandler.REMOVE_PREFIX)) {
+      answerCallbackQuery(callbackQuery.getId(), favoritesCallbackHandler.handleRemove(callbackQuery));
+    } else {
+      answerCallbackQuery(callbackQuery.getId());
+    }
+  }
+
+  /**
+   * Routes a {@code SUB:*} callback (issue #458) — see {@link #handleFavoritesCallback} for the
+   * same self-rendering vs. toast split.
+   *
+   * @param callbackQuery the incoming callback query, never null
+   * @param data          the callback data, never null
+   */
+  private void handleSubscriptionsCallback(CallbackQuery callbackQuery, String data) {
+    if (SubscriptionsCallbackHandler.CREATE_FROM_FILTER.equals(data)) {
+      answerCallbackQuery(callbackQuery.getId());
+      subscriptionsCallbackHandler.handleCreateFromFilter(callbackQuery);
+    } else if (data.startsWith(SubscriptionsCallbackHandler.PAUSE_PREFIX)) {
+      answerCallbackQuery(callbackQuery.getId(), subscriptionsCallbackHandler.handlePause(callbackQuery));
+    } else if (data.startsWith(SubscriptionsCallbackHandler.RESUME_PREFIX)) {
+      answerCallbackQuery(callbackQuery.getId(), subscriptionsCallbackHandler.handleResume(callbackQuery));
+    } else if (data.startsWith(SubscriptionsCallbackHandler.DELETE_PREFIX)) {
+      answerCallbackQuery(callbackQuery.getId(), subscriptionsCallbackHandler.handleDelete(callbackQuery));
+    } else {
+      answerCallbackQuery(callbackQuery.getId());
+    }
+  }
+
+  /**
+   * Routes a {@code BL:*} callback (issue #459) — see {@link #handleFavoritesCallback} for the
+   * same self-rendering vs. toast split.
+   *
+   * @param callbackQuery the incoming callback query, never null
+   * @param data          the callback data, never null
+   */
+  private void handleBlacklistCallback(CallbackQuery callbackQuery, String data) {
+    if (BlacklistCallbackHandler.ADD_KEYWORD.equals(data)) {
+      answerCallbackQuery(callbackQuery.getId());
+      blacklistCallbackHandler.handleAddKeywordPrompt(callbackQuery);
+    } else if (data.startsWith(BlacklistCallbackHandler.FILTER_PREFIX)) {
+      answerCallbackQuery(callbackQuery.getId());
+      blacklistCallbackHandler.handleFilter(callbackQuery);
+    } else if (data.startsWith(BlacklistCallbackHandler.DELETE_PREFIX)) {
+      answerCallbackQuery(callbackQuery.getId(), blacklistCallbackHandler.handleDelete(callbackQuery));
+    } else if (data.startsWith(BlacklistCallbackHandler.HIDE_LISTING_PREFIX)) {
+      answerCallbackQuery(callbackQuery.getId(), blacklistCallbackHandler.handleHideListing(callbackQuery));
+    } else if (data.startsWith(BlacklistCallbackHandler.HIDE_SOURCE_PREFIX)) {
+      answerCallbackQuery(callbackQuery.getId(), blacklistCallbackHandler.handleHideSource(callbackQuery));
+    } else {
+      answerCallbackQuery(callbackQuery.getId());
     }
   }
 
@@ -283,10 +359,24 @@ public class FlatioBot {
   }
 
   private void answerCallbackQuery(String callbackQueryId) {
+    answerCallbackQuery(callbackQueryId, null);
+  }
+
+  /**
+   * Answers a callback query, optionally showing the given text as a toast notification
+   * (issues #457, #458, #459) — e.g. "Добавлено в избранное" after a favorites/subscription/
+   * blacklist action.
+   *
+   * @param callbackQueryId the callback query to answer, never null
+   * @param toastText       text to show as a toast, or null to answer without one
+   */
+  private void answerCallbackQuery(String callbackQueryId, String toastText) {
     try {
-      telegramClient.execute(AnswerCallbackQuery.builder()
-          .callbackQueryId(callbackQueryId)
-          .build());
+      var builder = AnswerCallbackQuery.builder().callbackQueryId(callbackQueryId);
+      if (toastText != null) {
+        builder.text(toastText);
+      }
+      telegramClient.execute(builder.build());
     } catch (TelegramApiException e) {
       log.warn("Failed to answer callback query: id={}", callbackQueryId, e);
     }

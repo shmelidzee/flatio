@@ -7,6 +7,7 @@ import com.flatio.service.UserSavedSearchService;
 import com.flatio.service.domain.SearchFilter;
 import com.flatio.telegram.command.SearchCommandHandler;
 import com.flatio.telegram.callback.FilterCallbackHandler;
+import com.flatio.telegram.callback.SubscriptionsCallbackHandler;
 import com.flatio.telegram.formatter.ListingFormatter;
 import com.flatio.telegram.state.SearchFilterState;
 import com.flatio.telegram.state.SearchSession;
@@ -262,7 +263,9 @@ public class SearchResultSender {
 
   private void sendCard(String chatId, ListingSummaryResponse listing) {
     String caption = listingFormatter.buildCaption(listing);
-    var keyboard = listingFormatter.buildKeyboard(listing.sourceUrl());
+    // buildSearchCardKeyboard (issues #457, #459), not buildKeyboard — adds the favorites/hide
+    // action rows on top of the plain "open listing" button used elsewhere (notifications, deep links).
+    var keyboard = listingFormatter.buildSearchCardKeyboard(listing.sourceUrl(), listing.id(), listing.sourceId());
     String photoUrl = listing.photoUrl();
 
     if (!hasUsablePhotoUrl(photoUrl)) {
@@ -603,11 +606,15 @@ public class SearchResultSender {
       navButtons.add(navBtn("Ещё →", PAGE_NEXT));
     }
     var newSearchBtn = navBtn("🔍 Новый поиск", FilterCallbackHandler.ACTION_SEARCH);
+    // Subscribe-to-this-search entry point (issue #458) — only meaningful here since this method
+    // is only called after a non-empty result page, i.e. there is an active filter to subscribe to.
+    var subscribeBtn = navBtn("🔔 Подписаться на этот поиск", SubscriptionsCallbackHandler.CREATE_FROM_FILTER);
 
     var markupBuilder = InlineKeyboardMarkup.builder();
     if (!navButtons.isEmpty()) {
       markupBuilder.keyboardRow(new InlineKeyboardRow(navButtons));
     }
+    markupBuilder.keyboardRow(new InlineKeyboardRow(subscribeBtn));
     markupBuilder.keyboardRow(new InlineKeyboardRow(newSearchBtn));
 
     try {
