@@ -317,6 +317,7 @@ JWT-based stateless authentication via Spring Security. Sessions are disabled.
 | `/api/v1/**` | Any authenticated user |
 | `/admin`, `/admin/**` | Public — static admin SPA shell (see [Admin Interface](#admin-interface)), not the API |
 | `/swagger-ui/**`, `/v3/api-docs/**`, `/actuator/health/**`, `/actuator/info` | Public |
+| `/actuator/prometheus` | `ADMIN` role required — same as `/api/v1/admin/**` (issue #417, see [Observability](#observability-issue-417)) |
 | `POST /<bot-token>` | Public — Telegram webhook (see below) |
 | Everything else | Denied — HTTP 403 (fail-closed) |
 
