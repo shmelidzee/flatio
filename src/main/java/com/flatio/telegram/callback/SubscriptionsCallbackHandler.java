@@ -59,6 +59,8 @@ public class SubscriptionsCallbackHandler {
   public static final String CALLBACK_PREFIX = "SUB:";
   /** Callback data for starting a "subscribe to this search" flow from the search navigation message. */
   public static final String CREATE_FROM_FILTER = "SUB:CREATE_FROM_FILTER";
+  /** Callback data for starting the search wizard from the empty subscriptions state (issue #475). */
+  public static final String START_SEARCH = "SUB:START_SEARCH";
   /** Callback prefix for pausing a subscription. */
   public static final String PAUSE_PREFIX = "SUB:PAUSE:";
   /** Callback prefix for resuming a subscription. */
@@ -89,6 +91,7 @@ public class SubscriptionsCallbackHandler {
   private final MainMenuKeyboardFactory keyboardFactory;
   private final SearchFilterWizard wizard;
   private final SubscriptionCreationState creationState;
+  private final FilterCallbackHandler filterCallbackHandler;
   private final TelegramClient telegramClient;
 
   /**
@@ -109,14 +112,14 @@ public class SubscriptionsCallbackHandler {
     var userOpt = userService.findByTelegramId(telegramId);
     if (userOpt.isEmpty()) {
       log.warn("SUB callback from unregistered telegramId={}", telegramId);
-      sendText(chatId, EMPTY_TEXT);
+      sendEmptyState(chatId);
       return;
     }
 
     var pageable = PageRequest.of(0, MAX_LIST_SIZE, Sort.by(Sort.Direction.DESC, "createdAt"));
     var page = subscriptionService.findByUser(userOpt.get().getId(), pageable);
     if (page.isEmpty()) {
-      sendText(chatId, EMPTY_TEXT);
+      sendEmptyState(chatId);
       return;
     }
 
@@ -149,6 +152,26 @@ public class SubscriptionsCallbackHandler {
     }
     creationState.await(telegramId, toSubscriptionCriteria(stateOpt.get()));
     sendPlainText(chatId, NAME_PROMPT_TEXT);
+  }
+
+  /**
+   * Handles the {@code SUB:START_SEARCH} callback from the empty subscriptions state (issue #475).
+   *
+   * <p>Starts the same filter wizard entry point used by {@code /search}
+   * ({@link FilterCallbackHandler#startWizardMessage}), so a user with no subscriptions is never
+   * stuck without knowing they must search first. After the search completes, the existing
+   * {@link #CREATE_FROM_FILTER} button in the results navigation already offers to subscribe.
+   *
+   * @param callbackQuery the incoming callback query, never null
+   */
+  public void handleStartSearch(CallbackQuery callbackQuery) {
+    Long telegramId = callbackQuery.getFrom().getId();
+    String chatId = String.valueOf(callbackQuery.getMessage().getChatId());
+    try {
+      telegramClient.execute(filterCallbackHandler.startWizardMessage(telegramId, chatId));
+    } catch (TelegramApiException e) {
+      log.warn("Failed to start search wizard from empty subscriptions state: chatId={}", chatId, e);
+    }
   }
 
   /**
@@ -375,6 +398,31 @@ public class SubscriptionsCallbackHandler {
           .build());
     } catch (TelegramApiException e) {
       log.warn("Failed to send subscriptions message: chatId={}", chatId, e);
+    }
+  }
+
+  /**
+   * Sends the empty-subscriptions message with a CTA into the search wizard, instead of the
+   * plain back-to-menu dead end (issue #475).
+   *
+   * @param chatId target chat identifier, never null
+   */
+  private void sendEmptyState(String chatId) {
+    var searchButton = navBtn("🔍 Начать поиск и подписаться", START_SEARCH);
+    var menuButton = navBtn("🏠 Главное меню", SearchResultSender.ACTION_MENU);
+    var keyboard = InlineKeyboardMarkup.builder()
+        .keyboardRow(new InlineKeyboardRow(searchButton))
+        .keyboardRow(new InlineKeyboardRow(menuButton))
+        .build();
+    try {
+      telegramClient.execute(SendMessage.builder()
+          .chatId(chatId)
+          .text(EMPTY_TEXT)
+          .parseMode("HTML")
+          .replyMarkup(keyboard)
+          .build());
+    } catch (TelegramApiException e) {
+      log.warn("Failed to send empty subscriptions state: chatId={}", chatId, e);
     }
   }
 

@@ -67,6 +67,9 @@ class SubscriptionsCallbackHandlerTest {
   private SubscriptionCreationState creationState;
 
   @Mock
+  private FilterCallbackHandler filterCallbackHandler;
+
+  @Mock
   private TelegramClient telegramClient;
 
   @InjectMocks
@@ -106,6 +109,26 @@ class SubscriptionsCallbackHandlerTest {
     var captor = ArgumentCaptor.forClass(SendMessage.class);
     verify(telegramClient).execute(captor.capture());
     assertThat(captor.getValue().getText()).isEqualTo("🔔 У вас пока нет подписок на поиск.");
+  }
+
+  @Test
+  void should_offer_start_search_button_when_user_has_no_subscriptions() throws Exception {
+    // Given — issue #475
+    var user = buildUser(8L);
+    when(userService.findByTelegramId(2L)).thenReturn(Optional.of(user));
+    when(subscriptionService.findByUser(eq(8L), any())).thenReturn(Page.empty());
+    var callback = buildCallback(2L, 200L, true, SubscriptionsCallbackHandler.ACTION_SUBSCRIPTIONS);
+
+    // When
+    handler.handle(callback);
+
+    // Then
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient).execute(captor.capture());
+    var keyboard = (InlineKeyboardMarkup) captor.getValue().getReplyMarkup();
+    var allButtons = keyboard.getKeyboard().stream().flatMap(java.util.Collection::stream).toList();
+    assertThat(allButtons).anySatisfy(button ->
+        assertThat(button.getCallbackData()).isEqualTo(SubscriptionsCallbackHandler.START_SEARCH));
   }
 
   @Test
@@ -172,6 +195,20 @@ class SubscriptionsCallbackHandlerTest {
     verify(telegramClient).execute(captor.capture());
     assertThat(captor.getValue().getText()).contains("выполните поиск");
     verify(creationState, never()).await(any(), any());
+  }
+
+  @Test
+  void should_start_search_wizard_when_start_search_clicked() throws Exception {
+    // Given — issue #475
+    var wizardMessage = SendMessage.builder().chatId("100").text("wizard").build();
+    when(filterCallbackHandler.startWizardMessage(1L, "100")).thenReturn(wizardMessage);
+    var callback = buildCallback(1L, 100L, true, SubscriptionsCallbackHandler.START_SEARCH);
+
+    // When
+    handler.handleStartSearch(callback);
+
+    // Then
+    verify(telegramClient).execute(wizardMessage);
   }
 
   @Test
