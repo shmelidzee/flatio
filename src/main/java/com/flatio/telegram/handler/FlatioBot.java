@@ -308,7 +308,10 @@ public class FlatioBot {
    * @param data          the callback data, never null
    */
   private void handleBlacklistCallback(CallbackQuery callbackQuery, String data) {
-    if (BlacklistCallbackHandler.ADD_KEYWORD.equals(data)) {
+    if (data.startsWith(BlacklistCallbackHandler.PAGE_PREFIX)) {
+      answerCallbackQuery(callbackQuery.getId());
+      blacklistCallbackHandler.handlePage(callbackQuery);
+    } else if (BlacklistCallbackHandler.ADD_KEYWORD.equals(data)) {
       answerCallbackQuery(callbackQuery.getId());
       blacklistCallbackHandler.handleAddKeywordPrompt(callbackQuery);
     } else if (data.startsWith(BlacklistCallbackHandler.FILTER_PREFIX)) {
