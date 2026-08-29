@@ -77,6 +77,27 @@ public class FilterCallbackHandler {
   }
 
   /**
+   * Starts the wizard pre-filled with a subscription's current criteria, for editing that
+   * subscription (issue #479) rather than starting a plain search.
+   *
+   * @param telegramId Telegram user identifier, never null
+   * @param chatId     target chat identifier, never null
+   * @param prefilled  state pre-populated with the subscription's criteria and editing marker, never null
+   * @return SendMessage displaying the first wizard step, never null
+   */
+  public SendMessage startWizardMessageForEdit(Long telegramId, String chatId, SearchFilterState prefilled) {
+    var state = wizard.startForEdit(telegramId, prefilled);
+    log.debug("Wizard started for subscription edit: telegramId={}, subscriptionId={}",
+        telegramId, prefilled.getEditingSubscriptionId());
+    return SendMessage.builder()
+        .chatId(chatId)
+        .text(keyboardFactory.getStepText(state))
+        .parseMode("HTML")
+        .replyMarkup(keyboardFactory.buildForStep(state))
+        .build();
+  }
+
+  /**
    * Checks whether the user's wizard is currently waiting for keyword text input.
    *
    * @param telegramId Telegram user identifier, never null

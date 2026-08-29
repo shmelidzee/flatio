@@ -44,7 +44,9 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
  *   <li>{@code action:subscriptions} callback — {@link SubscriptionsCallbackHandler} (issue #456)</li>
  *   <li>{@code action:blacklist} callback — {@link BlacklistCallbackHandler} (issue #456)</li>
  *   <li>{@code FAV:*} callbacks — {@link FavoritesCallbackHandler} (issue #457)</li>
- *   <li>{@code SUB:*} callbacks — {@link SubscriptionsCallbackHandler} (issue #458)</li>
+ *   <li>{@code SUB:*} callbacks — {@link SubscriptionsCallbackHandler} (issues #458, #479)</li>
+ *   <li>{@code FILTER:SEARCH} when the wizard is editing a subscription (issue #479) —
+ *       {@link SubscriptionsCallbackHandler#handleSaveEdit} instead of {@link SearchResultSender}</li>
  *   <li>{@code BL:*} callbacks — {@link BlacklistCallbackHandler} (issue #459)</li>
  *   <li>Free text while a subscription-name or stop-word prompt is pending — forwarded to
  *       {@link SubscriptionsCallbackHandler}/{@link BlacklistCallbackHandler} (issues #458, #459)</li>
@@ -220,7 +222,7 @@ public class FlatioBot {
    */
   private void dispatchSectionOrSearchCallback(CallbackQuery callbackQuery, String data) {
     if (FILTER_SEARCH_CALLBACK.equals(data)) {
-      searchResultSender.handle(callbackQuery);
+      dispatchFilterSearchCallback(callbackQuery);
     } else if (SearchCommandHandler.ACTION_USE_LAST_SEARCH.equals(data)) {
       searchResultSender.handleLastSearch(callbackQuery);
     } else if (data.startsWith(SearchResultSender.PAGE_CALLBACK_PREFIX)) {
@@ -255,6 +257,25 @@ public class FlatioBot {
       } catch (Exception e) {
         log.error("Unexpected error handling filter callback: data={}", data, e);
       }
+    }
+  }
+
+  /**
+   * Routes the {@code FILTER:SEARCH} callback (the wizard's DONE-step primary button) to listing
+   * search execution, or — when the wizard is editing an existing subscription's criteria
+   * (issue #479) — to saving that subscription instead.
+   *
+   * @param callbackQuery the incoming callback query, never null
+   */
+  private void dispatchFilterSearchCallback(CallbackQuery callbackQuery) {
+    Long telegramId = callbackQuery.getFrom().getId();
+    boolean isEditingSubscription = wizard.getState(telegramId)
+        .map(state -> state.getEditingSubscriptionId() != null)
+        .orElse(false);
+    if (isEditingSubscription) {
+      subscriptionsCallbackHandler.handleSaveEdit(callbackQuery);
+    } else {
+      searchResultSender.handle(callbackQuery);
     }
   }
 
@@ -298,6 +319,9 @@ public class FlatioBot {
       answerCallbackQuery(callbackQuery.getId(), subscriptionsCallbackHandler.handleResume(callbackQuery));
     } else if (data.startsWith(SubscriptionsCallbackHandler.DELETE_PREFIX)) {
       answerCallbackQuery(callbackQuery.getId(), subscriptionsCallbackHandler.handleDelete(callbackQuery));
+    } else if (data.startsWith(SubscriptionsCallbackHandler.EDIT_PREFIX)) {
+      answerCallbackQuery(callbackQuery.getId());
+      subscriptionsCallbackHandler.handleEdit(callbackQuery);
     } else {
       answerCallbackQuery(callbackQuery.getId());
     }

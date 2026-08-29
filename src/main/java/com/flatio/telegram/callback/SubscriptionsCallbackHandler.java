@@ -17,9 +17,11 @@ import com.flatio.telegram.keyboard.MainMenuKeyboardFactory;
 import com.flatio.telegram.state.SearchFilterState;
 import com.flatio.telegram.state.SearchFilterWizard;
 import com.flatio.telegram.state.SubscriptionCreationState;
+import com.flatio.telegram.state.SubscriptionEditState;
 import com.flatio.web.dto.CreateSubscriptionRequest;
 import com.flatio.web.dto.SubscriptionResponse;
 import com.flatio.web.dto.SubscriptionSearchCriteria;
+import com.flatio.web.dto.UpdateSubscriptionRequest;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -42,8 +44,8 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
 
 /**
  * Handles the "🔔 Мои подписки" section: creating a subscription from the current search filter,
- * viewing the paginated subscriptions list, and pausing/resuming/deleting subscriptions
- * (issues #458, #478).
+ * viewing the paginated subscriptions list, and pausing/resuming/deleting/editing subscriptions
+ * (issues #458, #478, #479).
  *
  * <p>Reuses {@link SubscriptionService}, the same service backing the REST
  * {@code /api/v1/subscriptions} endpoint (Telegram and REST API share services, per project
@@ -74,6 +76,8 @@ public class SubscriptionsCallbackHandler {
   public static final String RESUME_PREFIX = "SUB:RESUME:";
   /** Callback prefix for deleting a subscription. */
   public static final String DELETE_PREFIX = "SUB:DELETE:";
+  /** Callback prefix for starting the edit-criteria wizard on a subscription. */
+  public static final String EDIT_PREFIX = "SUB:EDIT:";
   /** Callback prefix for subscriptions-list pagination. */
   public static final String PAGE_PREFIX = "SUB:PAGE:";
   /** Callback data for advancing to the next subscriptions page. */
@@ -102,13 +106,19 @@ public class SubscriptionsCallbackHandler {
   private static final String RESUMED_TOAST = "▶️ Подписка возобновлена";
   private static final String DELETED_TOAST = "🗑 Подписка удалена";
   private static final String NOT_FOUND_TOAST = "Подписка не найдена.";
+  private static final String EDIT_SESSION_EXPIRED_TEXT =
+      "Сессия редактирования устарела. Откройте раздел «🔔 Мои подписки» и нажмите «✏️ Изменить» ещё раз.";
+  private static final String EDIT_NOT_FOUND_TEXT =
+      "Эта подписка была удалена и не может быть сохранена.";
 
   private final UserService userService;
   private final SubscriptionService subscriptionService;
   private final CityService cityService;
   private final MainMenuKeyboardFactory keyboardFactory;
   private final SearchFilterWizard wizard;
+  private final FilterCallbackHandler filterCallbackHandler;
   private final SubscriptionCreationState creationState;
+  private final SubscriptionEditState editState;
   private final TelegramClient telegramClient;
 
   private record PageState(int page, int totalPages) {}
@@ -310,6 +320,108 @@ public class SubscriptionsCallbackHandler {
     return DELETED_TOAST;
   }
 
+  /**
+   * Handles a {@code SUB:EDIT:<id>} callback — starts the filter wizard pre-filled with the
+   * subscription's current criteria (issue #479).
+   *
+   * @param callbackQuery the incoming callback query, never null
+   */
+  public void handleEdit(CallbackQuery callbackQuery) {
+    Long telegramId = callbackQuery.getFrom().getId();
+    String chatId = String.valueOf(callbackQuery.getMessage().getChatId());
+
+    if (!TelegramPrivateChatGuard.isPrivateChat(callbackQuery)) {
+      sendPlainText(chatId, TelegramPrivateChatGuard.PRIVATE_CHAT_REQUIRED_TEXT);
+      return;
+    }
+    var userOpt = userService.findByTelegramId(telegramId);
+    if (userOpt.isEmpty()) {
+      sendPlainText(chatId, UNREGISTERED_TEXT);
+      return;
+    }
+    Long id = parseId(callbackQuery.getData(), EDIT_PREFIX);
+    if (id == null) {
+      sendPlainText(chatId, NOT_FOUND_TOAST);
+      return;
+    }
+    try {
+      var subscription = subscriptionService.findByIdForUser(userOpt.get().getId(), id);
+      editState.start(telegramId, subscription);
+      var prefilled = toSearchFilterState(subscription.searchCriteria());
+      prefilled.setEditingSubscriptionId(id);
+      telegramClient.execute(filterCallbackHandler.startWizardMessageForEdit(telegramId, chatId, prefilled));
+    } catch (SubscriptionNotFoundException e) {
+      sendPlainText(chatId, NOT_FOUND_TOAST);
+    } catch (TelegramApiException e) {
+      log.warn("Failed to send edit wizard message: chatId={}", chatId, e);
+    }
+  }
+
+  /**
+   * Handles the {@code FILTER:SEARCH} callback when the wizard is in subscription-edit mode
+   * (issue #479) — saves the edited criteria via {@link SubscriptionService#update} instead of
+   * running a listing search. {@link com.flatio.telegram.handler.FlatioBot} routes here based on
+   * {@link SearchFilterState#getEditingSubscriptionId()}.
+   *
+   * <p>Name, triggers, and delivery settings are carried over unchanged from the snapshot taken
+   * when editing started ({@link SubscriptionEditState}) — the wizard only collects criteria.
+   *
+   * @param callbackQuery the incoming callback query, never null
+   */
+  public void handleSaveEdit(CallbackQuery callbackQuery) {
+    Long telegramId = callbackQuery.getFrom().getId();
+    String chatId = String.valueOf(callbackQuery.getMessage().getChatId());
+
+    if (!TelegramPrivateChatGuard.isPrivateChat(callbackQuery)) {
+      sendPlainText(chatId, TelegramPrivateChatGuard.PRIVATE_CHAT_REQUIRED_TEXT);
+      return;
+    }
+    var stateOpt = wizard.getState(telegramId);
+    var originalOpt = editState.get(telegramId);
+    if (stateOpt.isEmpty() || originalOpt.isEmpty() || stateOpt.get().getEditingSubscriptionId() == null) {
+      sendPlainText(chatId, EDIT_SESSION_EXPIRED_TEXT);
+      return;
+    }
+    var userOpt = userService.findByTelegramId(telegramId);
+    if (userOpt.isEmpty()) {
+      sendPlainText(chatId, UNREGISTERED_TEXT);
+      return;
+    }
+    var state = stateOpt.get();
+    var original = originalOpt.get();
+    var request = buildUpdateRequest(original, state);
+    try {
+      subscriptionService.update(userOpt.get().getId(), state.getEditingSubscriptionId(), request);
+      sendPlainText(chatId, "💾 Подписка «" + TelegramHtmlEscaper.escapeHtml(original.name()) + "» обновлена.");
+    } catch (SubscriptionNotFoundException e) {
+      sendPlainText(chatId, EDIT_NOT_FOUND_TEXT);
+    } finally {
+      wizard.reset(telegramId);
+      editState.clear(telegramId);
+    }
+  }
+
+  private UpdateSubscriptionRequest buildUpdateRequest(SubscriptionResponse original, SearchFilterState state) {
+    return new UpdateSubscriptionRequest(
+        original.name(), toSubscriptionCriteria(state), original.triggers(),
+        original.deliveryMode(), original.channelType(), original.priceDropThreshold(),
+        original.quietHoursStart(), original.quietHoursEnd()
+    );
+  }
+
+  private SearchFilterState toSearchFilterState(SubscriptionSearchCriteria criteria) {
+    var state = new SearchFilterState();
+    state.setDealType(criteria.dealType());
+    state.setPropertyType(criteria.propertyType());
+    state.setCityId(criteria.cityId());
+    state.setPriceMin(criteria.priceMin());
+    state.setPriceMax(criteria.priceMax());
+    state.setRooms(criteria.rooms());
+    state.setQuery(criteria.query());
+    state.setOwnerOnly(criteria.ownerOnly());
+    return state;
+  }
+
   private SubscriptionSearchCriteria toSubscriptionCriteria(SearchFilterState state) {
     return new SubscriptionSearchCriteria(
         state.getDealType(),
@@ -417,8 +529,9 @@ public class SubscriptionsCallbackHandler {
     var toggleButton = item.active()
         ? navBtn("⏸ Пауза", PAUSE_PREFIX + item.id())
         : navBtn("▶️ Возобновить", RESUME_PREFIX + item.id());
+    var editButton = navBtn("✏️ Изменить", EDIT_PREFIX + item.id());
     var deleteButton = navBtn("🗑 Удалить", DELETE_PREFIX + item.id());
-    return new InlineKeyboardRow(toggleButton, deleteButton);
+    return new InlineKeyboardRow(toggleButton, editButton, deleteButton);
   }
 
   /**

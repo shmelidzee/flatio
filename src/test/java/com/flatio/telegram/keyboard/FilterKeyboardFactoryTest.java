@@ -121,6 +121,38 @@ class FilterKeyboardFactoryTest {
   }
 
   // -------------------------------------------------------------------------
+  // DONE step — issue #479
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_show_search_label_when_done_step_is_not_editing_a_subscription() {
+    // Given
+    var state = new SearchFilterState();
+    state.setCurrentStep(FilterStep.DONE);
+
+    // When
+    List<String> labels = extractButtonLabels(factory.buildForStep(state));
+
+    // Then
+    assertThat(labels).contains("🔍 Найти");
+  }
+
+  @Test
+  void should_show_save_label_when_done_step_is_editing_a_subscription() {
+    // Given
+    var state = new SearchFilterState();
+    state.setCurrentStep(FilterStep.DONE);
+    state.setEditingSubscriptionId(5L);
+
+    // When
+    List<String> labels = extractButtonLabels(factory.buildForStep(state));
+
+    // Then
+    assertThat(labels).contains("💾 Сохранить изменения");
+    assertThat(labels).doesNotContain("🔍 Найти");
+  }
+
+  // -------------------------------------------------------------------------
   // Helper
   // -------------------------------------------------------------------------
 

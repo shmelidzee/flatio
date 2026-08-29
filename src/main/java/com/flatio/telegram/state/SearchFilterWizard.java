@@ -69,6 +69,26 @@ public class SearchFilterWizard {
   }
 
   /**
+   * Starts the wizard pre-filled with the given state, for editing an existing subscription's
+   * criteria (issue #479) rather than starting a plain search from scratch.
+   *
+   * <p>Unlike {@link #start}, the caller supplies the initial state (already carrying the
+   * subscription's current criteria and {@link SearchFilterState#getEditingSubscriptionId()}), so
+   * the wizard steps show pre-selected values instead of blank ones.
+   *
+   * @param telegramId Telegram user identifier, never null
+   * @param prefilled  state pre-populated with the subscription's criteria and editing marker, never null
+   * @return the same state, positioned at the first step
+   */
+  public SearchFilterState startForEdit(Long telegramId, SearchFilterState prefilled) {
+    prefilled.setCurrentStep(FilterStep.DEAL_TYPE);
+    states.put(telegramId, prefilled);
+    log.debug("Filter wizard started for subscription edit: telegramId={}, subscriptionId={}",
+        telegramId, prefilled.getEditingSubscriptionId());
+    return prefilled;
+  }
+
+  /**
    * Returns the current wizard state for the user, if any.
    *
    * @param telegramId Telegram user identifier, never null
