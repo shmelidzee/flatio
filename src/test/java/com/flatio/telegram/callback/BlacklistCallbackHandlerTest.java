@@ -7,6 +7,7 @@ import com.flatio.domain.blacklist.BlacklistEntryType;
 import com.flatio.domain.user.User;
 import com.flatio.service.BlacklistService;
 import com.flatio.service.UserService;
+import com.flatio.telegram.handler.SearchResultSender;
 import com.flatio.telegram.keyboard.MainMenuKeyboardFactory;
 import com.flatio.telegram.state.BlacklistKeywordPromptState;
 import com.flatio.web.dto.BlacklistEntryResponse;
@@ -84,8 +85,8 @@ class BlacklistCallbackHandlerTest {
   }
 
   @Test
-  void should_send_empty_message_when_user_has_no_entries() throws Exception {
-    // Given
+  void should_send_empty_state_with_search_shortcut_when_user_has_no_entries() throws Exception {
+    // Given — issue #474: empty blacklist must not be a dead end
     var user = buildUser(8L);
     when(userService.findByTelegramId(2L)).thenReturn(Optional.of(user));
     when(blacklistService.findByUser(eq(8L), isNull(), any())).thenReturn(Page.empty());
@@ -94,10 +95,36 @@ class BlacklistCallbackHandlerTest {
     // When
     handler.handle(callback);
 
-    // Then
+    // Then — empty-state message, then navigation message
     var captor = ArgumentCaptor.forClass(SendMessage.class);
     verify(telegramClient, times(2)).execute(captor.capture());
-    assertThat(captor.getAllValues().get(0).getText()).isEqualTo("🚫 Ваш чёрный список пока пуст.");
+    var emptyMessage = captor.getAllValues().get(0);
+    assertThat(emptyMessage.getText()).isEqualTo("🚫 Ваш чёрный список пока пуст."
+        + "\n\nСкрывайте объявления и источники прямо с их карточки в поиске, либо добавьте стоп-слово кнопкой ниже.");
+    var keyboard = (InlineKeyboardMarkup) emptyMessage.getReplyMarkup();
+    assertThat(keyboard.getKeyboard().get(0).get(0).getText()).isEqualTo("🔍 Перейти к поиску");
+    assertThat(keyboard.getKeyboard().get(0).get(0).getCallbackData()).isEqualTo(FilterCallbackHandler.ACTION_SEARCH);
+    assertThat(keyboard.getKeyboard().get(1).get(0).getCallbackData()).isEqualTo(SearchResultSender.ACTION_MENU);
+  }
+
+  @Test
+  void should_include_hint_in_navigation_message_when_blacklist_rendered() throws Exception {
+    // Given — issue #474 (FR-NAV-10): explain where LISTING/SOURCE entries come from
+    var user = buildUser(7L);
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
+    var entry = buildBlacklistEntry(3L, BlacklistEntryType.KEYWORD, "новостройка");
+    when(blacklistService.findByUser(eq(7L), isNull(), any())).thenReturn(new PageImpl<>(List.of(entry)));
+    var callback = buildCallback(1L, 100L, true, BlacklistCallbackHandler.ACTION_BLACKLIST);
+
+    // When
+    handler.handle(callback);
+
+    // Then — navigation message (second one) carries the hint
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient, times(2)).execute(captor.capture());
+    var navigationMessage = captor.getAllValues().get(1);
+    assertThat(navigationMessage.getText()).contains("Объявления и источники скрываются кнопкой «🚫 Скрыть» с карточки в поиске")
+        .contains("Стоп-слова добавляются кнопкой «➕ Добавить стоп-слово» ниже");
   }
 
   @Test

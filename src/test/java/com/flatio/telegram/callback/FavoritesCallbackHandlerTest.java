@@ -6,6 +6,7 @@ import com.flatio.common.exception.ListingNotFoundException;
 import com.flatio.domain.user.User;
 import com.flatio.service.FavoriteService;
 import com.flatio.service.UserService;
+import com.flatio.telegram.handler.SearchResultSender;
 import com.flatio.telegram.keyboard.MainMenuKeyboardFactory;
 import com.flatio.web.dto.CreateFavoriteRequest;
 import com.flatio.web.dto.FavoriteResponse;
@@ -81,13 +82,11 @@ class FavoritesCallbackHandlerTest {
   }
 
   @Test
-  void should_send_empty_message_when_user_has_no_favorites() throws Exception {
-    // Given
+  void should_send_empty_state_with_search_shortcut_when_user_has_no_favorites() throws Exception {
+    // Given — issue #474: empty favorites must not be a dead end
     var user = buildUser(8L);
     when(userService.findByTelegramId(2L)).thenReturn(Optional.of(user));
     when(favoriteService.findByUser(eq(8L), any())).thenReturn(Page.empty());
-    var expectedKeyboard = mock(InlineKeyboardMarkup.class);
-    when(keyboardFactory.buildBackToMenu()).thenReturn(expectedKeyboard);
     var callback = buildCallback(2L, 200L, true, FavoritesCallbackHandler.ACTION_FAVORITES);
 
     // When
@@ -96,8 +95,14 @@ class FavoritesCallbackHandlerTest {
     // Then
     var captor = ArgumentCaptor.forClass(SendMessage.class);
     verify(telegramClient).execute(captor.capture());
-    assertThat(captor.getValue().getText()).isEqualTo("⭐ У вас пока нет избранных объявлений.");
-    assertThat(captor.getValue().getReplyMarkup()).isSameAs(expectedKeyboard);
+    var sent = captor.getValue();
+    assertThat(sent.getText()).isEqualTo(
+        "⭐ У вас пока нет избранных объявлений.\n\nДобавьте объявление в избранное с его карточки в поиске.");
+    var keyboard = (InlineKeyboardMarkup) sent.getReplyMarkup();
+    assertThat(keyboard.getKeyboard().get(0).get(0).getText()).isEqualTo("🔍 Перейти к поиску");
+    assertThat(keyboard.getKeyboard().get(0).get(0).getCallbackData()).isEqualTo(FilterCallbackHandler.ACTION_SEARCH);
+    assertThat(keyboard.getKeyboard().get(1).get(0).getText()).isEqualTo("🏠 Главное меню");
+    assertThat(keyboard.getKeyboard().get(1).get(0).getCallbackData()).isEqualTo(SearchResultSender.ACTION_MENU);
   }
 
   @Test
@@ -113,7 +118,8 @@ class FavoritesCallbackHandlerTest {
     // Then — graceful message, no exception, service never consulted
     var captor = ArgumentCaptor.forClass(SendMessage.class);
     verify(telegramClient).execute(captor.capture());
-    assertThat(captor.getValue().getText()).isEqualTo("⭐ У вас пока нет избранных объявлений.");
+    assertThat(captor.getValue().getText()).isEqualTo(
+        "⭐ У вас пока нет избранных объявлений.\n\nДобавьте объявление в избранное с его карточки в поиске.");
     verify(favoriteService, never()).findByUser(any(), any());
   }
 
