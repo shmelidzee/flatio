@@ -4,9 +4,12 @@ import com.flatio.telegram.callback.BlacklistCallbackHandler;
 import com.flatio.telegram.callback.FavoritesCallbackHandler;
 import com.flatio.telegram.callback.FilterCallbackHandler;
 import com.flatio.telegram.callback.SubscriptionsCallbackHandler;
+import com.flatio.telegram.command.BlacklistCommandHandler;
+import com.flatio.telegram.command.FavoritesCommandHandler;
 import com.flatio.telegram.command.HelpCommandHandler;
 import com.flatio.telegram.command.SearchCommandHandler;
 import com.flatio.telegram.command.StartCommandHandler;
+import com.flatio.telegram.command.SubscriptionsCommandHandler;
 import com.flatio.telegram.state.SearchFilterWizard;
 import java.util.Arrays;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +36,9 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
  * <ul>
  *   <li>{@code /start} — {@link StartCommandHandler}</li>
  *   <li>{@code /search} — {@link SearchCommandHandler}: shows last-search choice if filter exists, otherwise starts wizard</li>
+ *   <li>{@code /favorites} — {@link FavoritesCommandHandler} (issue #473)</li>
+ *   <li>{@code /subscriptions} — {@link SubscriptionsCommandHandler} (issue #473)</li>
+ *   <li>{@code /blacklist} — {@link BlacklistCommandHandler} (issue #473)</li>
  *   <li>{@code /help} — {@link HelpCommandHandler}</li>
  *   <li>Free text while wizard is at KEYWORD step — forwarded to {@link FilterCallbackHandler}</li>
  *   <li>{@code action:search}, {@code FILTER:*} callbacks — {@link FilterCallbackHandler}</li>
@@ -73,6 +79,9 @@ public class FlatioBot {
   private final FavoritesCallbackHandler favoritesCallbackHandler;
   private final SubscriptionsCallbackHandler subscriptionsCallbackHandler;
   private final BlacklistCallbackHandler blacklistCallbackHandler;
+  private final FavoritesCommandHandler favoritesCommandHandler;
+  private final SubscriptionsCommandHandler subscriptionsCommandHandler;
+  private final BlacklistCommandHandler blacklistCommandHandler;
   private final SearchFilterWizard wizard;
   private final ThreadPoolTaskExecutor telegramUpdateExecutor;
 
@@ -146,6 +155,9 @@ public class FlatioBot {
     Long userId = update.getMessage().getFrom().getId();
     String chatId = String.valueOf(update.getMessage().getChatId());
 
+    if (dispatchSectionCommand(update, text)) {
+      return;
+    }
     if (text.startsWith("/start")) {
       try {
         telegramClient.execute(startCommandHandler.handle(update));
@@ -171,6 +183,28 @@ public class FlatioBot {
     } else {
       handleFreeText(userId, chatId, text);
     }
+  }
+
+  /**
+   * Routes {@code /favorites}, {@code /subscriptions}, {@code /blacklist} text commands to their
+   * section handlers (issue #473) — split out of {@link #handleTextMessage} to keep it within the
+   * method-length limit.
+   *
+   * @param update Telegram update containing the text command, never null
+   * @param text   the message text, never null
+   * @return true if the command was one of the three section commands and was handled
+   */
+  private boolean dispatchSectionCommand(Update update, String text) {
+    if (text.startsWith("/favorites")) {
+      favoritesCommandHandler.handle(update);
+    } else if (text.startsWith("/subscriptions")) {
+      subscriptionsCommandHandler.handle(update);
+    } else if (text.startsWith("/blacklist")) {
+      blacklistCommandHandler.handle(update);
+    } else {
+      return false;
+    }
+    return true;
   }
 
   private void handleFreeText(Long userId, String chatId, String text) {

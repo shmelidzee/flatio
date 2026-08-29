@@ -98,7 +98,20 @@ public class FavoritesCallbackHandler {
    * @param callbackQuery the incoming callback query, never null
    */
   public void handle(CallbackQuery callbackQuery) {
-    renderPage(callbackQuery, 0);
+    renderPage(callbackQuery.getFrom().getId(), chatIdOf(callbackQuery),
+        TelegramPrivateChatGuard.isPrivateChat(callbackQuery), 0);
+  }
+
+  /**
+   * Renders the first page of the user's favorites list from the {@code /favorites} text command
+   * (issue #473) — same rendering as {@link #handle(CallbackQuery)}, no new business logic.
+   *
+   * @param telegramId    Telegram user identifier, never null
+   * @param chatId        target chat identifier, never null
+   * @param isPrivateChat whether the command was sent in a private one-on-one chat
+   */
+  public void handleCommand(Long telegramId, String chatId, boolean isPrivateChat) {
+    renderPage(telegramId, chatId, isPrivateChat, 0);
   }
 
   /**
@@ -108,7 +121,7 @@ public class FavoritesCallbackHandler {
    */
   public void handlePage(CallbackQuery callbackQuery) {
     Long telegramId = callbackQuery.getFrom().getId();
-    String chatId = String.valueOf(callbackQuery.getMessage().getChatId());
+    String chatId = chatIdOf(callbackQuery);
     var session = pageSessions.get(telegramId);
     if (session == null) {
       sendText(chatId, SESSION_EXPIRED_TEXT);
@@ -117,7 +130,7 @@ public class FavoritesCallbackHandler {
     int next = PAGE_NEXT.equals(callbackQuery.getData())
         ? Math.min(session.page() + 1, session.totalPages() - 1)
         : Math.max(session.page() - 1, 0);
-    renderPage(callbackQuery, next);
+    renderPage(telegramId, chatId, TelegramPrivateChatGuard.isPrivateChat(callbackQuery), next);
   }
 
   /**
@@ -174,11 +187,8 @@ public class FavoritesCallbackHandler {
     return REMOVED_TOAST;
   }
 
-  private void renderPage(CallbackQuery callbackQuery, int page) {
-    Long telegramId = callbackQuery.getFrom().getId();
-    String chatId = String.valueOf(callbackQuery.getMessage().getChatId());
-
-    if (!TelegramPrivateChatGuard.isPrivateChat(callbackQuery)) {
+  private void renderPage(Long telegramId, String chatId, boolean isPrivateChat, int page) {
+    if (!isPrivateChat) {
       log.debug("FAV callback rejected outside a private chat: chatId={}", chatId);
       sendText(chatId, TelegramPrivateChatGuard.PRIVATE_CHAT_REQUIRED_TEXT);
       return;
@@ -315,5 +325,9 @@ public class FavoritesCallbackHandler {
       log.warn("Malformed favorites callback data: {}", data);
       return null;
     }
+  }
+
+  private String chatIdOf(CallbackQuery callbackQuery) {
+    return String.valueOf(callbackQuery.getMessage().getChatId());
   }
 }

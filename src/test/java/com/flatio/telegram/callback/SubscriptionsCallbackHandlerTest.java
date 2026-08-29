@@ -313,6 +313,37 @@ class SubscriptionsCallbackHandlerTest {
     verify(userService, never()).findByTelegramId(any());
   }
 
+  @Test
+  void should_render_subscriptions_when_command_invoked_with_telegram_id_and_chat_id() throws Exception {
+    // Given — issue #473: /subscriptions text command reuses the same rendering as the callback
+    var user = buildUser(7L);
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
+    when(subscriptionService.findByUser(eq(7L), any())).thenReturn(Page.empty());
+
+    // When
+    handler.handleCommand(1L, "100", true);
+
+    // Then
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient).execute(captor.capture());
+    assertThat(captor.getValue().getText()).isEqualTo("🔔 У вас пока нет подписок на поиск.");
+  }
+
+  @Test
+  void should_send_private_chat_required_message_when_command_invoked_outside_private_chat() throws Exception {
+    // Given — issue #473
+    lenient().when(keyboardFactory.buildBackToMenu()).thenReturn(mock(InlineKeyboardMarkup.class));
+
+    // When
+    handler.handleCommand(1L, "100", false);
+
+    // Then
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient).execute(captor.capture());
+    assertThat(captor.getValue().getText()).contains("личные данные");
+    verify(userService, never()).findByTelegramId(any());
+  }
+
   // -------------------------------------------------------------------------
   // helpers
   // -------------------------------------------------------------------------
