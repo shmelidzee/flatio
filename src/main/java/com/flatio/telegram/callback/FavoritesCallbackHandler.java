@@ -35,10 +35,11 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
  * from both that list and search result cards (issue #457).
  *
  * <p>Reuses {@link FavoriteService}, the same service backing the REST {@code /api/v1/favorites}
- * endpoint (Telegram and REST API share services, per project architecture rules). Unlike the
- * read-only summary shipped in #456, this renders one Telegram message per favorite (with its own
- * "remove" button) followed by a single pagination/navigation message, matching the shape already
- * used for search results by {@link SearchResultSender}.
+ * endpoint (Telegram and REST API share services, per project architecture rules). A page of
+ * favorites renders as a single Telegram message — one line per favorite, one inline-keyboard row
+ * per favorite for its "remove" button, plus a shared pagination/menu row (issue #476). Earlier
+ * (#457) this sent one message per favorite; that flooded the chat once a user had more than a
+ * handful of favorites.
  *
  * <p>Restricted to private chats (issue #463): favorites are personal data, so a request made
  * from a group/supergroup/channel is answered with a redirect to a private chat instead of the
@@ -70,6 +71,7 @@ public class FavoritesCallbackHandler {
 
   private static final String EMPTY_TEXT = "⭐ У вас пока нет избранных объявлений.";
   private static final String SESSION_EXPIRED_TEXT = "Список устарел. Откройте раздел «⭐ Избранное» заново.";
+  private static final String ITEM_FORMAT_ERROR_TEXT = "⚠️ Не удалось отобразить это объявление.";
   private static final String UNREGISTERED_TOAST = "Сначала запустите бота командой /start.";
   private static final String ADDED_TOAST = "⭐ Добавлено в избранное";
   private static final String REMOVED_TOAST = "Убрано из избранного";
@@ -202,38 +204,68 @@ public class FavoritesCallbackHandler {
     pageSessions.put(telegramId, new PageState(page, result.getTotalPages()));
     log.debug("Favorites page rendered: telegramId={}, page={}, totalPages={}",
         telegramId, page, result.getTotalPages());
-    sendItems(chatId, result.getContent());
-    sendNavigation(chatId, page, result.getTotalPages());
+    sendPage(chatId, result.getContent(), page, result.getTotalPages());
   }
 
-  private void sendItems(String chatId, List<FavoriteResponse> items) {
-    for (var item : items) {
-      try {
-        sendItem(chatId, item);
-      } catch (Exception e) {
-        log.error("Unexpected error sending favorite item: favoriteId={}", item.id(), e);
-      }
-    }
-  }
-
-  private void sendItem(String chatId, FavoriteResponse item) {
-    var removeButton = InlineKeyboardButton.builder()
-        .text("❌ Убрать из избранного")
-        .callbackData(REMOVE_PREFIX + item.listing().id())
-        .build();
-    var keyboard = InlineKeyboardMarkup.builder()
-        .keyboardRow(new InlineKeyboardRow(removeButton))
-        .build();
+  private void sendPage(String chatId, List<FavoriteResponse> items, int page, int totalPages) {
     try {
       telegramClient.execute(SendMessage.builder()
           .chatId(chatId)
-          .text(formatItem(item))
+          .text(buildPageText(items, page, totalPages))
           .parseMode("HTML")
-          .replyMarkup(keyboard)
+          .replyMarkup(buildPageKeyboard(items, page, totalPages))
           .build());
     } catch (TelegramApiException e) {
-      log.warn("Failed to send favorite item: chatId={}", chatId, e);
+      log.warn("Failed to send favorites page: chatId={}", chatId, e);
     }
+  }
+
+  private String buildPageText(List<FavoriteResponse> items, int page, int totalPages) {
+    var sb = new StringBuilder("📄 Страница ").append(page + 1).append(" из ").append(totalPages);
+    for (var item : items) {
+      sb.append("\n\n").append(formatItemSafely(item));
+    }
+    return sb.toString();
+  }
+
+  private String formatItemSafely(FavoriteResponse item) {
+    try {
+      return formatItem(item);
+    } catch (Exception e) {
+      log.error("Unexpected error formatting favorite item: favoriteId={}", item.id(), e);
+      return ITEM_FORMAT_ERROR_TEXT;
+    }
+  }
+
+  private InlineKeyboardMarkup buildPageKeyboard(List<FavoriteResponse> items, int page, int totalPages) {
+    var builder = InlineKeyboardMarkup.builder();
+    for (var item : items) {
+      builder.keyboardRow(new InlineKeyboardRow(removeButton(item)));
+    }
+    var navButtons = navButtons(page, totalPages);
+    if (!navButtons.isEmpty()) {
+      builder.keyboardRow(new InlineKeyboardRow(navButtons));
+    }
+    builder.keyboardRow(new InlineKeyboardRow(navBtn("🏠 Главное меню", SearchResultSender.ACTION_MENU)));
+    return builder.build();
+  }
+
+  private InlineKeyboardButton removeButton(FavoriteResponse item) {
+    return InlineKeyboardButton.builder()
+        .text("❌ Убрать из избранного")
+        .callbackData(REMOVE_PREFIX + item.listing().id())
+        .build();
+  }
+
+  private List<InlineKeyboardButton> navButtons(int page, int totalPages) {
+    var navButtons = new ArrayList<InlineKeyboardButton>();
+    if (page > 0) {
+      navButtons.add(navBtn("← Предыдущие", PAGE_PREV));
+    }
+    if (page < totalPages - 1) {
+      navButtons.add(navBtn("Ещё →", PAGE_NEXT));
+    }
+    return navButtons;
   }
 
   private String formatItem(FavoriteResponse item) {
@@ -264,31 +296,6 @@ public class FavoritesCallbackHandler {
     String sign = delta.signum() > 0 ? "+" : "";
     String currency = item.listing().currency() != null ? item.listing().currency() : "";
     return sign + delta.stripTrailingZeros().toPlainString() + " " + currency;
-  }
-
-  private void sendNavigation(String chatId, int page, int totalPages) {
-    var navButtons = new ArrayList<InlineKeyboardButton>();
-    if (page > 0) {
-      navButtons.add(navBtn("← Предыдущие", PAGE_PREV));
-    }
-    if (page < totalPages - 1) {
-      navButtons.add(navBtn("Ещё →", PAGE_NEXT));
-    }
-    var markupBuilder = InlineKeyboardMarkup.builder();
-    if (!navButtons.isEmpty()) {
-      markupBuilder.keyboardRow(new InlineKeyboardRow(navButtons));
-    }
-    markupBuilder.keyboardRow(new InlineKeyboardRow(navBtn("🏠 Главное меню", SearchResultSender.ACTION_MENU)));
-
-    try {
-      telegramClient.execute(SendMessage.builder()
-          .chatId(chatId)
-          .text("📄 Страница " + (page + 1) + " из " + totalPages)
-          .replyMarkup(markupBuilder.build())
-          .build());
-    } catch (TelegramApiException e) {
-      log.warn("Failed to send favorites navigation: chatId={}", chatId, e);
-    }
   }
 
   private void sendText(String chatId, String text) {
