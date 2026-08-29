@@ -28,6 +28,7 @@ import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.chat.Chat;
 import org.telegram.telegrambots.meta.api.objects.message.Message;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -67,8 +68,8 @@ class BlacklistCallbackHandlerTest {
   private BlacklistCallbackHandler handler;
 
   @Test
-  void should_send_item_and_navigation_messages_when_user_has_entries() throws Exception {
-    // Given
+  void should_send_single_message_with_entry_and_delete_button_when_user_has_entries() throws Exception {
+    // Given — issue #477: one message per page instead of one message per entry
     var user = buildUser(7L);
     when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
     var entry = buildBlacklistEntry(3L, BlacklistEntryType.KEYWORD, "новостройка");
@@ -80,8 +81,31 @@ class BlacklistCallbackHandlerTest {
 
     // Then
     var captor = ArgumentCaptor.forClass(SendMessage.class);
-    verify(telegramClient, times(2)).execute(captor.capture());
-    assertThat(captor.getAllValues().get(0).getText()).contains("Стоп-слово").contains("новостройка");
+    verify(telegramClient, times(1)).execute(captor.capture());
+    var message = captor.getValue();
+    assertThat(message.getText()).contains("Фильтр: Все").contains("Стоп-слово").contains("новостройка");
+    assertThat(extractCallbackData(message)).contains("BL:DELETE:3");
+  }
+
+  @Test
+  void should_include_hint_in_list_message_when_blacklist_has_entries() throws Exception {
+    // Given — issue #474 (FR-NAV-10): explain where LISTING/SOURCE entries come from, now folded
+    // into the single consolidated list message introduced by #477
+    var user = buildUser(7L);
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
+    var entry = buildBlacklistEntry(3L, BlacklistEntryType.KEYWORD, "новостройка");
+    when(blacklistService.findByUser(eq(7L), isNull(), any())).thenReturn(new PageImpl<>(List.of(entry)));
+    var callback = buildCallback(1L, 100L, true, BlacklistCallbackHandler.ACTION_BLACKLIST);
+
+    // When
+    handler.handle(callback);
+
+    // Then
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient, times(1)).execute(captor.capture());
+    assertThat(captor.getValue().getText())
+        .contains("Объявления и источники скрываются кнопкой «🚫 Скрыть» с карточки в поиске")
+        .contains("Стоп-слова добавляются кнопкой «➕ Добавить стоп-слово» ниже");
   }
 
   @Test
@@ -95,10 +119,10 @@ class BlacklistCallbackHandlerTest {
     // When
     handler.handle(callback);
 
-    // Then — empty-state message, then navigation message
+    // Then — a single empty-state message (issue #477 folded the old separate nav message away)
     var captor = ArgumentCaptor.forClass(SendMessage.class);
-    verify(telegramClient, times(2)).execute(captor.capture());
-    var emptyMessage = captor.getAllValues().get(0);
+    verify(telegramClient, times(1)).execute(captor.capture());
+    var emptyMessage = captor.getValue();
     assertThat(emptyMessage.getText()).isEqualTo("🚫 Ваш чёрный список пока пуст."
         + "\n\nСкрывайте объявления и источники прямо с их карточки в поиске, либо добавьте стоп-слово кнопкой ниже.");
     var keyboard = (InlineKeyboardMarkup) emptyMessage.getReplyMarkup();
@@ -108,8 +132,45 @@ class BlacklistCallbackHandlerTest {
   }
 
   @Test
-  void should_include_hint_in_navigation_message_when_blacklist_rendered() throws Exception {
-    // Given — issue #474 (FR-NAV-10): explain where LISTING/SOURCE entries come from
+  void should_render_entry_with_blank_value_without_crashing_when_value_is_empty() throws Exception {
+    // Given — boundary: an entry with an empty value must not break rendering (FR-NAV-6 error isolation)
+    var user = buildUser(7L);
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
+    var entry = buildBlacklistEntry(4L, BlacklistEntryType.SOURCE, "");
+    when(blacklistService.findByUser(eq(7L), isNull(), any())).thenReturn(new PageImpl<>(List.of(entry)));
+    var callback = buildCallback(1L, 100L, true, BlacklistCallbackHandler.ACTION_BLACKLIST);
+
+    // When
+    handler.handle(callback);
+
+    // Then
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient, times(1)).execute(captor.capture());
+    assertThat(captor.getValue().getText()).contains("Источник: ");
+  }
+
+  @Test
+  void should_show_delete_row_per_entry_when_multiple_entries_present() throws Exception {
+    // Given
+    var user = buildUser(7L);
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
+    var first = buildBlacklistEntry(1L, BlacklistEntryType.KEYWORD, "аренда");
+    var second = buildBlacklistEntry(2L, BlacklistEntryType.SOURCE, "realt");
+    when(blacklistService.findByUser(eq(7L), isNull(), any())).thenReturn(new PageImpl<>(List.of(first, second)));
+    var callback = buildCallback(1L, 100L, true, BlacklistCallbackHandler.ACTION_BLACKLIST);
+
+    // When
+    handler.handle(callback);
+
+    // Then
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient, times(1)).execute(captor.capture());
+    assertThat(extractCallbackData(captor.getValue())).contains("BL:DELETE:1", "BL:DELETE:2");
+  }
+
+  @Test
+  void should_not_show_pagination_row_when_only_one_page_exists() throws Exception {
+    // Given
     var user = buildUser(7L);
     when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
     var entry = buildBlacklistEntry(3L, BlacklistEntryType.KEYWORD, "новостройка");
@@ -119,12 +180,53 @@ class BlacklistCallbackHandlerTest {
     // When
     handler.handle(callback);
 
-    // Then — navigation message (second one) carries the hint
+    // Then
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient, times(1)).execute(captor.capture());
+    assertThat(extractButtonLabels(captor.getValue())).doesNotContain("Ещё →", "← Предыдущие");
+  }
+
+  @Test
+  void should_send_session_expired_message_when_page_callback_has_no_active_session() throws Exception {
+    // Given — BL:PAGE:* received without a preceding handle()/handleFilter() call
+    var callback = buildCallback(1L, 100L, true, "BL:PAGE:NEXT");
+
+    // When
+    handler.handlePage(callback);
+
+    // Then
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient).execute(captor.capture());
+    assertThat(captor.getValue().getText()).contains("устарел");
+    verify(userService, never()).findByTelegramId(any());
+  }
+
+  @Test
+  void should_render_next_page_with_same_filter_when_bl_page_next_callback_received_after_filter() throws Exception {
+    // Given — total=6 with pageSize=5 yields totalPages=2 (PageImpl computes totalPages from
+    // total/pageSize, not from the content list size); the active KEYWORD filter must carry over
+    var user = buildUser(7L);
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
+    var page1Entry = buildBlacklistEntry(1L, BlacklistEntryType.KEYWORD, "аренда");
+    var page2Entry = buildBlacklistEntry(2L, BlacklistEntryType.KEYWORD, "продажа");
+    var sort = org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "createdAt");
+    when(blacklistService.findByUser(eq(7L), eq(BlacklistEntryType.KEYWORD),
+        eq(org.springframework.data.domain.PageRequest.of(0, 5, sort))))
+        .thenReturn(new PageImpl<>(List.of(page1Entry), org.springframework.data.domain.PageRequest.of(0, 5), 6));
+    when(blacklistService.findByUser(eq(7L), eq(BlacklistEntryType.KEYWORD),
+        eq(org.springframework.data.domain.PageRequest.of(1, 5, sort))))
+        .thenReturn(new PageImpl<>(List.of(page2Entry), org.springframework.data.domain.PageRequest.of(1, 5), 6));
+    var filterCallback = buildCallback(1L, 100L, true, "BL:FILTER:KEYWORD");
+    handler.handleFilter(filterCallback);
+    var pageCallback = buildCallback(1L, 100L, true, "BL:PAGE:NEXT");
+
+    // When
+    handler.handlePage(pageCallback);
+
+    // Then — the second render carries the KEYWORD filter and shows the second page's entry
     var captor = ArgumentCaptor.forClass(SendMessage.class);
     verify(telegramClient, times(2)).execute(captor.capture());
-    var navigationMessage = captor.getAllValues().get(1);
-    assertThat(navigationMessage.getText()).contains("Объявления и источники скрываются кнопкой «🚫 Скрыть» с карточки в поиске")
-        .contains("Стоп-слова добавляются кнопкой «➕ Добавить стоп-слово» ниже");
+    assertThat(captor.getAllValues().get(1).getText()).contains("продажа").contains("Фильтр: Стоп-слово");
   }
 
   @Test
@@ -341,10 +443,10 @@ class BlacklistCallbackHandlerTest {
     // When
     handler.handleCommand(1L, "100", true);
 
-    // Then
+    // Then — single empty-state message, same shape as handle(CallbackQuery)
     var captor = ArgumentCaptor.forClass(SendMessage.class);
-    verify(telegramClient, times(2)).execute(captor.capture());
-    assertThat(captor.getAllValues().get(0).getText()).isEqualTo("🚫 Ваш чёрный список пока пуст.");
+    verify(telegramClient, times(1)).execute(captor.capture());
+    assertThat(captor.getValue().getText()).contains("Ваш чёрный список пока пуст.");
   }
 
   @Test
@@ -374,6 +476,20 @@ class BlacklistCallbackHandlerTest {
 
   private BlacklistEntryResponse buildBlacklistEntry(Long id, BlacklistEntryType type, String value) {
     return new BlacklistEntryResponse(id, type, value, Instant.now());
+  }
+
+  private List<String> extractCallbackData(SendMessage message) {
+    return ((InlineKeyboardMarkup) message.getReplyMarkup()).getKeyboard().stream()
+        .flatMap(row -> row.stream())
+        .map(InlineKeyboardButton::getCallbackData)
+        .toList();
+  }
+
+  private List<String> extractButtonLabels(SendMessage message) {
+    return ((InlineKeyboardMarkup) message.getReplyMarkup()).getKeyboard().stream()
+        .flatMap(row -> row.stream())
+        .map(InlineKeyboardButton::getText)
+        .toList();
   }
 
   private CallbackQuery buildCallback(Long telegramId, Long chatId, boolean isPrivateChat, String data) {

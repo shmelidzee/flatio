@@ -291,6 +291,21 @@ class FlatioBotTest {
   }
 
   @Test
+  void should_delegate_to_blacklist_page_handler_when_bl_page_callback_received() {
+    // Given — issue #477: blacklist pagination
+    var telegramClient = mock(TelegramClient.class);
+    var blacklistCallbackHandler = mock(BlacklistCallbackHandler.class);
+    var bot = buildBotWithBlacklistHandler(telegramClient, blacklistCallbackHandler, executor);
+    var update = buildCallbackUpdate(1, 100L, "BL:PAGE:NEXT");
+
+    // When
+    bot.handleUpdate(update);
+
+    // Then
+    verify(blacklistCallbackHandler).handlePage(update.getCallbackQuery());
+  }
+
+  @Test
   void should_delegate_to_start_search_handler_when_sub_start_search_callback_received() {
     // Given — issue #475
     var telegramClient = mock(TelegramClient.class);

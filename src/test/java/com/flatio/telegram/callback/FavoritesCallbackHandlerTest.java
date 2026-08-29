@@ -303,12 +303,12 @@ class FavoritesCallbackHandlerTest {
 
   @Test
   void should_render_favorites_when_command_invoked_with_telegram_id_and_chat_id() throws Exception {
-    // Given — issue #473: /favorites text command reuses the same rendering as the callback
+    // Given — issue #473: /favorites text command reuses the same rendering as the callback.
+    // A registered user with an empty favorites list renders via sendEmptyState (issue #474),
+    // not the unregistered-user sendText/buildBackToMenu path.
     var user = buildUser(7L);
     when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
     when(favoriteService.findByUser(eq(7L), any())).thenReturn(Page.empty());
-    var expectedKeyboard = mock(InlineKeyboardMarkup.class);
-    when(keyboardFactory.buildBackToMenu()).thenReturn(expectedKeyboard);
 
     // When
     handler.handleCommand(1L, "100", true);
@@ -316,7 +316,7 @@ class FavoritesCallbackHandlerTest {
     // Then
     var captor = ArgumentCaptor.forClass(SendMessage.class);
     verify(telegramClient).execute(captor.capture());
-    assertThat(captor.getValue().getText()).isEqualTo("⭐ У вас пока нет избранных объявлений.");
+    assertThat(captor.getValue().getText()).contains("У вас пока нет избранных объявлений.");
   }
 
   @Test
