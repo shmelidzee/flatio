@@ -28,4 +28,6 @@ public class SearchFilterState {
   private Long cityId;
   /** Free-text keyword query; null means no text filter. */
   private String query;
+  /** ID of the subscription being edited via this wizard run; null means a plain search (issue #479). */
+  private Long editingSubscriptionId;
 }
