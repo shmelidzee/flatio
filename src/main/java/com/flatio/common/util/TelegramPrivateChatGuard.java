@@ -1,6 +1,8 @@
 package com.flatio.common.util;
 
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
+import org.telegram.telegrambots.meta.api.objects.chat.Chat;
+import org.telegram.telegrambots.meta.api.objects.message.Message;
 
 /**
  * Restricts Telegram bot sections that return personal user data to private one-on-one chats
@@ -30,6 +32,21 @@ public final class TelegramPrivateChatGuard {
    * @return true if the chat type is {@code private}; false for group/supergroup/channel chats
    */
   public static boolean isPrivateChat(CallbackQuery callbackQuery) {
-    return Boolean.TRUE.equals(callbackQuery.getMessage().getChat().isUserChat());
+    return isPrivateChat(callbackQuery.getMessage().getChat());
+  }
+
+  /**
+   * Checks whether a text-command message's chat is a one-on-one conversation with the bot
+   * (issue #473 — {@code /favorites}, {@code /subscriptions}, {@code /blacklist} commands).
+   *
+   * @param message the incoming message carrying a text command, never null
+   * @return true if the chat type is {@code private}; false for group/supergroup/channel chats
+   */
+  public static boolean isPrivateChat(Message message) {
+    return isPrivateChat(message.getChat());
+  }
+
+  private static boolean isPrivateChat(Chat chat) {
+    return Boolean.TRUE.equals(chat.isUserChat());
   }
 }

@@ -97,10 +97,24 @@ public class SubscriptionsCallbackHandler {
    * @param callbackQuery the incoming callback query, never null
    */
   public void handle(CallbackQuery callbackQuery) {
-    Long telegramId = callbackQuery.getFrom().getId();
-    String chatId = String.valueOf(callbackQuery.getMessage().getChatId());
+    renderList(callbackQuery.getFrom().getId(), String.valueOf(callbackQuery.getMessage().getChatId()),
+        TelegramPrivateChatGuard.isPrivateChat(callbackQuery));
+  }
 
-    if (!TelegramPrivateChatGuard.isPrivateChat(callbackQuery)) {
+  /**
+   * Renders the user's subscriptions list from the {@code /subscriptions} text command
+   * (issue #473) — same rendering as {@link #handle(CallbackQuery)}, no new business logic.
+   *
+   * @param telegramId    Telegram user identifier, never null
+   * @param chatId        target chat identifier, never null
+   * @param isPrivateChat whether the command was sent in a private one-on-one chat
+   */
+  public void handleCommand(Long telegramId, String chatId, boolean isPrivateChat) {
+    renderList(telegramId, chatId, isPrivateChat);
+  }
+
+  private void renderList(Long telegramId, String chatId, boolean isPrivateChat) {
+    if (!isPrivateChat) {
       log.debug("SUB callback rejected outside a private chat: chatId={}", chatId);
       sendText(chatId, TelegramPrivateChatGuard.PRIVATE_CHAT_REQUIRED_TEXT);
       return;

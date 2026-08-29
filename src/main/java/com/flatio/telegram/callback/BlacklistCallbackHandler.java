@@ -91,7 +91,20 @@ public class BlacklistCallbackHandler {
    * @param callbackQuery the incoming callback query, never null
    */
   public void handle(CallbackQuery callbackQuery) {
-    renderList(callbackQuery, null);
+    renderList(callbackQuery.getFrom().getId(), String.valueOf(callbackQuery.getMessage().getChatId()),
+        TelegramPrivateChatGuard.isPrivateChat(callbackQuery), null);
+  }
+
+  /**
+   * Renders the blacklist, resetting the type filter to "all", from the {@code /blacklist} text
+   * command (issue #473) — same rendering as {@link #handle(CallbackQuery)}, no new business logic.
+   *
+   * @param telegramId    Telegram user identifier, never null
+   * @param chatId        target chat identifier, never null
+   * @param isPrivateChat whether the command was sent in a private one-on-one chat
+   */
+  public void handleCommand(Long telegramId, String chatId, boolean isPrivateChat) {
+    renderList(telegramId, chatId, isPrivateChat, null);
   }
 
   /**
@@ -100,7 +113,8 @@ public class BlacklistCallbackHandler {
    * @param callbackQuery the incoming callback query, never null
    */
   public void handleFilter(CallbackQuery callbackQuery) {
-    renderList(callbackQuery, parseFilterType(callbackQuery.getData()));
+    renderList(callbackQuery.getFrom().getId(), String.valueOf(callbackQuery.getMessage().getChatId()),
+        TelegramPrivateChatGuard.isPrivateChat(callbackQuery), parseFilterType(callbackQuery.getData()));
   }
 
   /**
@@ -244,11 +258,8 @@ public class BlacklistCallbackHandler {
     }
   }
 
-  private void renderList(CallbackQuery callbackQuery, BlacklistEntryType type) {
-    Long telegramId = callbackQuery.getFrom().getId();
-    String chatId = String.valueOf(callbackQuery.getMessage().getChatId());
-
-    if (!TelegramPrivateChatGuard.isPrivateChat(callbackQuery)) {
+  private void renderList(Long telegramId, String chatId, boolean isPrivateChat, BlacklistEntryType type) {
+    if (!isPrivateChat) {
       log.debug("BL callback rejected outside a private chat: chatId={}", chatId);
       sendText(chatId, TelegramPrivateChatGuard.PRIVATE_CHAT_REQUIRED_TEXT);
       return;
