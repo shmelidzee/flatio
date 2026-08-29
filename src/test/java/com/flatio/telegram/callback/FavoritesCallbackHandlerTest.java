@@ -62,7 +62,7 @@ class FavoritesCallbackHandlerTest {
   private FavoritesCallbackHandler handler;
 
   @Test
-  void should_send_item_and_navigation_messages_when_user_has_favorites() throws Exception {
+  void should_send_single_page_message_when_user_has_favorites() throws Exception {
     // Given
     var user = buildUser(7L);
     when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
@@ -73,12 +73,39 @@ class FavoritesCallbackHandlerTest {
     // When
     handler.handle(callback);
 
-    // Then — one message for the item, one navigation message
+    // Then — the whole page (header + item) is one message, with one remove-button row
+    // plus the menu row (no pagination row for a single-page result)
     var captor = ArgumentCaptor.forClass(SendMessage.class);
-    verify(telegramClient, org.mockito.Mockito.times(2)).execute(captor.capture());
-    var messages = captor.getAllValues();
-    assertThat(messages.get(0).getText()).contains("Квартира в центре").contains("50000 USD");
-    assertThat(messages.get(1).getText()).contains("Страница 1 из 1");
+    verify(telegramClient).execute(captor.capture());
+    var message = captor.getValue();
+    assertThat(message.getText()).contains("Страница 1 из 1").contains("Квартира в центре").contains("50000 USD");
+    var keyboard = (InlineKeyboardMarkup) message.getReplyMarkup();
+    assertThat(keyboard.getKeyboard()).hasSize(2);
+  }
+
+  @Test
+  void should_render_other_items_when_one_item_fails_to_format() throws Exception {
+    // Given — a favorite with a null listing summary (data-integrity edge case) must not
+    // take down the whole page: the working item still renders with its remove button
+    var user = buildUser(7L);
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
+    var broken = new FavoriteResponse(9L, null, null, null, null, false, false, Instant.now());
+    var working = buildFavoriteResponse(3L, "Квартира в центре", BigDecimal.valueOf(50_000), "USD");
+    when(favoriteService.findByUser(eq(7L), any())).thenReturn(new PageImpl<>(List.of(broken, working)));
+    var callback = buildCallback(1L, 100L, true, FavoritesCallbackHandler.ACTION_FAVORITES);
+
+    // When
+    handler.handle(callback);
+
+    // Then — one message still sent, working item's text/button present, broken item
+    // shows a fallback line and contributes no button row
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient).execute(captor.capture());
+    var message = captor.getValue();
+    assertThat(message.getText()).contains("Квартира в центре").contains("Не удалось отобразить это объявление");
+    var keyboard = (InlineKeyboardMarkup) message.getReplyMarkup();
+    assertThat(keyboard.getKeyboard()).hasSize(2);
+    assertThat(keyboard.getKeyboard().get(0).get(0).getCallbackData()).isEqualTo("FAV:REMOVE:1");
   }
 
   @Test
@@ -267,12 +294,11 @@ class FavoritesCallbackHandlerTest {
     // When
     handler.handlePage(pageCallback);
 
-    // Then — the second render shows the second page's item and navigation
+    // Then — one message per page render (open + next), second message shows page 2's item
     var captor = ArgumentCaptor.forClass(SendMessage.class);
-    verify(telegramClient, org.mockito.Mockito.times(4)).execute(captor.capture());
-    var lastTwo = captor.getAllValues().subList(2, 4);
-    assertThat(lastTwo.get(0).getText()).contains("Квартира 2");
-    assertThat(lastTwo.get(1).getText()).contains("Страница 2 из 2");
+    verify(telegramClient, org.mockito.Mockito.times(2)).execute(captor.capture());
+    var secondPageMessage = captor.getAllValues().get(1);
+    assertThat(secondPageMessage.getText()).contains("Квартира 2").contains("Страница 2 из 2");
   }
 
   @Test
