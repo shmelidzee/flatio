@@ -499,6 +499,19 @@ class SubscriptionsCallbackHandlerTest {
   }
 
   @Test
+  void should_reject_save_edit_from_non_private_chat() {
+    // Given — issue #463: subscription name must not leak into a group chat confirmation
+    var callback = buildCallback(1L, 100L, false, "FILTER:SEARCH");
+
+    // When
+    handler.handleSaveEdit(callback);
+
+    // Then
+    verify(wizard, never()).getState(any());
+    verify(subscriptionService, never()).update(any(), any(), any());
+  }
+
+  @Test
   void should_send_session_expired_message_when_save_edit_has_no_wizard_state() {
     // Given
     when(wizard.getState(1L)).thenReturn(Optional.empty());

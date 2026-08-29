@@ -372,6 +372,10 @@ public class SubscriptionsCallbackHandler {
     Long telegramId = callbackQuery.getFrom().getId();
     String chatId = String.valueOf(callbackQuery.getMessage().getChatId());
 
+    if (!TelegramPrivateChatGuard.isPrivateChat(callbackQuery)) {
+      sendPlainText(chatId, TelegramPrivateChatGuard.PRIVATE_CHAT_REQUIRED_TEXT);
+      return;
+    }
     var stateOpt = wizard.getState(telegramId);
     var originalOpt = editState.get(telegramId);
     if (stateOpt.isEmpty() || originalOpt.isEmpty() || stateOpt.get().getEditingSubscriptionId() == null) {
@@ -383,19 +387,11 @@ public class SubscriptionsCallbackHandler {
       sendPlainText(chatId, UNREGISTERED_TEXT);
       return;
     }
-    saveEdit(telegramId, chatId, userOpt.get().getId(), stateOpt.get(), originalOpt.get());
-  }
-
-  private void saveEdit(Long telegramId, String chatId, Long userId, SearchFilterState state,
-      SubscriptionResponse original) {
-    Long subscriptionId = state.getEditingSubscriptionId();
-    var request = new UpdateSubscriptionRequest(
-        original.name(), toSubscriptionCriteria(state), original.triggers(),
-        original.deliveryMode(), original.channelType(), original.priceDropThreshold(),
-        original.quietHoursStart(), original.quietHoursEnd()
-    );
+    var state = stateOpt.get();
+    var original = originalOpt.get();
+    var request = buildUpdateRequest(original, state);
     try {
-      subscriptionService.update(userId, subscriptionId, request);
+      subscriptionService.update(userOpt.get().getId(), state.getEditingSubscriptionId(), request);
       sendPlainText(chatId, "💾 Подписка «" + TelegramHtmlEscaper.escapeHtml(original.name()) + "» обновлена.");
     } catch (SubscriptionNotFoundException e) {
       sendPlainText(chatId, EDIT_NOT_FOUND_TEXT);
@@ -403,6 +399,14 @@ public class SubscriptionsCallbackHandler {
       wizard.reset(telegramId);
       editState.clear(telegramId);
     }
+  }
+
+  private UpdateSubscriptionRequest buildUpdateRequest(SubscriptionResponse original, SearchFilterState state) {
+    return new UpdateSubscriptionRequest(
+        original.name(), toSubscriptionCriteria(state), original.triggers(),
+        original.deliveryMode(), original.channelType(), original.priceDropThreshold(),
+        original.quietHoursStart(), original.quietHoursEnd()
+    );
   }
 
   private SearchFilterState toSearchFilterState(SubscriptionSearchCriteria criteria) {
