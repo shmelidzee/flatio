@@ -66,7 +66,11 @@ public class BlacklistCallbackHandler {
   private static final int MAX_LIST_SIZE = 20;
   private static final int MAX_KEYWORD_LENGTH = 100;
 
-  private static final String EMPTY_TEXT = "🚫 Ваш чёрный список пока пуст.";
+  private static final String EMPTY_TEXT = "🚫 Ваш чёрный список пока пуст."
+      + "\n\nСкрывайте объявления и источники прямо с их карточки в поиске, либо добавьте стоп-слово кнопкой ниже.";
+  private static final String HINT_TEXT =
+      "Объявления и источники скрываются кнопкой «🚫 Скрыть» с карточки в поиске."
+      + " Стоп-слова добавляются кнопкой «➕ Добавить стоп-слово» ниже.";
   private static final String KEYWORD_PROMPT_TEXT = "Введите стоп-слово:";
   private static final String INVALID_KEYWORD_TEXT =
       "Стоп-слово не может быть пустым и должно быть не длиннее 100 символов. Введите его ещё раз:";
@@ -265,7 +269,7 @@ public class BlacklistCallbackHandler {
     var page = blacklistService.findByUser(userOpt.get().getId(), type, pageable);
     log.debug("Blacklist rendered: telegramId={}, type={}, count={}", telegramId, type, page.getNumberOfElements());
     if (page.isEmpty()) {
-      sendText(chatId, EMPTY_TEXT);
+      sendEmptyState(chatId);
     } else {
       sendItems(chatId, page.getContent());
     }
@@ -336,14 +340,38 @@ public class BlacklistCallbackHandler {
         .keyboardRow(new InlineKeyboardRow(navBtn("➕ Добавить стоп-слово", ADD_KEYWORD)))
         .keyboardRow(new InlineKeyboardRow(navBtn("🏠 Главное меню", SearchResultSender.ACTION_MENU)))
         .build();
+    String text = "🚫 Фильтр: " + (currentType == null ? "Все" : typeLabel(currentType)) + "\n\n" + HINT_TEXT;
     try {
       telegramClient.execute(SendMessage.builder()
           .chatId(chatId)
-          .text("🚫 Фильтр: " + (currentType == null ? "Все" : typeLabel(currentType)))
+          .text(text)
           .replyMarkup(keyboard)
           .build());
     } catch (TelegramApiException e) {
       log.warn("Failed to send blacklist navigation: chatId={}", chatId, e);
+    }
+  }
+
+  /**
+   * Sends the empty-blacklist message with a shortcut into the search wizard, so the user is not
+   * left at a dead end without knowing how to hide a first listing or source (issue #474).
+   *
+   * @param chatId target chat identifier, never null
+   */
+  private void sendEmptyState(String chatId) {
+    var keyboard = InlineKeyboardMarkup.builder()
+        .keyboardRow(new InlineKeyboardRow(navBtn("🔍 Перейти к поиску", FilterCallbackHandler.ACTION_SEARCH)))
+        .keyboardRow(new InlineKeyboardRow(navBtn("🏠 Главное меню", SearchResultSender.ACTION_MENU)))
+        .build();
+    try {
+      telegramClient.execute(SendMessage.builder()
+          .chatId(chatId)
+          .text(EMPTY_TEXT)
+          .parseMode("HTML")
+          .replyMarkup(keyboard)
+          .build());
+    } catch (TelegramApiException e) {
+      log.warn("Failed to send blacklist empty state: chatId={}", chatId, e);
     }
   }
 

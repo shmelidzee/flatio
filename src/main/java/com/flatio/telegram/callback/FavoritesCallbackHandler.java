@@ -68,7 +68,8 @@ public class FavoritesCallbackHandler {
   private static final long SESSION_TTL_MINUTES = 30;
   private static final long MAX_SESSIONS = 10_000;
 
-  private static final String EMPTY_TEXT = "⭐ У вас пока нет избранных объявлений.";
+  private static final String EMPTY_TEXT = "⭐ У вас пока нет избранных объявлений."
+      + "\n\nДобавьте объявление в избранное с его карточки в поиске.";
   private static final String SESSION_EXPIRED_TEXT = "Список устарел. Откройте раздел «⭐ Избранное» заново.";
   private static final String UNREGISTERED_TOAST = "Сначала запустите бота командой /start.";
   private static final String ADDED_TOAST = "⭐ Добавлено в избранное";
@@ -195,7 +196,7 @@ public class FavoritesCallbackHandler {
     var result = favoriteService.findByUser(userOpt.get().getId(), pageable);
     if (result.isEmpty()) {
       pageSessions.remove(telegramId);
-      sendText(chatId, EMPTY_TEXT);
+      sendEmptyState(chatId);
       return;
     }
 
@@ -301,6 +302,29 @@ public class FavoritesCallbackHandler {
           .build());
     } catch (TelegramApiException e) {
       log.warn("Failed to send favorites message: chatId={}", chatId, e);
+    }
+  }
+
+  /**
+   * Sends the empty-favorites message with a shortcut into the search wizard, so the user is not
+   * left at a dead end without knowing how to add a first favorite (issue #474).
+   *
+   * @param chatId target chat identifier, never null
+   */
+  private void sendEmptyState(String chatId) {
+    var keyboard = InlineKeyboardMarkup.builder()
+        .keyboardRow(new InlineKeyboardRow(navBtn("🔍 Перейти к поиску", FilterCallbackHandler.ACTION_SEARCH)))
+        .keyboardRow(new InlineKeyboardRow(navBtn("🏠 Главное меню", SearchResultSender.ACTION_MENU)))
+        .build();
+    try {
+      telegramClient.execute(SendMessage.builder()
+          .chatId(chatId)
+          .text(EMPTY_TEXT)
+          .parseMode("HTML")
+          .replyMarkup(keyboard)
+          .build());
+    } catch (TelegramApiException e) {
+      log.warn("Failed to send favorites empty state: chatId={}", chatId, e);
     }
   }
 
