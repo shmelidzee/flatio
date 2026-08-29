@@ -7,6 +7,7 @@ import com.flatio.domain.blacklist.BlacklistEntryType;
 import com.flatio.domain.user.User;
 import com.flatio.service.BlacklistService;
 import com.flatio.service.UserService;
+import com.flatio.telegram.handler.SearchResultSender;
 import com.flatio.telegram.keyboard.MainMenuKeyboardFactory;
 import com.flatio.telegram.state.BlacklistKeywordPromptState;
 import com.flatio.web.dto.BlacklistEntryResponse;
@@ -87,8 +88,29 @@ class BlacklistCallbackHandlerTest {
   }
 
   @Test
-  void should_send_single_message_with_empty_hint_when_user_has_no_entries() throws Exception {
-    // Given
+  void should_include_hint_in_list_message_when_blacklist_has_entries() throws Exception {
+    // Given — issue #474 (FR-NAV-10): explain where LISTING/SOURCE entries come from, now folded
+    // into the single consolidated list message introduced by #477
+    var user = buildUser(7L);
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
+    var entry = buildBlacklistEntry(3L, BlacklistEntryType.KEYWORD, "новостройка");
+    when(blacklistService.findByUser(eq(7L), isNull(), any())).thenReturn(new PageImpl<>(List.of(entry)));
+    var callback = buildCallback(1L, 100L, true, BlacklistCallbackHandler.ACTION_BLACKLIST);
+
+    // When
+    handler.handle(callback);
+
+    // Then
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient, times(1)).execute(captor.capture());
+    assertThat(captor.getValue().getText())
+        .contains("Объявления и источники скрываются кнопкой «🚫 Скрыть» с карточки в поиске")
+        .contains("Стоп-слова добавляются кнопкой «➕ Добавить стоп-слово» ниже");
+  }
+
+  @Test
+  void should_send_empty_state_with_search_shortcut_when_user_has_no_entries() throws Exception {
+    // Given — issue #474: empty blacklist must not be a dead end
     var user = buildUser(8L);
     when(userService.findByTelegramId(2L)).thenReturn(Optional.of(user));
     when(blacklistService.findByUser(eq(8L), isNull(), any())).thenReturn(Page.empty());
@@ -97,10 +119,16 @@ class BlacklistCallbackHandlerTest {
     // When
     handler.handle(callback);
 
-    // Then
+    // Then — a single empty-state message (issue #477 folded the old separate nav message away)
     var captor = ArgumentCaptor.forClass(SendMessage.class);
     verify(telegramClient, times(1)).execute(captor.capture());
-    assertThat(captor.getValue().getText()).isEqualTo("🚫 Фильтр: Все\n\n🚫 Ваш чёрный список пока пуст.");
+    var emptyMessage = captor.getValue();
+    assertThat(emptyMessage.getText()).isEqualTo("🚫 Ваш чёрный список пока пуст."
+        + "\n\nСкрывайте объявления и источники прямо с их карточки в поиске, либо добавьте стоп-слово кнопкой ниже.");
+    var keyboard = (InlineKeyboardMarkup) emptyMessage.getReplyMarkup();
+    assertThat(keyboard.getKeyboard().get(0).get(0).getText()).isEqualTo("🔍 Перейти к поиску");
+    assertThat(keyboard.getKeyboard().get(0).get(0).getCallbackData()).isEqualTo(FilterCallbackHandler.ACTION_SEARCH);
+    assertThat(keyboard.getKeyboard().get(1).get(0).getCallbackData()).isEqualTo(SearchResultSender.ACTION_MENU);
   }
 
   @Test
@@ -402,6 +430,37 @@ class BlacklistCallbackHandlerTest {
 
     // Then
     assertThat(toast).contains("личные данные");
+    verify(userService, never()).findByTelegramId(any());
+  }
+
+  @Test
+  void should_render_blacklist_when_command_invoked_with_telegram_id_and_chat_id() throws Exception {
+    // Given — issue #473: /blacklist text command reuses the same rendering as the callback
+    var user = buildUser(7L);
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
+    when(blacklistService.findByUser(eq(7L), isNull(), any())).thenReturn(Page.empty());
+
+    // When
+    handler.handleCommand(1L, "100", true);
+
+    // Then — single empty-state message, same shape as handle(CallbackQuery)
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient, times(1)).execute(captor.capture());
+    assertThat(captor.getValue().getText()).contains("Ваш чёрный список пока пуст.");
+  }
+
+  @Test
+  void should_send_private_chat_required_message_when_command_invoked_outside_private_chat() throws Exception {
+    // Given — issue #473
+    lenient().when(keyboardFactory.buildBackToMenu()).thenReturn(mock(InlineKeyboardMarkup.class));
+
+    // When
+    handler.handleCommand(1L, "100", false);
+
+    // Then
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient).execute(captor.capture());
+    assertThat(captor.getValue().getText()).contains("личные данные");
     verify(userService, never()).findByTelegramId(any());
   }
 

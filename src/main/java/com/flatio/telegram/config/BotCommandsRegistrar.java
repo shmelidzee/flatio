@@ -35,6 +35,9 @@ public class BotCommandsRegistrar {
     var commands = List.of(
         new BotCommand("start", "Начать работу с ботом"),
         new BotCommand("search", "Поиск объявлений с фильтрами"),
+        new BotCommand("favorites", "Избранные объявления"),
+        new BotCommand("subscriptions", "Мои подписки на поиск"),
+        new BotCommand("blacklist", "Чёрный список"),
         new BotCommand("help", "Список доступных команд")
     );
     try {
