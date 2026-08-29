@@ -17,6 +17,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -240,7 +241,7 @@ public class FavoritesCallbackHandler {
   private InlineKeyboardMarkup buildPageKeyboard(List<FavoriteResponse> items, int page, int totalPages) {
     var builder = InlineKeyboardMarkup.builder();
     for (var item : items) {
-      builder.keyboardRow(new InlineKeyboardRow(removeButton(item)));
+      removeButtonSafely(item).ifPresent(button -> builder.keyboardRow(new InlineKeyboardRow(button)));
     }
     var navButtons = navButtons(page, totalPages);
     if (!navButtons.isEmpty()) {
@@ -250,11 +251,16 @@ public class FavoritesCallbackHandler {
     return builder.build();
   }
 
-  private InlineKeyboardButton removeButton(FavoriteResponse item) {
-    return InlineKeyboardButton.builder()
-        .text("❌ Убрать из избранного")
-        .callbackData(REMOVE_PREFIX + item.listing().id())
-        .build();
+  private Optional<InlineKeyboardButton> removeButtonSafely(FavoriteResponse item) {
+    try {
+      return Optional.of(InlineKeyboardButton.builder()
+          .text("❌ Убрать из избранного")
+          .callbackData(REMOVE_PREFIX + item.listing().id())
+          .build());
+    } catch (Exception e) {
+      log.error("Unexpected error building remove button: favoriteId={}", item.id(), e);
+      return Optional.empty();
+    }
   }
 
   private List<InlineKeyboardButton> navButtons(int page, int totalPages) {
