@@ -291,6 +291,21 @@ class FlatioBotTest {
   }
 
   @Test
+  void should_delegate_to_start_search_handler_when_sub_start_search_callback_received() {
+    // Given — issue #475
+    var telegramClient = mock(TelegramClient.class);
+    var subscriptionsCallbackHandler = mock(SubscriptionsCallbackHandler.class);
+    var bot = buildBotWithSubscriptionsHandler(telegramClient, subscriptionsCallbackHandler, executor);
+    var update = buildCallbackUpdate(1, 100L, "SUB:START_SEARCH");
+
+    // When
+    bot.handleUpdate(update);
+
+    // Then
+    verify(subscriptionsCallbackHandler).handleStartSearch(update.getCallbackQuery());
+  }
+
+  @Test
   void should_answer_callback_with_toast_when_bl_delete_callback_received() throws TelegramApiException {
     // Given
     var telegramClient = mock(TelegramClient.class);

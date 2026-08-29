@@ -323,6 +323,9 @@ public class FlatioBot {
     if (SubscriptionsCallbackHandler.CREATE_FROM_FILTER.equals(data)) {
       answerCallbackQuery(callbackQuery.getId());
       subscriptionsCallbackHandler.handleCreateFromFilter(callbackQuery);
+    } else if (SubscriptionsCallbackHandler.START_SEARCH.equals(data)) {
+      answerCallbackQuery(callbackQuery.getId());
+      subscriptionsCallbackHandler.handleStartSearch(callbackQuery);
     } else if (data.startsWith(SubscriptionsCallbackHandler.PAUSE_PREFIX)) {
       answerCallbackQuery(callbackQuery.getId(), subscriptionsCallbackHandler.handlePause(callbackQuery));
     } else if (data.startsWith(SubscriptionsCallbackHandler.RESUME_PREFIX)) {
