@@ -452,6 +452,11 @@ public class SubscriptionsCallbackHandler {
   }
 
   private String resolveCityLabel(SubscriptionSearchCriteria criteria) {
+    String city = resolveCityName(criteria);
+    return city == null ? null : TelegramHtmlEscaper.escapeHtml(city);
+  }
+
+  private String resolveCityName(SubscriptionSearchCriteria criteria) {
     if (criteria.city() != null && !criteria.city().isBlank()) {
       return criteria.city();
     }
