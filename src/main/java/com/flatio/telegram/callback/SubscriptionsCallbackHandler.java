@@ -4,9 +4,12 @@ import com.flatio.common.exception.SubscriptionLimitExceededException;
 import com.flatio.common.exception.SubscriptionNotFoundException;
 import com.flatio.common.util.TelegramHtmlEscaper;
 import com.flatio.common.util.TelegramPrivateChatGuard;
+import com.flatio.domain.city.City;
+import com.flatio.domain.listing.DealType;
 import com.flatio.domain.subscription.DeliveryMode;
 import com.flatio.domain.subscription.SubscriptionChannelType;
 import com.flatio.domain.subscription.TriggerType;
+import com.flatio.service.CityService;
 import com.flatio.service.SubscriptionService;
 import com.flatio.service.UserService;
 import com.flatio.telegram.handler.SearchResultSender;
@@ -17,7 +20,12 @@ import com.flatio.telegram.state.SubscriptionCreationState;
 import com.flatio.web.dto.CreateSubscriptionRequest;
 import com.flatio.web.dto.SubscriptionResponse;
 import com.flatio.web.dto.SubscriptionSearchCriteria;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import java.math.BigDecimal;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -34,15 +42,16 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
 
 /**
  * Handles the "🔔 Мои подписки" section: creating a subscription from the current search filter,
- * viewing the subscriptions list, and pausing/resuming/deleting subscriptions (issue #458).
+ * viewing the paginated subscriptions list, and pausing/resuming/deleting subscriptions
+ * (issues #458, #478).
  *
  * <p>Reuses {@link SubscriptionService}, the same service backing the REST
  * {@code /api/v1/subscriptions} endpoint (Telegram and REST API share services, per project
- * architecture rules). Unlike the read-only summary shipped in #456, this renders one Telegram
- * message per subscription (with its own pause/resume and delete buttons) followed by a single
- * navigation message, matching the shape already used for search results by
- * {@link SearchResultSender}. Explicit pagination is not required by this issue's acceptance
- * criteria, so the list is rendered as a single page.
+ * architecture rules). A page of subscriptions is rendered as a single Telegram message — one line
+ * per subscription (name, status, and a short summary of its search criteria) with one row of
+ * pause/resume + delete buttons per subscription — followed by a single pagination/navigation
+ * message, matching the shape already used for favorites by {@link FavoritesCallbackHandler}
+ * (issue #478 replaced the earlier one-message-per-subscription rendering shipped in #458).
  *
  * <p>Restricted to private chats (issue #463): subscriptions are personal data, so a request made
  * from a group/supergroup/channel is answered with a redirect to a private chat instead of the
@@ -65,11 +74,21 @@ public class SubscriptionsCallbackHandler {
   public static final String RESUME_PREFIX = "SUB:RESUME:";
   /** Callback prefix for deleting a subscription. */
   public static final String DELETE_PREFIX = "SUB:DELETE:";
+  /** Callback prefix for subscriptions-list pagination. */
+  public static final String PAGE_PREFIX = "SUB:PAGE:";
+  /** Callback data for advancing to the next subscriptions page. */
+  public static final String PAGE_NEXT = "SUB:PAGE:NEXT";
+  /** Callback data for going back to the previous subscriptions page. */
+  public static final String PAGE_PREV = "SUB:PAGE:PREV";
 
-  private static final int MAX_LIST_SIZE = 20;
+  private static final int PAGE_SIZE = 5;
+  private static final long SESSION_TTL_MINUTES = 30;
+  private static final long MAX_SESSIONS = 10_000;
+  private static final int MAX_ROOMS_LABEL = 4;
   private static final int MAX_NAME_LENGTH = 255;
 
   private static final String EMPTY_TEXT = "🔔 У вас пока нет подписок на поиск.";
+  private static final String SESSION_EXPIRED_TEXT = "Список устарел. Откройте раздел «🔔 Мои подписки» заново.";
   private static final String NO_FILTER_TEXT =
       "Сначала выполните поиск с нужными фильтрами, затем подпишитесь на него.";
   private static final String NAME_PROMPT_TEXT = "Введите название подписки:";
@@ -86,43 +105,48 @@ public class SubscriptionsCallbackHandler {
 
   private final UserService userService;
   private final SubscriptionService subscriptionService;
+  private final CityService cityService;
   private final MainMenuKeyboardFactory keyboardFactory;
   private final SearchFilterWizard wizard;
   private final SubscriptionCreationState creationState;
   private final TelegramClient telegramClient;
 
+  private record PageState(int page, int totalPages) {}
+
+  // Caffeine, not a plain map, so an abandoned pagination session is evicted instead of occupying
+  // memory for the lifetime of the JVM — same rationale as FavoritesCallbackHandler#pageSessions.
+  private final Map<Long, PageState> pageSessions = Caffeine.newBuilder()
+      .expireAfterAccess(Duration.ofMinutes(SESSION_TTL_MINUTES))
+      .maximumSize(MAX_SESSIONS)
+      .<Long, PageState>build()
+      .asMap();
+
   /**
-   * Renders the user's subscriptions list.
+   * Renders the first page of the user's subscriptions list.
    *
    * @param callbackQuery the incoming callback query, never null
    */
   public void handle(CallbackQuery callbackQuery) {
+    renderPage(callbackQuery, 0);
+  }
+
+  /**
+   * Handles a {@code SUB:PAGE:NEXT}/{@code SUB:PAGE:PREV} pagination callback.
+   *
+   * @param callbackQuery the incoming callback query, never null
+   */
+  public void handlePage(CallbackQuery callbackQuery) {
     Long telegramId = callbackQuery.getFrom().getId();
     String chatId = String.valueOf(callbackQuery.getMessage().getChatId());
-
-    if (!TelegramPrivateChatGuard.isPrivateChat(callbackQuery)) {
-      log.debug("SUB callback rejected outside a private chat: chatId={}", chatId);
-      sendText(chatId, TelegramPrivateChatGuard.PRIVATE_CHAT_REQUIRED_TEXT);
+    var session = pageSessions.get(telegramId);
+    if (session == null) {
+      sendText(chatId, SESSION_EXPIRED_TEXT);
       return;
     }
-
-    var userOpt = userService.findByTelegramId(telegramId);
-    if (userOpt.isEmpty()) {
-      log.warn("SUB callback from unregistered telegramId={}", telegramId);
-      sendText(chatId, EMPTY_TEXT);
-      return;
-    }
-
-    var pageable = PageRequest.of(0, MAX_LIST_SIZE, Sort.by(Sort.Direction.DESC, "createdAt"));
-    var page = subscriptionService.findByUser(userOpt.get().getId(), pageable);
-    if (page.isEmpty()) {
-      sendText(chatId, EMPTY_TEXT);
-      return;
-    }
-
-    log.debug("Subscriptions list rendered: telegramId={}, count={}", telegramId, page.getNumberOfElements());
-    sendItems(chatId, page.getContent());
-    sendNavigation(chatId);
+    int next = PAGE_NEXT.equals(callbackQuery.getData())
+        ? Math.min(session.page() + 1, session.totalPages() - 1)
+        : Math.max(session.page() - 1, 0);
+    renderPage(callbackQuery, next);
   }
 
   /**
@@ -301,36 +325,166 @@ public class SubscriptionsCallbackHandler {
     );
   }
 
-  private void sendItems(String chatId, List<SubscriptionResponse> items) {
+  private void renderPage(CallbackQuery callbackQuery, int page) {
+    Long telegramId = callbackQuery.getFrom().getId();
+    String chatId = String.valueOf(callbackQuery.getMessage().getChatId());
+
+    if (!TelegramPrivateChatGuard.isPrivateChat(callbackQuery)) {
+      log.debug("SUB callback rejected outside a private chat: chatId={}", chatId);
+      sendText(chatId, TelegramPrivateChatGuard.PRIVATE_CHAT_REQUIRED_TEXT);
+      return;
+    }
+
+    var userOpt = userService.findByTelegramId(telegramId);
+    if (userOpt.isEmpty()) {
+      log.warn("SUB callback from unregistered telegramId={}", telegramId);
+      sendText(chatId, EMPTY_TEXT);
+      return;
+    }
+
+    var pageable = PageRequest.of(page, PAGE_SIZE, Sort.by(Sort.Direction.DESC, "createdAt"));
+    var result = subscriptionService.findByUser(userOpt.get().getId(), pageable);
+    if (result.isEmpty()) {
+      pageSessions.remove(telegramId);
+      sendText(chatId, EMPTY_TEXT);
+      return;
+    }
+
+    pageSessions.put(telegramId, new PageState(page, result.getTotalPages()));
+    log.debug("Subscriptions page rendered: telegramId={}, page={}, totalPages={}",
+        telegramId, page, result.getTotalPages());
+    sendItemsPage(chatId, result.getContent());
+    sendNavigation(chatId, page, result.getTotalPages());
+  }
+
+  /**
+   * Renders one page of subscriptions as a single Telegram message — one text line per
+   * subscription and one button row per subscription — instead of a message per subscription.
+   *
+   * <p>Formatting one subscription's line/buttons is isolated: if it throws, that subscription is
+   * skipped and the rest of the page still renders (issue #478 AC).
+   *
+   * @param chatId target chat identifier, never null
+   * @param items  subscriptions on this page, never null
+   */
+  private void sendItemsPage(String chatId, List<SubscriptionResponse> items) {
+    var textBuilder = new StringBuilder();
+    var markupBuilder = InlineKeyboardMarkup.builder();
+    boolean any = false;
     for (var item : items) {
       try {
-        sendItem(chatId, item);
+        String line = formatItemLine(item);
+        var buttonsRow = buildItemButtons(item);
+        if (any) {
+          textBuilder.append("\n\n");
+        }
+        textBuilder.append(line);
+        markupBuilder.keyboardRow(buttonsRow);
+        any = true;
       } catch (Exception e) {
-        log.error("Unexpected error sending subscription item: subscriptionId={}", item.id(), e);
+        log.error("Unexpected error formatting subscription item: subscriptionId={}", item.id(), e);
       }
+    }
+    if (!any) {
+      log.warn("All subscription items on page failed to format: chatId={}", chatId);
+      sendText(chatId, EMPTY_TEXT);
+      return;
+    }
+    try {
+      telegramClient.execute(SendMessage.builder()
+          .chatId(chatId)
+          .text(textBuilder.toString())
+          .parseMode("HTML")
+          .replyMarkup(markupBuilder.build())
+          .build());
+    } catch (TelegramApiException e) {
+      log.warn("Failed to send subscriptions page: chatId={}", chatId, e);
     }
   }
 
-  private void sendItem(String chatId, SubscriptionResponse item) {
-    String text = TelegramHtmlEscaper.escapeHtml(item.name()) + "\n"
-        + statusLabel(item.active()) + " · " + deliveryModeLabel(item.deliveryMode());
+  private String formatItemLine(SubscriptionResponse item) {
+    var sb = new StringBuilder();
+    sb.append("<b>").append(TelegramHtmlEscaper.escapeHtml(item.name())).append("</b>\n")
+        .append(statusLabel(item.active())).append(" · ").append(deliveryModeLabel(item.deliveryMode()));
+    String summary = buildCriteriaSummary(item.searchCriteria());
+    if (!summary.isBlank()) {
+      sb.append("\n").append(summary);
+    }
+    return sb.toString();
+  }
+
+  private InlineKeyboardRow buildItemButtons(SubscriptionResponse item) {
     var toggleButton = item.active()
         ? navBtn("⏸ Пауза", PAUSE_PREFIX + item.id())
         : navBtn("▶️ Возобновить", RESUME_PREFIX + item.id());
     var deleteButton = navBtn("🗑 Удалить", DELETE_PREFIX + item.id());
-    var keyboard = InlineKeyboardMarkup.builder()
-        .keyboardRow(new InlineKeyboardRow(toggleButton, deleteButton))
-        .build();
-    try {
-      telegramClient.execute(SendMessage.builder()
-          .chatId(chatId)
-          .text(text)
-          .parseMode("HTML")
-          .replyMarkup(keyboard)
-          .build());
-    } catch (TelegramApiException e) {
-      log.warn("Failed to send subscription item: chatId={}", chatId, e);
+    return new InlineKeyboardRow(toggleButton, deleteButton);
+  }
+
+  /**
+   * Builds a compact one-line summary of a subscription's search criteria, e.g.
+   * «Аренда · Минск · 400–700 BYN · 2 комн.» — only the fields actually set on the criteria are
+   * included (issue #478 FR-NAV-7).
+   *
+   * @param criteria the subscription's search criteria, may be null
+   * @return summary string, empty (never null) if criteria is null or every field is unset
+   */
+  private String buildCriteriaSummary(SubscriptionSearchCriteria criteria) {
+    if (criteria == null) {
+      return "";
     }
+    var parts = new ArrayList<String>();
+    if (criteria.dealType() != null) {
+      parts.add(dealTypeLabel(criteria.dealType()));
+    }
+    String city = resolveCityLabel(criteria);
+    if (city != null) {
+      parts.add(city);
+    }
+    String price = priceRangeLabel(criteria.priceMin(), criteria.priceMax());
+    if (price != null) {
+      parts.add(price);
+    }
+    if (criteria.rooms() != null) {
+      parts.add(roomsLabel(criteria.rooms()));
+    }
+    return String.join(" · ", parts);
+  }
+
+  private String resolveCityLabel(SubscriptionSearchCriteria criteria) {
+    if (criteria.city() != null && !criteria.city().isBlank()) {
+      return criteria.city();
+    }
+    if (criteria.cityId() != null) {
+      return cityService.findById(criteria.cityId()).map(City::getNameRu).orElse(null);
+    }
+    return null;
+  }
+
+  private String priceRangeLabel(BigDecimal priceMin, BigDecimal priceMax) {
+    if (priceMin == null && priceMax == null) {
+      return null;
+    }
+    if (priceMin == null) {
+      return "до " + priceMax.stripTrailingZeros().toPlainString() + " BYN";
+    }
+    if (priceMax == null) {
+      return "от " + priceMin.stripTrailingZeros().toPlainString() + " BYN";
+    }
+    return priceMin.stripTrailingZeros().toPlainString() + "–" + priceMax.stripTrailingZeros().toPlainString() + " BYN";
+  }
+
+  private String roomsLabel(Integer rooms) {
+    String value = rooms >= MAX_ROOMS_LABEL ? MAX_ROOMS_LABEL + "+" : rooms.toString();
+    return value + " комн.";
+  }
+
+  private String dealTypeLabel(DealType dealType) {
+    return switch (dealType) {
+      case RENT -> "Аренда";
+      case SELL -> "Продажа";
+      case RENT_DAILY -> "Посуточно";
+    };
   }
 
   private String statusLabel(boolean active) {
@@ -348,17 +502,26 @@ public class SubscriptionsCallbackHandler {
     };
   }
 
-  private void sendNavigation(String chatId) {
-    var menuButton = navBtn("🏠 Главное меню", SearchResultSender.ACTION_MENU);
-    var keyboard = InlineKeyboardMarkup.builder()
-        .keyboardRow(new InlineKeyboardRow(menuButton))
-        .build();
+  private void sendNavigation(String chatId, int page, int totalPages) {
+    var navButtons = new ArrayList<InlineKeyboardButton>();
+    if (page > 0) {
+      navButtons.add(navBtn("← Предыдущие", PAGE_PREV));
+    }
+    if (page < totalPages - 1) {
+      navButtons.add(navBtn("Ещё →", PAGE_NEXT));
+    }
+    var markupBuilder = InlineKeyboardMarkup.builder();
+    if (!navButtons.isEmpty()) {
+      markupBuilder.keyboardRow(new InlineKeyboardRow(navButtons));
+    }
+    markupBuilder.keyboardRow(new InlineKeyboardRow(navBtn("🏠 Главное меню", SearchResultSender.ACTION_MENU)));
+
     try {
       telegramClient.execute(SendMessage.builder()
           .chatId(chatId)
-          .text("🔔 <b>Мои подписки</b>")
+          .text("🔔 <b>Мои подписки</b>\n📄 Страница " + (page + 1) + " из " + totalPages)
           .parseMode("HTML")
-          .replyMarkup(keyboard)
+          .replyMarkup(markupBuilder.build())
           .build());
     } catch (TelegramApiException e) {
       log.warn("Failed to send subscriptions navigation: chatId={}", chatId, e);

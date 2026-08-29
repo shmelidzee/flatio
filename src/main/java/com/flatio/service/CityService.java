@@ -36,4 +36,12 @@ public interface CityService {
    * @return true if the city exists, false otherwise
    */
   boolean existsById(Long id);
+
+  /**
+   * Finds a city by its ID.
+   *
+   * @param id city identifier, never null
+   * @return the city if found, or empty
+   */
+  Optional<City> findById(Long id);
 }

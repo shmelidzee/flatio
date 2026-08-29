@@ -2,9 +2,11 @@ package com.flatio.telegram.callback;
 
 import com.flatio.common.exception.SubscriptionLimitExceededException;
 import com.flatio.common.exception.SubscriptionNotFoundException;
+import com.flatio.domain.city.City;
 import com.flatio.domain.listing.DealType;
 import com.flatio.domain.subscription.DeliveryMode;
 import com.flatio.domain.user.User;
+import com.flatio.service.CityService;
 import com.flatio.service.SubscriptionService;
 import com.flatio.service.UserService;
 import com.flatio.telegram.keyboard.MainMenuKeyboardFactory;
@@ -27,6 +29,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.chat.Chat;
@@ -56,6 +59,9 @@ class SubscriptionsCallbackHandlerTest {
 
   @Mock
   private SubscriptionService subscriptionService;
+
+  @Mock
+  private CityService cityService;
 
   @Mock
   private MainMenuKeyboardFactory keyboardFactory;
@@ -313,6 +319,98 @@ class SubscriptionsCallbackHandlerTest {
     verify(userService, never()).findByTelegramId(any());
   }
 
+  @Test
+  void should_include_criteria_summary_when_subscription_has_search_criteria() throws Exception {
+    // Given — issue #478 FR-NAV-7
+    var user = buildUser(7L);
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
+    var criteria = new SubscriptionSearchCriteria(DealType.RENT, "APARTMENT", null, null, 5L,
+        BigDecimal.valueOf(400), BigDecimal.valueOf(700), 2, null, null);
+    var subscription = buildSubscriptionResponseWithCriteria(3L, "2-комнатные в центре", true, DeliveryMode.REALTIME, criteria);
+    var city = new City();
+    city.setId(5L);
+    city.setNameRu("Минск");
+    when(cityService.findById(5L)).thenReturn(Optional.of(city));
+    when(subscriptionService.findByUser(eq(7L), any())).thenReturn(new PageImpl<>(List.of(subscription)));
+    var callback = buildCallback(1L, 100L, true, SubscriptionsCallbackHandler.ACTION_SUBSCRIPTIONS);
+
+    // When
+    handler.handle(callback);
+
+    // Then
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient, times(2)).execute(captor.capture());
+    assertThat(captor.getAllValues().get(0).getText())
+        .contains("Аренда").contains("Минск").contains("400–700 BYN").contains("2 комн.");
+  }
+
+  @Test
+  void should_skip_broken_item_when_formatting_fails_for_one_subscription() throws Exception {
+    // Given — issue #478 AC: a formatting error on one subscription must not break the rest of the page
+    var user = buildUser(7L);
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
+    var goodCriteria = new SubscriptionSearchCriteria(DealType.RENT, "APARTMENT", null, "Минск", null, null, null, null, null, null);
+    var goodSub = buildSubscriptionResponseWithCriteria(1L, "Good", true, DeliveryMode.REALTIME, goodCriteria);
+    var brokenCriteria = new SubscriptionSearchCriteria(null, null, null, null, 99L, null, null, null, null, null);
+    var brokenSub = buildSubscriptionResponseWithCriteria(2L, "Broken", true, DeliveryMode.REALTIME, brokenCriteria);
+    when(cityService.findById(99L)).thenThrow(new RuntimeException("boom"));
+    when(subscriptionService.findByUser(eq(7L), any())).thenReturn(new PageImpl<>(List.of(goodSub, brokenSub)));
+    var callback = buildCallback(1L, 100L, true, SubscriptionsCallbackHandler.ACTION_SUBSCRIPTIONS);
+
+    // When
+    handler.handle(callback);
+
+    // Then — no exception propagates, the broken item is skipped, the good item still renders
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient, times(2)).execute(captor.capture());
+    var itemsMessage = captor.getAllValues().get(0);
+    assertThat(itemsMessage.getText()).contains("Good").doesNotContain("Broken");
+    var keyboard = (InlineKeyboardMarkup) itemsMessage.getReplyMarkup();
+    assertThat(keyboard.getKeyboard()).hasSize(1);
+  }
+
+  @Test
+  void should_send_session_expired_message_when_page_callback_has_no_active_session() throws Exception {
+    // Given — SUB:PAGE:* received without a preceding handle() call (session expired/never opened)
+    var callback = buildCallback(1L, 100L, true, "SUB:PAGE:NEXT");
+
+    // When
+    handler.handlePage(callback);
+
+    // Then
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient).execute(captor.capture());
+    assertThat(captor.getValue().getText()).contains("устарел");
+    verify(userService, never()).findByTelegramId(any());
+  }
+
+  @Test
+  void should_render_next_page_when_sub_page_next_callback_received_after_open() throws Exception {
+    // Given — total=6 with pageSize=5 yields totalPages=2
+    var user = buildUser(7L);
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
+    var page1Sub = buildSubscriptionResponse(1L, "Подписка 1", true, DeliveryMode.REALTIME);
+    var page2Sub = buildSubscriptionResponse(2L, "Подписка 2", true, DeliveryMode.REALTIME);
+    var sort = org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "createdAt");
+    when(subscriptionService.findByUser(eq(7L), eq(PageRequest.of(0, 5, sort))))
+        .thenReturn(new PageImpl<>(List.of(page1Sub), PageRequest.of(0, 5), 6));
+    when(subscriptionService.findByUser(eq(7L), eq(PageRequest.of(1, 5, sort))))
+        .thenReturn(new PageImpl<>(List.of(page2Sub), PageRequest.of(1, 5), 6));
+    var openCallback = buildCallback(1L, 100L, true, SubscriptionsCallbackHandler.ACTION_SUBSCRIPTIONS);
+    handler.handle(openCallback);
+    var pageCallback = buildCallback(1L, 100L, true, "SUB:PAGE:NEXT");
+
+    // When
+    handler.handlePage(pageCallback);
+
+    // Then — the second render shows the second page's item and navigation
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient, times(4)).execute(captor.capture());
+    var lastTwo = captor.getAllValues().subList(2, 4);
+    assertThat(lastTwo.get(0).getText()).contains("Подписка 2");
+    assertThat(lastTwo.get(1).getText()).contains("Страница 2 из 2");
+  }
+
   // -------------------------------------------------------------------------
   // helpers
   // -------------------------------------------------------------------------
@@ -340,6 +438,13 @@ class SubscriptionsCallbackHandlerTest {
   private SubscriptionResponse buildSubscriptionResponse(Long id, String name, boolean active, DeliveryMode mode) {
     return new SubscriptionResponse(
         id, name, active, null, Set.of(), mode, null, null, null, null, Instant.now(), Instant.now()
+    );
+  }
+
+  private SubscriptionResponse buildSubscriptionResponseWithCriteria(Long id, String name, boolean active,
+      DeliveryMode mode, SubscriptionSearchCriteria criteria) {
+    return new SubscriptionResponse(
+        id, name, active, criteria, Set.of(), mode, null, null, null, null, Instant.now(), Instant.now()
     );
   }
 
