@@ -465,6 +465,7 @@ public class BlacklistCallbackHandler {
    */
   private void sendEmptyState(String chatId) {
     var keyboard = InlineKeyboardMarkup.builder()
+        .keyboardRow(new InlineKeyboardRow(navBtn("➕ Добавить стоп-слово", ADD_KEYWORD)))
         .keyboardRow(new InlineKeyboardRow(navBtn("🔍 Перейти к поиску", FilterCallbackHandler.ACTION_SEARCH)))
         .keyboardRow(new InlineKeyboardRow(navBtn("🏠 Главное меню", SearchResultSender.ACTION_MENU)))
         .build();
