@@ -241,6 +241,26 @@ class SubscriptionsCallbackHandlerTest {
   }
 
   @Test
+  void should_send_navigation_buttons_when_subscription_created() throws Exception {
+    // Given — issue #493: confirmation message must not be a dead end
+    when(creationState.peek(1L)).thenReturn(Optional.of(buildSearchCriteria()));
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(buildUser(7L)));
+
+    // When
+    handler.handleSubscriptionNameText(1L, "100", "2-комнатные в центре");
+
+    // Then
+    var messageCaptor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient).execute(messageCaptor.capture());
+    var message = messageCaptor.getValue();
+    assertThat(message.getText()).contains("создана");
+    var keyboard = (InlineKeyboardMarkup) message.getReplyMarkup();
+    assertThat(keyboard.getKeyboard().get(0).get(0).getText()).isEqualTo("🔔 Мои подписки");
+    assertThat(keyboard.getKeyboard().get(0).get(0).getCallbackData()).isEqualTo(SubscriptionsCallbackHandler.ACTION_SUBSCRIPTIONS);
+    assertThat(keyboard.getKeyboard().get(1).get(0).getText()).isEqualTo("🏠 Главное меню");
+  }
+
+  @Test
   void should_reprompt_when_subscription_name_is_blank() {
     // Given
     when(creationState.peek(1L)).thenReturn(Optional.of(buildSearchCriteria()));
