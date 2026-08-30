@@ -15,7 +15,11 @@ import com.flatio.telegram.keyboard.MainMenuKeyboardFactory;
 import com.flatio.telegram.state.BlacklistKeywordPromptState;
 import com.flatio.web.dto.BlacklistEntryResponse;
 import com.flatio.web.dto.CreateBlacklistEntryRequest;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -34,10 +38,10 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
  * blacklist filtered by type, adding a stop-word via free text, and removing entries (issue #459).
  *
  * <p>Reuses {@link BlacklistService}, the same service backing the REST {@code /api/v1/blacklist}
- * endpoint (Telegram and REST API share services, per project architecture rules). Unlike the
- * read-only summary shipped in #456, this renders one Telegram message per entry (with its own
- * "delete" button) followed by a single navigation message carrying the type filter, matching the
- * shape already used for search results by {@link SearchResultSender}.
+ * endpoint (Telegram and REST API share services, per project architecture rules). A page of
+ * entries — filtered by type and paginated the same way as {@link FavoritesCallbackHandler} —
+ * renders as a single Telegram message: one line per entry, one "delete" button row per entry,
+ * plus the type-filter row, pagination row, and navigation (issue #477).
  *
  * <p>Restricted to private chats (issue #463): the blacklist is personal data, so a request made
  * from a group/supergroup/channel is answered with a redirect to a private chat instead of the
@@ -62,11 +66,25 @@ public class BlacklistCallbackHandler {
   public static final String HIDE_LISTING_PREFIX = "BL:HIDE_LISTING:";
   /** Callback prefix for hiding a source from a search result card. */
   public static final String HIDE_SOURCE_PREFIX = "BL:HIDE_SOURCE:";
+  /** Callback prefix for blacklist-list pagination. */
+  public static final String PAGE_PREFIX = "BL:PAGE:";
+  /** Callback data for advancing to the next blacklist page. */
+  public static final String PAGE_NEXT = "BL:PAGE:NEXT";
+  /** Callback data for going back to the previous blacklist page. */
+  public static final String PAGE_PREV = "BL:PAGE:PREV";
 
-  private static final int MAX_LIST_SIZE = 20;
+  private static final int PAGE_SIZE = 5;
+  private static final long SESSION_TTL_MINUTES = 30;
+  private static final long MAX_SESSIONS = 10_000;
   private static final int MAX_KEYWORD_LENGTH = 100;
 
-  private static final String EMPTY_TEXT = "🚫 Ваш чёрный список пока пуст.";
+  private static final String EMPTY_TEXT = "🚫 Ваш чёрный список пока пуст."
+      + "\n\nСкрывайте объявления и источники прямо с их карточки в поиске, либо добавьте стоп-слово кнопкой ниже.";
+  private static final String HINT_TEXT =
+      "Объявления и источники скрываются кнопкой «🚫 Скрыть» с карточки в поиске."
+      + " Стоп-слова добавляются кнопкой «➕ Добавить стоп-слово» ниже.";
+  private static final String SESSION_EXPIRED_TEXT = "Список устарел. Откройте раздел «🚫 Чёрный список» заново.";
+  private static final String FORMAT_ERROR_LINE = "⚠️ Не удалось отобразить запись";
   private static final String KEYWORD_PROMPT_TEXT = "Введите стоп-слово:";
   private static final String INVALID_KEYWORD_TEXT =
       "Стоп-слово не может быть пустым и должно быть не длиннее 100 символов. Введите его ещё раз:";
@@ -85,22 +103,66 @@ public class BlacklistCallbackHandler {
   private final BlacklistKeywordPromptState keywordPromptState;
   private final TelegramClient telegramClient;
 
+  private record PageState(int page, int totalPages, BlacklistEntryType type) {}
+
+  // Caffeine, not a plain map, so an abandoned pagination session is evicted instead of occupying
+  // memory for the lifetime of the JVM — same rationale as FavoritesCallbackHandler#pageSessions.
+  private final Map<Long, PageState> pageSessions = Caffeine.newBuilder()
+      .expireAfterAccess(Duration.ofMinutes(SESSION_TTL_MINUTES))
+      .maximumSize(MAX_SESSIONS)
+      .<Long, PageState>build()
+      .asMap();
+
   /**
-   * Renders the blacklist, resetting the type filter to "all".
+   * Renders the first page of the blacklist, resetting the type filter to "all".
    *
    * @param callbackQuery the incoming callback query, never null
    */
   public void handle(CallbackQuery callbackQuery) {
-    renderList(callbackQuery, null);
+    renderList(callbackQuery.getFrom().getId(), String.valueOf(callbackQuery.getMessage().getChatId()),
+        TelegramPrivateChatGuard.isPrivateChat(callbackQuery), null, 0);
   }
 
   /**
-   * Handles a {@code BL:FILTER:<type>} callback, re-rendering the list for the chosen type.
+   * Renders the first page of the blacklist, resetting the type filter to "all", from the
+   * {@code /blacklist} text command (issue #473) — same rendering as {@link #handle(CallbackQuery)},
+   * no new business logic.
+   *
+   * @param telegramId    Telegram user identifier, never null
+   * @param chatId        target chat identifier, never null
+   * @param isPrivateChat whether the command was sent in a private one-on-one chat
+   */
+  public void handleCommand(Long telegramId, String chatId, boolean isPrivateChat) {
+    renderList(telegramId, chatId, isPrivateChat, null, 0);
+  }
+
+  /**
+   * Handles a {@code BL:FILTER:<type>} callback, re-rendering the first page for the chosen type.
    *
    * @param callbackQuery the incoming callback query, never null
    */
   public void handleFilter(CallbackQuery callbackQuery) {
-    renderList(callbackQuery, parseFilterType(callbackQuery.getData()));
+    renderList(callbackQuery.getFrom().getId(), String.valueOf(callbackQuery.getMessage().getChatId()),
+        TelegramPrivateChatGuard.isPrivateChat(callbackQuery), parseFilterType(callbackQuery.getData()), 0);
+  }
+
+  /**
+   * Handles a {@code BL:PAGE:NEXT}/{@code BL:PAGE:PREV} pagination callback.
+   *
+   * @param callbackQuery the incoming callback query, never null
+   */
+  public void handlePage(CallbackQuery callbackQuery) {
+    Long telegramId = callbackQuery.getFrom().getId();
+    String chatId = String.valueOf(callbackQuery.getMessage().getChatId());
+    var session = pageSessions.get(telegramId);
+    if (session == null) {
+      sendText(chatId, SESSION_EXPIRED_TEXT);
+      return;
+    }
+    int next = PAGE_NEXT.equals(callbackQuery.getData())
+        ? Math.min(session.page() + 1, session.totalPages() - 1)
+        : Math.max(session.page() - 1, 0);
+    renderList(telegramId, chatId, TelegramPrivateChatGuard.isPrivateChat(callbackQuery), session.type(), next);
   }
 
   /**
@@ -244,11 +306,18 @@ public class BlacklistCallbackHandler {
     }
   }
 
-  private void renderList(CallbackQuery callbackQuery, BlacklistEntryType type) {
-    Long telegramId = callbackQuery.getFrom().getId();
-    String chatId = String.valueOf(callbackQuery.getMessage().getChatId());
-
-    if (!TelegramPrivateChatGuard.isPrivateChat(callbackQuery)) {
+  /**
+   * Renders one page of the blacklist, or the empty-state message with a search shortcut when the
+   * user has no entries for the active filter (issue #474).
+   *
+   * @param telegramId    Telegram user identifier, never null
+   * @param chatId        target chat identifier, never null
+   * @param isPrivateChat whether the request originated from a private one-on-one chat
+   * @param type          active type filter, or null for "all"
+   * @param page           zero-based page index
+   */
+  private void renderList(Long telegramId, String chatId, boolean isPrivateChat, BlacklistEntryType type, int page) {
+    if (!isPrivateChat) {
       log.debug("BL callback rejected outside a private chat: chatId={}", chatId);
       sendText(chatId, TelegramPrivateChatGuard.PRIVATE_CHAT_REQUIRED_TEXT);
       return;
@@ -257,19 +326,23 @@ public class BlacklistCallbackHandler {
     var userOpt = userService.findByTelegramId(telegramId);
     if (userOpt.isEmpty()) {
       log.warn("BL callback from unregistered telegramId={}", telegramId);
+      pageSessions.remove(telegramId);
       sendText(chatId, EMPTY_TEXT);
       return;
     }
 
-    var pageable = PageRequest.of(0, MAX_LIST_SIZE, Sort.by(Sort.Direction.DESC, "createdAt"));
-    var page = blacklistService.findByUser(userOpt.get().getId(), type, pageable);
-    log.debug("Blacklist rendered: telegramId={}, type={}, count={}", telegramId, type, page.getNumberOfElements());
-    if (page.isEmpty()) {
-      sendText(chatId, EMPTY_TEXT);
+    var pageable = PageRequest.of(page, PAGE_SIZE, Sort.by(Sort.Direction.DESC, "createdAt"));
+    var result = blacklistService.findByUser(userOpt.get().getId(), type, pageable);
+    log.debug("Blacklist rendered: telegramId={}, type={}, page={}, totalPages={}",
+        telegramId, type, page, result.getTotalPages());
+
+    if (result.isEmpty()) {
+      pageSessions.remove(telegramId);
+      sendEmptyState(chatId);
     } else {
-      sendItems(chatId, page.getContent());
+      pageSessions.put(telegramId, new PageState(page, result.getTotalPages(), type));
+      sendListMessage(chatId, result.getContent(), type, page, result.getTotalPages());
     }
-    sendNavigation(chatId, type);
   }
 
   private BlacklistEntryType parseFilterType(String data) {
@@ -285,32 +358,92 @@ public class BlacklistCallbackHandler {
     }
   }
 
-  private void sendItems(String chatId, List<BlacklistEntryResponse> items) {
-    for (var item : items) {
-      try {
-        sendItem(chatId, item);
-      } catch (Exception e) {
-        log.error("Unexpected error sending blacklist item: entryId={}", item.id(), e);
-      }
-    }
-  }
-
-  private void sendItem(String chatId, BlacklistEntryResponse item) {
-    String text = typeLabel(item.type()) + ": " + TelegramHtmlEscaper.escapeHtml(item.value());
-    var deleteButton = navBtn("🗑 Удалить", DELETE_PREFIX + item.id());
-    var keyboard = InlineKeyboardMarkup.builder()
-        .keyboardRow(new InlineKeyboardRow(deleteButton))
-        .build();
+  /**
+   * Renders one page of the blacklist as a single message: one line per entry, one delete-button
+   * row per entry, the type-filter row, an optional pagination row, and navigation (issue #477) —
+   * including the hint about where LISTING/SOURCE entries come from (issue #474).
+   *
+   * <p>A formatting failure for a single entry falls back to {@link #FORMAT_ERROR_LINE} instead of
+   * failing the whole page — see {@link #formatItemLineSafely}.
+   *
+   * @param chatId     target chat identifier, never null
+   * @param items      entries on this page, never null, never empty
+   * @param type       active type filter, or null for "all"
+   * @param page       zero-based page index
+   * @param totalPages total number of pages for this filter
+   */
+  private void sendListMessage(String chatId, List<BlacklistEntryResponse> items, BlacklistEntryType type,
+      int page, int totalPages) {
     try {
       telegramClient.execute(SendMessage.builder()
           .chatId(chatId)
-          .text(text)
+          .text(buildListText(items, type))
           .parseMode("HTML")
-          .replyMarkup(keyboard)
+          .replyMarkup(buildListKeyboard(items, type, page, totalPages))
           .build());
     } catch (TelegramApiException e) {
-      log.warn("Failed to send blacklist item: chatId={}", chatId, e);
+      log.warn("Failed to send blacklist list: chatId={}", chatId, e);
     }
+  }
+
+  private String buildListText(List<BlacklistEntryResponse> items, BlacklistEntryType type) {
+    var textBuilder = new StringBuilder("🚫 Фильтр: ").append(type == null ? "Все" : typeLabel(type));
+    for (var item : items) {
+      textBuilder.append("\n").append(formatItemLineSafely(item));
+    }
+    textBuilder.append("\n\n").append(HINT_TEXT);
+    return textBuilder.toString();
+  }
+
+  private InlineKeyboardMarkup buildListKeyboard(List<BlacklistEntryResponse> items, BlacklistEntryType type,
+      int page, int totalPages) {
+    var keyboardBuilder = InlineKeyboardMarkup.builder();
+    for (var item : items) {
+      keyboardBuilder.keyboardRow(new InlineKeyboardRow(navBtn("🗑 Удалить", DELETE_PREFIX + item.id())));
+    }
+    keyboardBuilder.keyboardRow(filterRow(type));
+    if (totalPages > 1) {
+      keyboardBuilder.keyboardRow(paginationRow(page, totalPages));
+    }
+    keyboardBuilder.keyboardRow(new InlineKeyboardRow(navBtn("➕ Добавить стоп-слово", ADD_KEYWORD)));
+    keyboardBuilder.keyboardRow(new InlineKeyboardRow(navBtn("🏠 Главное меню", SearchResultSender.ACTION_MENU)));
+    return keyboardBuilder.build();
+  }
+
+  /**
+   * Formats one blacklist entry as a text line, falling back to {@link #FORMAT_ERROR_LINE} instead
+   * of propagating — a single malformed entry must not break the rest of the page.
+   *
+   * @param item the entry to format, never null
+   * @return the formatted line, never null
+   */
+  private String formatItemLineSafely(BlacklistEntryResponse item) {
+    try {
+      return typeLabel(item.type()) + ": " + TelegramHtmlEscaper.escapeHtml(item.value());
+    } catch (Exception e) {
+      log.error("Unexpected error formatting blacklist item: entryId={}", item.id(), e);
+      return FORMAT_ERROR_LINE;
+    }
+  }
+
+  private InlineKeyboardRow filterRow(BlacklistEntryType current) {
+    return new InlineKeyboardRow(
+        filterBtn("Все", null, current),
+        filterBtn("Объявления", BlacklistEntryType.LISTING, current),
+        filterBtn("Источники", BlacklistEntryType.SOURCE, current),
+        filterBtn("Стоп-слова", BlacklistEntryType.KEYWORD, current)
+    );
+  }
+
+  private InlineKeyboardRow paginationRow(int page, int totalPages) {
+    var navButtons = new ArrayList<InlineKeyboardButton>();
+    if (page > 0) {
+      navButtons.add(navBtn("← Предыдущие", PAGE_PREV));
+    }
+    if (page < totalPages - 1) {
+      navButtons.add(navBtn("Ещё →", PAGE_NEXT));
+    }
+    return new InlineKeyboardRow(navButtons);
   }
 
   private String typeLabel(BlacklistEntryType type) {
@@ -324,26 +457,26 @@ public class BlacklistCallbackHandler {
     };
   }
 
-  private void sendNavigation(String chatId, BlacklistEntryType currentType) {
-    var filterRow = new InlineKeyboardRow(
-        filterBtn("Все", null, currentType),
-        filterBtn("Объявления", BlacklistEntryType.LISTING, currentType),
-        filterBtn("Источники", BlacklistEntryType.SOURCE, currentType),
-        filterBtn("Стоп-слова", BlacklistEntryType.KEYWORD, currentType)
-    );
+  /**
+   * Sends the empty-blacklist message with a shortcut into the search wizard, so the user is not
+   * left at a dead end without knowing how to hide a first listing or source (issue #474).
+   *
+   * @param chatId target chat identifier, never null
+   */
+  private void sendEmptyState(String chatId) {
     var keyboard = InlineKeyboardMarkup.builder()
-        .keyboardRow(filterRow)
-        .keyboardRow(new InlineKeyboardRow(navBtn("➕ Добавить стоп-слово", ADD_KEYWORD)))
+        .keyboardRow(new InlineKeyboardRow(navBtn("🔍 Перейти к поиску", FilterCallbackHandler.ACTION_SEARCH)))
         .keyboardRow(new InlineKeyboardRow(navBtn("🏠 Главное меню", SearchResultSender.ACTION_MENU)))
         .build();
     try {
       telegramClient.execute(SendMessage.builder()
           .chatId(chatId)
-          .text("🚫 Фильтр: " + (currentType == null ? "Все" : typeLabel(currentType)))
+          .text(EMPTY_TEXT)
+          .parseMode("HTML")
           .replyMarkup(keyboard)
           .build());
     } catch (TelegramApiException e) {
-      log.warn("Failed to send blacklist navigation: chatId={}", chatId, e);
+      log.warn("Failed to send blacklist empty state: chatId={}", chatId, e);
     }
   }
 

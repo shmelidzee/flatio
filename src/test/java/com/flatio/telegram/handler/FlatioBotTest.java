@@ -4,9 +4,12 @@ import com.flatio.telegram.callback.BlacklistCallbackHandler;
 import com.flatio.telegram.callback.FavoritesCallbackHandler;
 import com.flatio.telegram.callback.FilterCallbackHandler;
 import com.flatio.telegram.callback.SubscriptionsCallbackHandler;
+import com.flatio.telegram.command.BlacklistCommandHandler;
+import com.flatio.telegram.command.FavoritesCommandHandler;
 import com.flatio.telegram.command.HelpCommandHandler;
 import com.flatio.telegram.command.SearchCommandHandler;
 import com.flatio.telegram.command.StartCommandHandler;
+import com.flatio.telegram.command.SubscriptionsCommandHandler;
 import com.flatio.telegram.state.SearchFilterWizard;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -140,6 +143,52 @@ class FlatioBotTest {
   }
 
   // -------------------------------------------------------------------------
+  // Text command routing (issue #473)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_delegate_to_favorites_command_handler_when_favorites_command_received() {
+    // Given
+    var favoritesCommandHandler = mock(FavoritesCommandHandler.class);
+    var bot = buildBotWithFavoritesCommandHandler(favoritesCommandHandler, executor);
+    var update = buildTextUpdate(1, 777L, "/favorites");
+
+    // When
+    bot.handleUpdate(update);
+
+    // Then
+    verify(favoritesCommandHandler).handle(update);
+  }
+
+  @Test
+  void should_delegate_to_subscriptions_command_handler_when_subscriptions_command_received() {
+    // Given
+    var subscriptionsCommandHandler = mock(SubscriptionsCommandHandler.class);
+    var bot = buildBotWithSubscriptionsCommandHandler(subscriptionsCommandHandler, executor);
+    var update = buildTextUpdate(1, 777L, "/subscriptions");
+
+    // When
+    bot.handleUpdate(update);
+
+    // Then
+    verify(subscriptionsCommandHandler).handle(update);
+  }
+
+  @Test
+  void should_delegate_to_blacklist_command_handler_when_blacklist_command_received() {
+    // Given
+    var blacklistCommandHandler = mock(BlacklistCommandHandler.class);
+    var bot = buildBotWithBlacklistCommandHandler(blacklistCommandHandler, executor);
+    var update = buildTextUpdate(1, 777L, "/blacklist");
+
+    // When
+    bot.handleUpdate(update);
+
+    // Then
+    verify(blacklistCommandHandler).handle(update);
+  }
+
+  // -------------------------------------------------------------------------
   // Section callback routing (issue #456)
   // -------------------------------------------------------------------------
 
@@ -257,6 +306,21 @@ class FlatioBotTest {
   }
 
   @Test
+  void should_delegate_to_blacklist_page_handler_when_bl_page_callback_received() {
+    // Given — issue #477: blacklist pagination
+    var telegramClient = mock(TelegramClient.class);
+    var blacklistCallbackHandler = mock(BlacklistCallbackHandler.class);
+    var bot = buildBotWithBlacklistHandler(telegramClient, blacklistCallbackHandler, executor);
+    var update = buildCallbackUpdate(1, 100L, "BL:PAGE:NEXT");
+
+    // When
+    bot.handleUpdate(update);
+
+    // Then
+    verify(blacklistCallbackHandler).handlePage(update.getCallbackQuery());
+  }
+
+  @Test
   void should_delegate_to_subscriptions_edit_handler_when_sub_edit_callback_received() {
     // Given — issue #479
     var telegramClient = mock(TelegramClient.class);
@@ -269,6 +333,21 @@ class FlatioBotTest {
 
     // Then
     verify(subscriptionsCallbackHandler).handleEdit(update.getCallbackQuery());
+  }
+
+  @Test
+  void should_delegate_to_start_search_handler_when_sub_start_search_callback_received() {
+    // Given — issue #475
+    var telegramClient = mock(TelegramClient.class);
+    var subscriptionsCallbackHandler = mock(SubscriptionsCallbackHandler.class);
+    var bot = buildBotWithSubscriptionsHandler(telegramClient, subscriptionsCallbackHandler, executor);
+    var update = buildCallbackUpdate(1, 100L, "SUB:START_SEARCH");
+
+    // When
+    bot.handleUpdate(update);
+
+    // Then
+    verify(subscriptionsCallbackHandler).handleStartSearch(update.getCallbackQuery());
   }
 
   @Test
@@ -286,6 +365,7 @@ class FlatioBotTest {
         mock(SearchCommandHandler.class), mock(FilterCallbackHandler.class),
         searchResultSender, mock(FavoritesCallbackHandler.class),
         subscriptionsCallbackHandler, mock(BlacklistCallbackHandler.class),
+        mock(FavoritesCommandHandler.class), mock(SubscriptionsCommandHandler.class), mock(BlacklistCommandHandler.class),
         wizard, executor
     );
     var update = buildCallbackUpdate(1, 100L, "FILTER:SEARCH");
@@ -368,6 +448,7 @@ class FlatioBotTest {
         mock(SearchCommandHandler.class), mock(FilterCallbackHandler.class),
         searchResultSender, mock(FavoritesCallbackHandler.class),
         mock(SubscriptionsCallbackHandler.class), mock(BlacklistCallbackHandler.class),
+        mock(FavoritesCommandHandler.class), mock(SubscriptionsCommandHandler.class), mock(BlacklistCommandHandler.class),
         wizard, executor
     );
     var update = buildTextUpdate(1, 777L, "/start");
@@ -394,6 +475,7 @@ class FlatioBotTest {
         mock(SearchCommandHandler.class), mock(FilterCallbackHandler.class),
         searchResultSender, mock(FavoritesCallbackHandler.class),
         mock(SubscriptionsCallbackHandler.class), mock(BlacklistCallbackHandler.class),
+        mock(FavoritesCommandHandler.class), mock(SubscriptionsCommandHandler.class), mock(BlacklistCommandHandler.class),
         wizard, executor
     );
     var update = buildTextUpdate(1, 778L, "/start");
@@ -444,6 +526,9 @@ class FlatioBotTest {
         mock(FavoritesCallbackHandler.class),
         mock(SubscriptionsCallbackHandler.class),
         mock(BlacklistCallbackHandler.class),
+        mock(FavoritesCommandHandler.class),
+        mock(SubscriptionsCommandHandler.class),
+        mock(BlacklistCommandHandler.class),
         mock(SearchFilterWizard.class),
         executor
     );
@@ -462,6 +547,9 @@ class FlatioBotTest {
         mock(FavoritesCallbackHandler.class),
         mock(SubscriptionsCallbackHandler.class),
         mock(BlacklistCallbackHandler.class),
+        mock(FavoritesCommandHandler.class),
+        mock(SubscriptionsCommandHandler.class),
+        mock(BlacklistCommandHandler.class),
         mock(SearchFilterWizard.class),
         executor
     );
@@ -479,6 +567,9 @@ class FlatioBotTest {
         favoritesCallbackHandler,
         mock(SubscriptionsCallbackHandler.class),
         mock(BlacklistCallbackHandler.class),
+        mock(FavoritesCommandHandler.class),
+        mock(SubscriptionsCommandHandler.class),
+        mock(BlacklistCommandHandler.class),
         mock(SearchFilterWizard.class),
         executor
     );
@@ -497,6 +588,9 @@ class FlatioBotTest {
         mock(FavoritesCallbackHandler.class),
         subscriptionsCallbackHandler,
         mock(BlacklistCallbackHandler.class),
+        mock(FavoritesCommandHandler.class),
+        mock(SubscriptionsCommandHandler.class),
+        mock(BlacklistCommandHandler.class),
         mock(SearchFilterWizard.class),
         executor
     );
@@ -514,6 +608,69 @@ class FlatioBotTest {
         mock(FavoritesCallbackHandler.class),
         mock(SubscriptionsCallbackHandler.class),
         blacklistCallbackHandler,
+        mock(FavoritesCommandHandler.class),
+        mock(SubscriptionsCommandHandler.class),
+        mock(BlacklistCommandHandler.class),
+        mock(SearchFilterWizard.class),
+        executor
+    );
+  }
+
+  private static FlatioBot buildBotWithFavoritesCommandHandler(
+      FavoritesCommandHandler favoritesCommandHandler, ThreadPoolTaskExecutor executor) {
+    return new FlatioBot(
+        mock(TelegramClient.class),
+        mock(StartCommandHandler.class),
+        mock(HelpCommandHandler.class),
+        mock(SearchCommandHandler.class),
+        mock(FilterCallbackHandler.class),
+        mock(SearchResultSender.class),
+        mock(FavoritesCallbackHandler.class),
+        mock(SubscriptionsCallbackHandler.class),
+        mock(BlacklistCallbackHandler.class),
+        favoritesCommandHandler,
+        mock(SubscriptionsCommandHandler.class),
+        mock(BlacklistCommandHandler.class),
+        mock(SearchFilterWizard.class),
+        executor
+    );
+  }
+
+  private static FlatioBot buildBotWithSubscriptionsCommandHandler(
+      SubscriptionsCommandHandler subscriptionsCommandHandler, ThreadPoolTaskExecutor executor) {
+    return new FlatioBot(
+        mock(TelegramClient.class),
+        mock(StartCommandHandler.class),
+        mock(HelpCommandHandler.class),
+        mock(SearchCommandHandler.class),
+        mock(FilterCallbackHandler.class),
+        mock(SearchResultSender.class),
+        mock(FavoritesCallbackHandler.class),
+        mock(SubscriptionsCallbackHandler.class),
+        mock(BlacklistCallbackHandler.class),
+        mock(FavoritesCommandHandler.class),
+        subscriptionsCommandHandler,
+        mock(BlacklistCommandHandler.class),
+        mock(SearchFilterWizard.class),
+        executor
+    );
+  }
+
+  private static FlatioBot buildBotWithBlacklistCommandHandler(
+      BlacklistCommandHandler blacklistCommandHandler, ThreadPoolTaskExecutor executor) {
+    return new FlatioBot(
+        mock(TelegramClient.class),
+        mock(StartCommandHandler.class),
+        mock(HelpCommandHandler.class),
+        mock(SearchCommandHandler.class),
+        mock(FilterCallbackHandler.class),
+        mock(SearchResultSender.class),
+        mock(FavoritesCallbackHandler.class),
+        mock(SubscriptionsCallbackHandler.class),
+        mock(BlacklistCallbackHandler.class),
+        mock(FavoritesCommandHandler.class),
+        mock(SubscriptionsCommandHandler.class),
+        blacklistCommandHandler,
         mock(SearchFilterWizard.class),
         executor
     );

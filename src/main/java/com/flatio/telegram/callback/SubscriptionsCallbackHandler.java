@@ -70,6 +70,8 @@ public class SubscriptionsCallbackHandler {
   public static final String CALLBACK_PREFIX = "SUB:";
   /** Callback data for starting a "subscribe to this search" flow from the search navigation message. */
   public static final String CREATE_FROM_FILTER = "SUB:CREATE_FROM_FILTER";
+  /** Callback data for starting the search wizard from the empty subscriptions state (issue #475). */
+  public static final String START_SEARCH = "SUB:START_SEARCH";
   /** Callback prefix for pausing a subscription. */
   public static final String PAUSE_PREFIX = "SUB:PAUSE:";
   /** Callback prefix for resuming a subscription. */
@@ -137,7 +139,20 @@ public class SubscriptionsCallbackHandler {
    * @param callbackQuery the incoming callback query, never null
    */
   public void handle(CallbackQuery callbackQuery) {
-    renderPage(callbackQuery, 0);
+    renderPage(callbackQuery.getFrom().getId(), String.valueOf(callbackQuery.getMessage().getChatId()),
+        TelegramPrivateChatGuard.isPrivateChat(callbackQuery), 0);
+  }
+
+  /**
+   * Renders the first page of the user's subscriptions list from the {@code /subscriptions} text
+   * command (issue #473) — same rendering as {@link #handle(CallbackQuery)}, no new business logic.
+   *
+   * @param telegramId    Telegram user identifier, never null
+   * @param chatId        target chat identifier, never null
+   * @param isPrivateChat whether the command was sent in a private one-on-one chat
+   */
+  public void handleCommand(Long telegramId, String chatId, boolean isPrivateChat) {
+    renderPage(telegramId, chatId, isPrivateChat, 0);
   }
 
   /**
@@ -156,7 +171,7 @@ public class SubscriptionsCallbackHandler {
     int next = PAGE_NEXT.equals(callbackQuery.getData())
         ? Math.min(session.page() + 1, session.totalPages() - 1)
         : Math.max(session.page() - 1, 0);
-    renderPage(callbackQuery, next);
+    renderPage(telegramId, chatId, TelegramPrivateChatGuard.isPrivateChat(callbackQuery), next);
   }
 
   /**
@@ -183,6 +198,26 @@ public class SubscriptionsCallbackHandler {
     }
     creationState.await(telegramId, toSubscriptionCriteria(stateOpt.get()));
     sendPlainText(chatId, NAME_PROMPT_TEXT);
+  }
+
+  /**
+   * Handles the {@code SUB:START_SEARCH} callback from the empty subscriptions state (issue #475).
+   *
+   * <p>Starts the same filter wizard entry point used by {@code /search}
+   * ({@link FilterCallbackHandler#startWizardMessage}), so a user with no subscriptions is never
+   * stuck without knowing they must search first. After the search completes, the existing
+   * {@link #CREATE_FROM_FILTER} button in the results navigation already offers to subscribe.
+   *
+   * @param callbackQuery the incoming callback query, never null
+   */
+  public void handleStartSearch(CallbackQuery callbackQuery) {
+    Long telegramId = callbackQuery.getFrom().getId();
+    String chatId = String.valueOf(callbackQuery.getMessage().getChatId());
+    try {
+      telegramClient.execute(filterCallbackHandler.startWizardMessage(telegramId, chatId));
+    } catch (TelegramApiException e) {
+      log.warn("Failed to start search wizard from empty subscriptions state: chatId={}", chatId, e);
+    }
   }
 
   /**
@@ -437,11 +472,8 @@ public class SubscriptionsCallbackHandler {
     );
   }
 
-  private void renderPage(CallbackQuery callbackQuery, int page) {
-    Long telegramId = callbackQuery.getFrom().getId();
-    String chatId = String.valueOf(callbackQuery.getMessage().getChatId());
-
-    if (!TelegramPrivateChatGuard.isPrivateChat(callbackQuery)) {
+  private void renderPage(Long telegramId, String chatId, boolean isPrivateChat, int page) {
+    if (!isPrivateChat) {
       log.debug("SUB callback rejected outside a private chat: chatId={}", chatId);
       sendText(chatId, TelegramPrivateChatGuard.PRIVATE_CHAT_REQUIRED_TEXT);
       return;
@@ -450,7 +482,7 @@ public class SubscriptionsCallbackHandler {
     var userOpt = userService.findByTelegramId(telegramId);
     if (userOpt.isEmpty()) {
       log.warn("SUB callback from unregistered telegramId={}", telegramId);
-      sendText(chatId, EMPTY_TEXT);
+      sendEmptyState(chatId);
       return;
     }
 
@@ -458,7 +490,7 @@ public class SubscriptionsCallbackHandler {
     var result = subscriptionService.findByUser(userOpt.get().getId(), pageable);
     if (result.isEmpty()) {
       pageSessions.remove(telegramId);
-      sendText(chatId, EMPTY_TEXT);
+      sendEmptyState(chatId);
       return;
     }
 
@@ -656,6 +688,31 @@ public class SubscriptionsCallbackHandler {
           .build());
     } catch (TelegramApiException e) {
       log.warn("Failed to send subscriptions message: chatId={}", chatId, e);
+    }
+  }
+
+  /**
+   * Sends the empty-subscriptions message with a CTA into the search wizard, instead of the
+   * plain back-to-menu dead end (issue #475).
+   *
+   * @param chatId target chat identifier, never null
+   */
+  private void sendEmptyState(String chatId) {
+    var searchButton = navBtn("🔍 Начать поиск и подписаться", START_SEARCH);
+    var menuButton = navBtn("🏠 Главное меню", SearchResultSender.ACTION_MENU);
+    var keyboard = InlineKeyboardMarkup.builder()
+        .keyboardRow(new InlineKeyboardRow(searchButton))
+        .keyboardRow(new InlineKeyboardRow(menuButton))
+        .build();
+    try {
+      telegramClient.execute(SendMessage.builder()
+          .chatId(chatId)
+          .text(EMPTY_TEXT)
+          .parseMode("HTML")
+          .replyMarkup(keyboard)
+          .build());
+    } catch (TelegramApiException e) {
+      log.warn("Failed to send empty subscriptions state: chatId={}", chatId, e);
     }
   }
 

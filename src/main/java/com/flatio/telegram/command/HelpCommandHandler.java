@@ -20,6 +20,9 @@ public class HelpCommandHandler {
 
       /start — начало работы с ботом
       /search — поиск объявлений с фильтрами
+      /favorites — избранные объявления
+      /subscriptions — мои подписки на поиск
+      /blacklist — чёрный список
       /help — показать этот список команд""";
 
   /**
