@@ -20,6 +20,7 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import javax.imageio.IIOImage;
@@ -383,6 +384,10 @@ public class SearchResultSender {
    * data (issue #446) — protects {@link #compressPhoto} and {@link #normalizeForTelegram} from a
    * decompression-bomb photo (small file, enormous claimed dimensions).
    *
+   * <p>This is also the check that fails when {@link ImageIO} has no {@link ImageReader} at all
+   * for the given bytes (issue #465) — see {@link #detectUnsupportedFormat} for the diagnostic
+   * fallback used in that case.
+   *
    * @param bytes     raw image bytes, never null
    * @param listingId used only for logging
    * @return true if the format is recognized and its pixel count is within {@link #MAX_DECODE_PIXELS}
@@ -477,13 +482,25 @@ public class SearchResultSender {
    * the placeholder immediately when the bytes cannot be decoded at all, since a retry would fail
    * the same way.
    *
+   * <p><b>Known limitation (issue #465):</b> when the bytes cannot be decoded, the WARN log below
+   * includes a best-effort format guess from {@link #detectUnsupportedFormat} — a magic-byte
+   * sniff, not a real decode. This is a diagnostic aid only: at the time this was written, the
+   * source URL from the triggering report was unreachable (Kufar CDN did not respond) and no
+   * production log access was available to establish how often this occurs, so neither the exact
+   * format nor the frequency could be confirmed against real bytes. If a future occurrence's
+   * detected format turns out to be a genuinely decodable one (e.g. WebP, AVIF), adding real
+   * decode support requires a new {@code ImageIO} plugin dependency (e.g. TwelveMonkeys or
+   * webp-imageio), which needs explicit product-owner approval per project rules and is
+   * intentionally not added here.
+   *
    * @param card the photo card whose bytes were rejected with {@code IMAGE_PROCESS_FAILED}
    */
   private void retryWithNormalizedImage(PhotoCard card) {
     Optional<byte[]> normalized = normalizeForTelegram(card.bytes(), card.listingId());
     if (normalized.isEmpty()) {
       log.warn("Photo rejected: IMAGE_PROCESS_FAILED, re-encode unsupported, using placeholder: "
-          + "listingId={}, url={}", card.listingId(), card.photoUrl());
+              + "listingId={}, url={}, detectedFormat={}",
+          card.listingId(), card.photoUrl(), detectUnsupportedFormat(card.bytes()));
       sendPlaceholderPhoto(card.chatId(), card.caption(), card.keyboard(), card.listingId());
       return;
     }
@@ -517,6 +534,64 @@ public class SearchResultSender {
       log.debug("Photo normalization error: listingId={}, error={}", listingId, e.getMessage());
       return Optional.empty();
     }
+  }
+
+  /**
+   * Best-effort identification of an image's format from its leading magic bytes, used purely for
+   * diagnostics when {@link ImageIO} could not find any {@link ImageReader} for the bytes
+   * (issue #465). This is a signature sniff, not a decoder — it recognizes container markers for
+   * formats the JVM's built-in {@code ImageIO} plugins do not read out of the box (WebP,
+   * AVIF/HEIC via ISOBMFF {@code ftyp}, JPEG 2000), which are the most likely culprits for a
+   * {@code .jpg}-named CDN file that Java cannot decode.
+   *
+   * <p><b>Known limitation:</b> it cannot verify the guess by actually decoding the bytes, cannot
+   * distinguish sub-variants (e.g. lossy vs. lossless WebP), and reports "unrecognized signature"
+   * for anything else, including plain data corruption/truncation.
+   *
+   * @param bytes raw image bytes that {@link ImageIO} failed to find a reader for, never null
+   * @return a short human-readable format guess, or {@code "unrecognized signature (hex=...)"}
+   *     with the leading bytes in hex if no known marker matches
+   */
+  private String detectUnsupportedFormat(byte[] bytes) {
+    if (bytes.length >= 12 && matchesAscii(bytes, 0, "RIFF") && matchesAscii(bytes, 8, "WEBP")) {
+      return "WebP";
+    }
+    if (bytes.length >= 12 && matchesAscii(bytes, 4, "ftyp")) {
+      String brand = new String(bytes, 8, 4, StandardCharsets.US_ASCII);
+      if (brand.startsWith("avi")) {
+        return "AVIF (ISOBMFF, brand=" + brand + ")";
+      }
+      if (brand.startsWith("hei") || brand.startsWith("hev") || brand.equals("mif1") || brand.equals("msf1")) {
+        return "HEIC/HEIF (ISOBMFF, brand=" + brand + ")";
+      }
+      return "unrecognized ISOBMFF container (brand=" + brand + ")";
+    }
+    if (bytes.length >= 12 && bytes[0] == 0x00 && bytes[1] == 0x00 && bytes[2] == 0x00 && bytes[3] == 0x0C
+        && matchesAscii(bytes, 4, "jP  ")) {
+      return "JPEG 2000 (JP2)";
+    }
+    if (bytes.length >= 2 && (bytes[0] & 0xFF) == 0xFF && (bytes[1] & 0xFF) == 0x4F) {
+      return "JPEG 2000 (raw codestream)";
+    }
+    return "unrecognized signature (hex=" + toHexPrefix(bytes) + ")";
+  }
+
+  private boolean matchesAscii(byte[] bytes, int offset, String ascii) {
+    for (int i = 0; i < ascii.length(); i++) {
+      if (bytes[offset + i] != (byte) ascii.charAt(i)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private String toHexPrefix(byte[] bytes) {
+    int len = Math.min(bytes.length, 12);
+    var hex = new StringBuilder();
+    for (int i = 0; i < len; i++) {
+      hex.append(String.format("%02X", bytes[i]));
+    }
+    return hex.toString();
   }
 
   private boolean isInvalidDimensions(TelegramApiException e) {
