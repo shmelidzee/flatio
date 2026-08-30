@@ -4,9 +4,13 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Registers real-time notification delivery configuration properties.
+ * Registers notification delivery configuration properties (REALTIME, DIGEST, DAILY — issue #410).
  */
 @Configuration
-@EnableConfigurationProperties(NotificationDeliveryProperties.class)
+@EnableConfigurationProperties({
+    NotificationDeliveryProperties.class,
+    NotificationDigestProperties.class,
+    NotificationDailyProperties.class
+})
 public class NotificationDeliveryConfig {
 }

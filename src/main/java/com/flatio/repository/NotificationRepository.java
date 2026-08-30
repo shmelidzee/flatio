@@ -43,10 +43,11 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
    * retry.
    *
    * <p>Restricted to {@code deliveryMode = REALTIME} at the query level — not just filtered in
-   * the caller — so that DIGEST/DAILY notifications (unsendable until issue #410 exists) never
-   * occupy a batch slot ahead of a REALTIME one. Without this, a backlog of DIGEST/DAILY
-   * {@code PENDING} rows (oldest-first) would eventually starve REALTIME delivery entirely once
-   * that backlog exceeds the page size.
+   * the caller — so that DIGEST/DAILY notifications (batched separately by {@link
+   * #findPendingForDigest} / {@link #findPendingByDeliveryMode}, issue #410) never occupy a batch
+   * slot ahead of a REALTIME one. Without this, a backlog of DIGEST/DAILY {@code PENDING} rows
+   * (oldest-first) would eventually starve REALTIME delivery entirely once that backlog exceeds
+   * the page size.
    *
    * <p>Likewise restricted to {@code s.user.active = true} at the query level (issue #438):
    * deactivating a user (see {@code AdminUserServiceImpl#update}) must stop Telegram delivery the
@@ -92,7 +93,7 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
    *
    * <p>Backs the per-user real-time delivery rate limit (FR-SUB-9): a user who has already
    * reached the hourly cap has their remaining {@code PENDING} notifications skipped for this
-   * run rather than sent, until the digest delivery mechanism (issue #410) picks them up.
+   * run rather than sent, until {@link #findPendingForDigest} picks them up.
    *
    * @param user  the notification recipient
    * @param sent  the {@code SENT} status constant
@@ -103,4 +104,64 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
       + "WHERE n.subscription.user = :user AND n.status = :sent AND n.sentAt >= :since")
   long countByUserAndStatusAndSentAtAfter(
       @Param("user") User user, @Param("sent") NotificationStatus sent, @Param("since") Instant since);
+
+  /**
+   * Finds notifications ready for a DIGEST batch run (issue #410, FR-SUB-6): notifications of an
+   * active user's DIGEST subscription, plus notifications of a REALTIME subscription that have
+   * sat {@code PENDING} past {@code realtimeOverflowBefore} — the FR-SUB-9 forced REALTIME →
+   * DIGEST fallback for a user who keeps hitting the hourly real-time cap.
+   *
+   * <p>Joins and batches the same associations as {@link #findSendable} for the same reason:
+   * the caller needs the recipient's chat, the listing card, and its source/currency for every
+   * row, so fetching them eagerly here avoids N+1 lazy-load queries across the batch.
+   *
+   * @param digestMode             the {@code DIGEST} delivery mode constant
+   * @param realtimeMode           the {@code REALTIME} delivery mode constant
+   * @param pending                the {@code PENDING} status constant
+   * @param realtimeOverflowBefore a REALTIME notification is only included once created at or
+   *                               before this instant
+   * @param pageable               caps how many notifications one run processes
+   * @return sendable notifications, oldest first, never null
+   */
+  @Query("SELECT n FROM Notification n "
+      + "JOIN FETCH n.subscription s "
+      + "JOIN FETCH s.user u "
+      + "JOIN FETCH n.listing l "
+      + "JOIN FETCH l.source "
+      + "JOIN FETCH l.currency "
+      + "WHERE u.active = true "
+      + "AND n.status = :pending "
+      + "AND (s.deliveryMode = :digestMode "
+      + "     OR (s.deliveryMode = :realtimeMode AND n.createdAt <= :realtimeOverflowBefore)) "
+      + "ORDER BY n.createdAt ASC")
+  List<Notification> findPendingForDigest(
+      @Param("digestMode") DeliveryMode digestMode,
+      @Param("realtimeMode") DeliveryMode realtimeMode,
+      @Param("pending") NotificationStatus pending,
+      @Param("realtimeOverflowBefore") Instant realtimeOverflowBefore,
+      Pageable pageable);
+
+  /**
+   * Finds notifications ready for the once-daily batch run (issue #410, FR-SUB-6): still
+   * {@code PENDING} notifications of an active user's subscription with the given delivery mode.
+   *
+   * @param deliveryMode only subscriptions with this delivery mode are considered
+   * @param pending      the {@code PENDING} status constant
+   * @param pageable     caps how many notifications one run processes
+   * @return sendable notifications, oldest first, never null
+   */
+  @Query("SELECT n FROM Notification n "
+      + "JOIN FETCH n.subscription s "
+      + "JOIN FETCH s.user u "
+      + "JOIN FETCH n.listing l "
+      + "JOIN FETCH l.source "
+      + "JOIN FETCH l.currency "
+      + "WHERE u.active = true "
+      + "AND s.deliveryMode = :deliveryMode "
+      + "AND n.status = :pending "
+      + "ORDER BY n.createdAt ASC")
+  List<Notification> findPendingByDeliveryMode(
+      @Param("deliveryMode") DeliveryMode deliveryMode,
+      @Param("pending") NotificationStatus pending,
+      Pageable pageable);
 }

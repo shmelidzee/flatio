@@ -328,6 +328,13 @@ flatio:
       batch-size: ${FLATIO_NOTIFICATIONS_REALTIME_BATCH_SIZE:50}
       max-per-hour: ${FLATIO_NOTIFICATIONS_REALTIME_MAX_PER_HOUR:10}
       retry-delay-minutes: ${FLATIO_NOTIFICATIONS_REALTIME_RETRY_DELAY_MINUTES:5}
+    digest:
+      cron: ${FLATIO_NOTIFICATIONS_DIGEST_CRON:0 0 */3 * * *}
+      batch-size: ${FLATIO_NOTIFICATIONS_DIGEST_BATCH_SIZE:200}
+      realtime-overflow-minutes: ${FLATIO_NOTIFICATIONS_DIGEST_REALTIME_OVERFLOW_MINUTES:60}
+    daily:
+      cron: ${FLATIO_NOTIFICATIONS_DAILY_CRON:0 0 9 * * *}
+      batch-size: ${FLATIO_NOTIFICATIONS_DAILY_BATCH_SIZE:200}
   nbrb:
     base-url: ${FLATIO_NBRB_BASE_URL:https://api.nbrb.by}
     sync-cron: ${FLATIO_NBRB_SYNC_CRON:0 0 5 * * *}
