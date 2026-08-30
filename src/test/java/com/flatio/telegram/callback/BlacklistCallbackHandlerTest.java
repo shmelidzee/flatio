@@ -188,6 +188,31 @@ class BlacklistCallbackHandlerTest {
   }
 
   @Test
+  void should_number_delete_buttons_matching_line_order_when_multiple_entries_present() throws Exception {
+    // Given — issue #498: identical "🗑 Удалить" buttons made it impossible to tell which button
+    // deletes which line when the page has more than one entry
+    var user = buildUser(7L);
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
+    var first = buildBlacklistEntry(1L, BlacklistEntryType.KEYWORD, "аренда");
+    var second = buildBlacklistEntry(2L, BlacklistEntryType.SOURCE, "realt");
+    when(blacklistService.findByUser(eq(7L), isNull(), any())).thenReturn(new PageImpl<>(List.of(first, second)));
+    var callback = buildCallback(1L, 100L, true, BlacklistCallbackHandler.ACTION_BLACKLIST);
+
+    // When
+    handler.handle(callback);
+
+    // Then — button (1) is the first entry's delete button, (2) is the second's, same order as the text lines
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient, times(1)).execute(captor.capture());
+    var keyboard = captor.getValue().getReplyMarkup();
+    var rows = ((org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup) keyboard).getKeyboard();
+    assertThat(rows.get(0).get(0).getText()).isEqualTo("🗑 Удалить (1)");
+    assertThat(rows.get(0).get(0).getCallbackData()).isEqualTo("BL:DELETE:1");
+    assertThat(rows.get(1).get(0).getText()).isEqualTo("🗑 Удалить (2)");
+    assertThat(rows.get(1).get(0).getCallbackData()).isEqualTo("BL:DELETE:2");
+  }
+
+  @Test
   void should_not_show_pagination_row_when_only_one_page_exists() throws Exception {
     // Given
     var user = buildUser(7L);
