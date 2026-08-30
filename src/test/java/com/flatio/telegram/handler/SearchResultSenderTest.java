@@ -14,6 +14,7 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -430,6 +431,139 @@ class SearchResultSenderTest {
     data[offset + 1] = (byte) (value >>> 16);
     data[offset + 2] = (byte) (value >>> 8);
     data[offset + 3] = (byte) value;
+  }
+
+  // -------------------------------------------------------------------------
+  // detectUnsupportedFormat — magic-byte format sniffing for undecodable
+  // ImageIO photos (issue #465)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_detect_webp_when_riff_webp_signature_present() {
+    // Given — RIFF container with a WEBP form type at bytes[8..11]
+    byte[] bytes = new byte[]{'R', 'I', 'F', 'F', 0x00, 0x00, 0x00, 0x04, 'W', 'E', 'B', 'P'};
+
+    // When
+    String result = ReflectionTestUtils.invokeMethod(searchResultSender, "detectUnsupportedFormat", bytes);
+
+    // Then
+    assertThat(result).isEqualTo("WebP");
+  }
+
+  @Test
+  void should_detect_avif_when_isobmff_ftyp_brand_starts_with_avi() {
+    // Given — ISOBMFF ftyp box with an AVIF-family major brand
+    for (String brand : new String[]{"avif", "avis"}) {
+      byte[] bytes = buildFtypBox(brand);
+
+      // When
+      String result = ReflectionTestUtils.invokeMethod(searchResultSender, "detectUnsupportedFormat", bytes);
+
+      // Then
+      assertThat(result).as("brand=%s", brand).isEqualTo("AVIF (ISOBMFF, brand=" + brand + ")");
+    }
+  }
+
+  @Test
+  void should_detect_heic_heif_when_isobmff_ftyp_brand_matches_known_variant() {
+    // Given — ISOBMFF ftyp box with each documented HEIC/HEIF major brand
+    for (String brand : new String[]{"heic", "heix", "hevc", "mif1", "msf1"}) {
+      byte[] bytes = buildFtypBox(brand);
+
+      // When
+      String result = ReflectionTestUtils.invokeMethod(searchResultSender, "detectUnsupportedFormat", bytes);
+
+      // Then
+      assertThat(result).as("brand=%s", brand).isEqualTo("HEIC/HEIF (ISOBMFF, brand=" + brand + ")");
+    }
+  }
+
+  @Test
+  void should_detect_unrecognized_isobmff_container_when_ftyp_brand_is_unknown() {
+    // Given — a valid ISOBMFF ftyp box, but a major brand not in the AVIF/HEIC lists (e.g. plain MP4)
+    byte[] bytes = buildFtypBox("mp42");
+
+    // When
+    String result = ReflectionTestUtils.invokeMethod(searchResultSender, "detectUnsupportedFormat", bytes);
+
+    // Then
+    assertThat(result).isEqualTo("unrecognized ISOBMFF container (brand=mp42)");
+  }
+
+  @Test
+  void should_detect_jpeg2000_when_box_based_signature_present() {
+    // Given — the real JP2 signature box: 00 00 00 0C 6A 50 20 20 0D 0A 87 0A
+    byte[] bytes = new byte[]{
+        0x00, 0x00, 0x00, 0x0C, 'j', 'P', 0x20, 0x20, 0x0D, 0x0A, (byte) 0x87, 0x0A
+    };
+
+    // When
+    String result = ReflectionTestUtils.invokeMethod(searchResultSender, "detectUnsupportedFormat", bytes);
+
+    // Then
+    assertThat(result).isEqualTo("JPEG 2000 (JP2)");
+  }
+
+  @Test
+  void should_detect_jpeg2000_when_raw_codestream_signature_present() {
+    // Given — raw J2K codestream SOC marker (0xFF4F), no surrounding box
+    byte[] bytes = new byte[]{(byte) 0xFF, 0x4F};
+
+    // When
+    String result = ReflectionTestUtils.invokeMethod(searchResultSender, "detectUnsupportedFormat", bytes);
+
+    // Then
+    assertThat(result).isEqualTo("JPEG 2000 (raw codestream)");
+  }
+
+  @Test
+  void should_return_unrecognized_signature_with_hex_when_bytes_match_no_known_format() {
+    // Given — well-formed length, but bytes matching none of the known signatures
+    byte[] bytes = new byte[]{
+        0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+        (byte) 0x88, (byte) 0x99, (byte) 0xAA, (byte) 0xBB
+    };
+
+    // When
+    String result = ReflectionTestUtils.invokeMethod(searchResultSender, "detectUnsupportedFormat", bytes);
+
+    // Then
+    assertThat(result).isEqualTo("unrecognized signature (hex=00112233445566778899AABB)");
+  }
+
+  @Test
+  void should_return_unrecognized_signature_when_bytes_array_is_empty() {
+    // Given — issue #465 edge case: nothing to sniff at all
+    byte[] bytes = new byte[0];
+
+    // When / Then — no ArrayIndexOutOfBoundsException, graceful empty-hex fallback
+    String result = ReflectionTestUtils.invokeMethod(searchResultSender, "detectUnsupportedFormat", bytes);
+    assertThat(result).isEqualTo("unrecognized signature (hex=)");
+  }
+
+  @Test
+  void should_return_unrecognized_signature_when_bytes_shorter_than_any_signature_check() {
+    // Given — too short for any 12-byte or 4-byte signature check, and not the 2-byte J2K marker
+    byte[] bytes = new byte[]{0x01, 0x02};
+
+    // When / Then — no ArrayIndexOutOfBoundsException
+    String result = ReflectionTestUtils.invokeMethod(searchResultSender, "detectUnsupportedFormat", bytes);
+    assertThat(result).isEqualTo("unrecognized signature (hex=0102)");
+  }
+
+  /**
+   * Builds a minimal 12-byte ISOBMFF {@code ftyp} box: a 4-byte box size (arbitrary, unchecked by
+   * the production code), the {@code ftyp} box type, and the given 4-character major brand.
+   */
+  private static byte[] buildFtypBox(String brand) {
+    byte[] bytes = new byte[12];
+    bytes[0] = 0x00;
+    bytes[1] = 0x00;
+    bytes[2] = 0x00;
+    bytes[3] = 0x1C;
+    System.arraycopy("ftyp".getBytes(StandardCharsets.US_ASCII), 0, bytes, 4, 4);
+    System.arraycopy(brand.getBytes(StandardCharsets.US_ASCII), 0, bytes, 8, 4);
+    return bytes;
   }
 
   @Test
