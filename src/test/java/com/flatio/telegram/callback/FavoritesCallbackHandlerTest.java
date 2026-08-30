@@ -6,6 +6,8 @@ import com.flatio.common.exception.ListingNotFoundException;
 import com.flatio.domain.user.User;
 import com.flatio.service.FavoriteService;
 import com.flatio.service.UserService;
+import com.flatio.telegram.formatter.ListingFormatter;
+import com.flatio.telegram.handler.PhotoProxyClient;
 import com.flatio.telegram.handler.SearchResultSender;
 import com.flatio.telegram.keyboard.MainMenuKeyboardFactory;
 import com.flatio.web.dto.CreateFavoriteRequest;
@@ -15,6 +17,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -24,27 +27,37 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.chat.Chat;
 import org.telegram.telegrambots.meta.api.objects.message.Message;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardRow;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Unit tests for {@link FavoritesCallbackHandler} (issue #457).
+ * Unit tests for {@link FavoritesCallbackHandler} (issue #457, card rendering issue #494).
  */
 @ExtendWith(MockitoExtension.class)
 class FavoritesCallbackHandlerTest {
+
+  private static final String TEST_NO_PHOTO_URL = "https://placeholder.test/no-photo.png";
+  private static final byte[] DUMMY_PHOTO_BYTES = new byte[]{0x01, 0x02};
 
   @Mock
   private UserService userService;
@@ -56,56 +69,157 @@ class FavoritesCallbackHandlerTest {
   private MainMenuKeyboardFactory keyboardFactory;
 
   @Mock
+  private ListingFormatter listingFormatter;
+
+  @Mock
+  private PhotoProxyClient photoProxyClient;
+
+  @Mock
   private TelegramClient telegramClient;
 
   @InjectMocks
   private FavoritesCallbackHandler handler;
 
+  @BeforeEach
+  void setUp() {
+    // @Value fields are not injected by Mockito — set explicitly, same pattern as SearchResultSenderTest.
+    ReflectionTestUtils.setField(handler, "noPhotoUrl", TEST_NO_PHOTO_URL);
+    lenient().when(listingFormatter.buildCaption(any())).thenReturn("caption");
+    lenient().when(listingFormatter.buildKeyboard(anyString())).thenAnswer(invocation -> InlineKeyboardMarkup.builder()
+        .keyboardRow(new InlineKeyboardRow(InlineKeyboardButton.builder()
+            .text("Открыть объявление →").url(invocation.getArgument(0)).build()))
+        .build());
+  }
+
   @Test
-  void should_send_single_page_message_when_user_has_favorites() throws Exception {
-    // Given
+  void should_send_placeholder_photo_card_and_navigation_when_user_has_favorites() throws Exception {
+    // Given — no photo URL on the listing summary, so the placeholder path is used
     var user = buildUser(7L);
     when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
-    var favorite = buildFavoriteResponse(3L, "Квартира в центре", BigDecimal.valueOf(50_000), "USD");
+    var favorite = buildFavoriteResponse(3L, 3L, "Квартира в центре", BigDecimal.valueOf(50_000), "USD", null);
     when(favoriteService.findByUser(eq(7L), any())).thenReturn(new PageImpl<>(List.of(favorite)));
     var callback = buildCallback(1L, 100L, true, FavoritesCallbackHandler.ACTION_FAVORITES);
 
     // When
     handler.handle(callback);
 
-    // Then — the whole page (header + item) is one message, with one remove-button row
-    // plus the menu row (no pagination row for a single-page result)
-    var captor = ArgumentCaptor.forClass(SendMessage.class);
-    verify(telegramClient).execute(captor.capture());
-    var message = captor.getValue();
-    assertThat(message.getText()).contains("Страница 1 из 1").contains("Квартира в центре").contains("50000 USD");
-    var keyboard = (InlineKeyboardMarkup) message.getReplyMarkup();
-    assertThat(keyboard.getKeyboard()).hasSize(2);
+    // Then — one photo card (placeholder) plus one navigation message
+    var photoCaptor = ArgumentCaptor.forClass(SendPhoto.class);
+    verify(telegramClient).execute(photoCaptor.capture());
+    var photo = photoCaptor.getValue();
+    assertThat(photo.getPhoto().getAttachName()).isEqualTo(TEST_NO_PHOTO_URL);
+    assertThat(photo.getCaption()).isEqualTo("caption");
+    var keyboard = (InlineKeyboardMarkup) photo.getReplyMarkup();
+    assertThat(keyboard.getKeyboard().get(0).get(0).getText()).isEqualTo("Открыть объявление →");
+    assertThat(keyboard.getKeyboard().get(1).get(0).getCallbackData()).isEqualTo("FAV:REMOVE:3");
+    verify(photoProxyClient, never()).download(anyString(), anyLong());
+
+    var navCaptor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient).execute(navCaptor.capture());
+    assertThat(navCaptor.getValue().getText()).contains("Страница 1 из 1");
   }
 
   @Test
-  void should_render_other_items_when_one_item_fails_to_format() throws Exception {
-    // Given — a favorite with a null listing summary (data-integrity edge case) must not
-    // take down the whole page: the working item still renders with its remove button
+  void should_download_and_send_real_photo_when_photo_url_present() throws Exception {
+    // Given
     var user = buildUser(7L);
     when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
-    var broken = new FavoriteResponse(9L, null, null, null, null, false, false, Instant.now());
-    var working = buildFavoriteResponse(3L, "Квартира в центре", BigDecimal.valueOf(50_000), "USD");
-    when(favoriteService.findByUser(eq(7L), any())).thenReturn(new PageImpl<>(List.of(broken, working)));
+    var favorite = buildFavoriteResponse(3L, 3L, "Квартира в центре", BigDecimal.valueOf(50_000), "USD",
+        "https://cdn.realt.by/photos/3/main.jpg");
+    when(favoriteService.findByUser(eq(7L), any())).thenReturn(new PageImpl<>(List.of(favorite)));
+    when(photoProxyClient.download("https://cdn.realt.by/photos/3/main.jpg", 3L)).thenReturn(Optional.of(DUMMY_PHOTO_BYTES));
     var callback = buildCallback(1L, 100L, true, FavoritesCallbackHandler.ACTION_FAVORITES);
 
     // When
     handler.handle(callback);
 
-    // Then — one message still sent, working item's text/button present, broken item
-    // shows a fallback line and contributes no button row
-    var captor = ArgumentCaptor.forClass(SendMessage.class);
-    verify(telegramClient).execute(captor.capture());
-    var message = captor.getValue();
-    assertThat(message.getText()).contains("Квартира в центре").contains("Не удалось отобразить это объявление");
-    var keyboard = (InlineKeyboardMarkup) message.getReplyMarkup();
-    assertThat(keyboard.getKeyboard()).hasSize(2);
-    assertThat(keyboard.getKeyboard().get(0).get(0).getCallbackData()).isEqualTo("FAV:REMOVE:1");
+    // Then — real photo bytes sent, not the placeholder URL
+    var photoCaptor = ArgumentCaptor.forClass(SendPhoto.class);
+    verify(telegramClient, times(1)).execute(photoCaptor.capture());
+    verify(telegramClient, times(1)).execute(any(SendMessage.class));
+    assertThat(photoCaptor.getValue().getPhoto().getAttachName()).isEqualTo("attach://main.jpg");
+    assertThat(photoCaptor.getValue().getPhoto().getAttachName()).isNotEqualTo(TEST_NO_PHOTO_URL);
+  }
+
+  @Test
+  void should_fallback_to_placeholder_when_photo_download_fails() throws Exception {
+    // Given
+    var user = buildUser(7L);
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
+    var favorite = buildFavoriteResponse(3L, 3L, "Квартира в центре", BigDecimal.valueOf(50_000), "USD",
+        "https://cdn.realt.by/photos/3/main.jpg");
+    when(favoriteService.findByUser(eq(7L), any())).thenReturn(new PageImpl<>(List.of(favorite)));
+    when(photoProxyClient.download("https://cdn.realt.by/photos/3/main.jpg", 3L)).thenReturn(Optional.empty());
+    var callback = buildCallback(1L, 100L, true, FavoritesCallbackHandler.ACTION_FAVORITES);
+
+    // When
+    handler.handle(callback);
+
+    // Then
+    var photoCaptor = ArgumentCaptor.forClass(SendPhoto.class);
+    verify(telegramClient).execute(photoCaptor.capture());
+    assertThat(photoCaptor.getValue().getPhoto().getAttachName()).isEqualTo(TEST_NO_PHOTO_URL);
+  }
+
+  @Test
+  void should_append_inactive_label_to_caption_when_listing_inactive() throws Exception {
+    // Given
+    var user = buildUser(7L);
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
+    var listing = buildListing(3L, "Квартира", BigDecimal.valueOf(50_000), "USD", null);
+    var favorite = new FavoriteResponse(3L, listing, BigDecimal.valueOf(50_000), BigDecimal.valueOf(50_000),
+        BigDecimal.ZERO, false, true, Instant.now());
+    when(favoriteService.findByUser(eq(7L), any())).thenReturn(new PageImpl<>(List.of(favorite)));
+    var callback = buildCallback(1L, 100L, true, FavoritesCallbackHandler.ACTION_FAVORITES);
+
+    // When
+    handler.handle(callback);
+
+    // Then
+    var photoCaptor = ArgumentCaptor.forClass(SendPhoto.class);
+    verify(telegramClient).execute(photoCaptor.capture());
+    assertThat(photoCaptor.getValue().getCaption()).contains("caption").contains("Объявление неактуально");
+  }
+
+  @Test
+  void should_append_price_change_to_caption_when_price_changed() throws Exception {
+    // Given
+    var user = buildUser(7L);
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
+    var listing = buildListing(3L, "Квартира", BigDecimal.valueOf(45_000), "USD", null);
+    var favorite = new FavoriteResponse(3L, listing, BigDecimal.valueOf(50_000), BigDecimal.valueOf(45_000),
+        BigDecimal.valueOf(-5_000), true, false, Instant.now());
+    when(favoriteService.findByUser(eq(7L), any())).thenReturn(new PageImpl<>(List.of(favorite)));
+    var callback = buildCallback(1L, 100L, true, FavoritesCallbackHandler.ACTION_FAVORITES);
+
+    // When
+    handler.handle(callback);
+
+    // Then
+    var photoCaptor = ArgumentCaptor.forClass(SendPhoto.class);
+    verify(telegramClient).execute(photoCaptor.capture());
+    assertThat(photoCaptor.getValue().getCaption()).contains("Цена изменилась").contains("-5000 USD");
+  }
+
+  @Test
+  void should_send_fallback_text_when_favorite_has_no_linked_listing() throws Exception {
+    // Given — a favorite with a null listing summary (data-integrity edge case) must not
+    // take down the whole page: it falls back to an error line instead of a photo card
+    var user = buildUser(7L);
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
+    var broken = new FavoriteResponse(9L, null, null, null, null, false, false, Instant.now());
+    when(favoriteService.findByUser(eq(7L), any())).thenReturn(new PageImpl<>(List.of(broken)));
+    var callback = buildCallback(1L, 100L, true, FavoritesCallbackHandler.ACTION_FAVORITES);
+
+    // When
+    handler.handle(callback);
+
+    // Then — text fallback (no photo, no button) plus the navigation message
+    var textCaptor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient, times(2)).execute(textCaptor.capture());
+    assertThat(textCaptor.getAllValues().get(0).getText()).isEqualTo("⚠️ Не удалось отобразить это объявление.");
+    assertThat(textCaptor.getAllValues().get(0).getReplyMarkup()).isNull();
+    assertThat(textCaptor.getAllValues().get(1).getText()).contains("Страница 1 из 1");
   }
 
   @Test
@@ -277,8 +391,8 @@ class FavoritesCallbackHandlerTest {
     // production, but the mocked service can still report totalPages=2 for a smaller page)
     var user = buildUser(7L);
     when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
-    var page1Favorite = buildFavoriteResponse(1L, "Квартира 1", BigDecimal.valueOf(10_000), "USD");
-    var page2Favorite = buildFavoriteResponse(2L, "Квартира 2", BigDecimal.valueOf(20_000), "USD");
+    var page1Favorite = buildFavoriteResponse(1L, 1L, "Квартира 1", BigDecimal.valueOf(10_000), "USD", null);
+    var page2Favorite = buildFavoriteResponse(2L, 2L, "Квартира 2", BigDecimal.valueOf(20_000), "USD", null);
     // total=6 with pageSize=5 yields totalPages=2 (PageImpl computes totalPages from total/pageSize,
     // not from the content list size), matching the two-page scenario this test exercises.
     when(favoriteService.findByUser(eq(7L), eq(PageRequest.of(0, 5, org.springframework.data.domain.Sort
@@ -294,11 +408,11 @@ class FavoritesCallbackHandlerTest {
     // When
     handler.handlePage(pageCallback);
 
-    // Then — one message per page render (open + next), second message shows page 2's item
+    // Then — card + nav per page (open: 2 calls, next: 2 more), last nav message shows page 2
     var captor = ArgumentCaptor.forClass(SendMessage.class);
-    verify(telegramClient, org.mockito.Mockito.times(2)).execute(captor.capture());
-    var secondPageMessage = captor.getAllValues().get(1);
-    assertThat(secondPageMessage.getText()).contains("Квартира 2").contains("Страница 2 из 2");
+    verify(telegramClient, times(2)).execute(captor.capture());
+    var lastNavMessage = captor.getAllValues().get(1);
+    assertThat(lastNavMessage.getText()).contains("Страница 2 из 2");
   }
 
   @Test
@@ -344,12 +458,17 @@ class FavoritesCallbackHandlerTest {
     return user;
   }
 
-  private FavoriteResponse buildFavoriteResponse(Long id, String title, BigDecimal price, String currency) {
-    var listing = new ListingSummaryResponse(
-        1L, title, price, currency, null, null, 2, "APARTMENT", null, "Минск", null, null,
-        "realt", null, null, null, false
+  private ListingSummaryResponse buildListing(Long id, String title, BigDecimal price, String currency, String photoUrl) {
+    return new ListingSummaryResponse(
+        id, title, price, currency, null, null, 2, "APARTMENT", null, "Минск", null, null,
+        "realt", null, photoUrl, "https://realt.by/listing/" + id, false
     );
-    return new FavoriteResponse(id, listing, price, price, BigDecimal.ZERO, false, false, Instant.now());
+  }
+
+  private FavoriteResponse buildFavoriteResponse(Long favoriteId, Long listingId, String title, BigDecimal price,
+      String currency, String photoUrl) {
+    var listing = buildListing(listingId, title, price, currency, photoUrl);
+    return new FavoriteResponse(favoriteId, listing, price, price, BigDecimal.ZERO, false, false, Instant.now());
   }
 
   private CallbackQuery buildCallback(Long telegramId, Long chatId, boolean isPrivateChat, String data) {
