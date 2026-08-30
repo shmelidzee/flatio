@@ -1,6 +1,7 @@
 package com.flatio.telegram.formatter;
 
 import com.flatio.domain.listing.ListingStatus;
+import com.flatio.domain.subscription.TriggerType;
 import com.flatio.telegram.config.SourceDisplayProperties;
 import com.flatio.web.dto.ListingResponse;
 import com.flatio.web.dto.ListingSummaryResponse;
@@ -1278,6 +1279,57 @@ class ListingFormatterTest {
     assertThat(rows.get(1).get(0).getCallbackData()).isEqualTo("FAV:ADD:42");
     assertThat(rows.get(2).get(0).getCallbackData()).isEqualTo("BL:HIDE_LISTING:42");
     assertThat(rows.get(2).get(1).getCallbackData()).isEqualTo("BL:HIDE_SOURCE:kufar");
+  }
+
+  // -------------------------------------------------------------------------
+  // buildDigestLine (issue #410)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_build_digest_line_with_trigger_label_price_and_link() {
+    // Given
+    var listing = buildListingWithRooms(
+        1L, 2, null, BigDecimal.valueOf(900), "BYN", null,
+        null, null, "onliner", null, "https://onliner.by/1"
+    );
+
+    // When
+    var line = listingFormatter.buildDigestLine(TriggerType.NEW_LISTING, listing);
+
+    // Then
+    assertThat(line).startsWith("🆕 Новое объявление по вашей подписке: 2-комнатная за <b>900 BYN</b>");
+    assertThat(line).contains("<a href=\"https://onliner.by/1\">Открыть</a>");
+  }
+
+  @Test
+  void should_build_digest_line_without_link_when_source_url_is_null() {
+    // Given
+    var listing = buildListingWithRooms(
+        1L, 1, null, BigDecimal.valueOf(500), "BYN", null,
+        null, null, "onliner", null, null
+    );
+
+    // When
+    var line = listingFormatter.buildDigestLine(TriggerType.PRICE_DROP, listing);
+
+    // Then
+    assertThat(line).doesNotContain("<a href");
+    assertThat(line).startsWith("📉 Цена снижена:");
+  }
+
+  @Test
+  void should_escape_double_quotes_in_source_url_for_digest_line_link() {
+    // Given — a source URL containing a double quote must not break out of the href attribute
+    var listing = buildListingWithRooms(
+        1L, 1, null, BigDecimal.valueOf(500), "BYN", null,
+        null, null, "onliner", null, "https://onliner.by/1?q=\"x\""
+    );
+
+    // When
+    var line = listingFormatter.buildDigestLine(TriggerType.NEW_LISTING, listing);
+
+    // Then
+    assertThat(line).contains("href=\"https://onliner.by/1?q=&quot;x&quot;\"");
   }
 
   // -------------------------------------------------------------------------
