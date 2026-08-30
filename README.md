@@ -82,6 +82,11 @@ cp src/main/resources/application-local.yml.example src/main/resources/applicati
 | `FLATIO_ALERTS_ERROR_RATE_THRESHOLD` | Порог доли неудачных синков в окне (0.5 = 50%) | `0.5` |
 | `FLATIO_ALERTS_COOLDOWN_HOURS` | Минимальный интервал между повторными уведомлениями по одному и тому же активному алёрту | `6` |
 | `FLATIO_ALERTS_TELEGRAM_CHAT_ID` | Telegram chat_id служебного чата для алёртов; пусто — алёрты не отправляются (только логируются) | — (не обязательна) |
+| `FLATIO_NOTIFICATIONS_DIGEST_CRON` | Cron-расписание батчевой DIGEST-доставки уведомлений | `0 0 */3 * * *` |
+| `FLATIO_NOTIFICATIONS_DIGEST_BATCH_SIZE` | Максимум уведомлений за один DIGEST-запуск | `200` |
+| `FLATIO_NOTIFICATIONS_DIGEST_REALTIME_OVERFLOW_MINUTES` | Минут ожидания REALTIME-уведомления, упёршегося в часовой лимит, до переноса в DIGEST | `60` |
+| `FLATIO_NOTIFICATIONS_DAILY_CRON` | Cron-расписание ежедневной батчевой доставки уведомлений | `0 0 9 * * *` |
+| `FLATIO_NOTIFICATIONS_DAILY_BATCH_SIZE` | Максимум уведомлений за один DAILY-запуск | `200` |
 
 При локальной разработке значения по умолчанию применяются автоматически, если переменные не заданы.
 `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` и `JWT_SECRET_KEY` не имеют дефолтов — приложение не стартует без них.
