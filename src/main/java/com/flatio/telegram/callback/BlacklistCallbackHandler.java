@@ -395,11 +395,18 @@ public class BlacklistCallbackHandler {
     return textBuilder.toString();
   }
 
+  /**
+   * Builds the blacklist page's keyboard, including one numbered delete-button row per entry
+   * (issue #498) — the number matches the entry's position in {@code items}, i.e. its line order
+   * in {@link #buildListText}, so the user can tell which button deletes which line. Numbering is
+   * per-page, not global across pagination — each page starts back at (1).
+   */
   private InlineKeyboardMarkup buildListKeyboard(List<BlacklistEntryResponse> items, BlacklistEntryType type,
       int page, int totalPages) {
     var keyboardBuilder = InlineKeyboardMarkup.builder();
-    for (var item : items) {
-      keyboardBuilder.keyboardRow(new InlineKeyboardRow(navBtn("🗑 Удалить", DELETE_PREFIX + item.id())));
+    for (int i = 0; i < items.size(); i++) {
+      String label = "🗑 Удалить (" + (i + 1) + ")";
+      keyboardBuilder.keyboardRow(new InlineKeyboardRow(navBtn(label, DELETE_PREFIX + items.get(i).id())));
     }
     keyboardBuilder.keyboardRow(filterRow(type));
     if (totalPages > 1) {
