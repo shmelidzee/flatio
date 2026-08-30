@@ -569,8 +569,12 @@ public class SubscriptionsCallbackHandler {
 
   /**
    * Builds a compact one-line summary of a subscription's search criteria, e.g.
-   * «Аренда · Минск · 400–700 BYN · 2 комн.» — only the fields actually set on the criteria are
-   * included (issue #478 FR-NAV-7).
+   * «Аренда · Квартира · Минск · 400–700 BYN · 2 комн. · от собственника» — only the fields
+   * actually set on the criteria are included (issue #478 FR-NAV-7).
+   *
+   * <p>Deliberately omits the free-text {@code query} field (issue #496) — unlike the other
+   * criteria it is arbitrary-length user text, which would need truncation/escaping to fit a
+   * one-line summary safely; revisit as a separate change if this turns out to matter in practice.
    *
    * @param criteria the subscription's search criteria, may be null
    * @return summary string, empty (never null) if criteria is null or every field is unset
@@ -583,6 +587,9 @@ public class SubscriptionsCallbackHandler {
     if (criteria.dealType() != null) {
       parts.add(dealTypeLabel(criteria.dealType()));
     }
+    if (criteria.propertyType() != null) {
+      parts.add(propertyTypeLabel(criteria.propertyType()));
+    }
     String city = resolveCityLabel(criteria);
     if (city != null) {
       parts.add(city);
@@ -593,6 +600,9 @@ public class SubscriptionsCallbackHandler {
     }
     if (criteria.rooms() != null) {
       parts.add(roomsLabel(criteria.rooms()));
+    }
+    if (Boolean.TRUE.equals(criteria.ownerOnly())) {
+      parts.add("от собственника");
     }
     return String.join(" · ", parts);
   }
@@ -635,6 +645,15 @@ public class SubscriptionsCallbackHandler {
       case RENT -> "Аренда";
       case SELL -> "Продажа";
       case RENT_DAILY -> "Посуточно";
+    };
+  }
+
+  private String propertyTypeLabel(String propertyType) {
+    return switch (propertyType) {
+      case "APARTMENT" -> "Квартира";
+      case "HOUSE" -> "Дом";
+      case "ROOM" -> "Комната";
+      default -> propertyType;
     };
   }
 
