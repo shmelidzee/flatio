@@ -112,6 +112,7 @@ public class SubscriptionsCallbackHandler {
       "Сессия редактирования устарела. Откройте раздел «🔔 Мои подписки» и нажмите «✏️ Изменить» ещё раз.";
   private static final String EDIT_NOT_FOUND_TEXT =
       "Эта подписка была удалена и не может быть сохранена.";
+  private static final String NAV_BUTTON_LABEL = "🔔 Мои подписки";
 
   private final UserService userService;
   private final SubscriptionService subscriptionService;
@@ -268,7 +269,7 @@ public class SubscriptionsCallbackHandler {
     try {
       subscriptionService.create(userId, request);
       creationState.clear(telegramId);
-      sendPlainText(chatId, "🔔 Подписка «" + TelegramHtmlEscaper.escapeHtml(name) + "» создана.");
+      sendConfirmationWithNav(chatId, "🔔 Подписка «" + TelegramHtmlEscaper.escapeHtml(name) + "» создана.");
     } catch (SubscriptionLimitExceededException e) {
       creationState.clear(telegramId);
       sendPlainText(chatId, LIMIT_EXCEEDED_TEXT);
@@ -721,6 +722,25 @@ public class SubscriptionsCallbackHandler {
       telegramClient.execute(SendMessage.builder().chatId(chatId).text(text).build());
     } catch (TelegramApiException e) {
       log.warn("Failed to send subscriptions prompt: chatId={}", chatId, e);
+    }
+  }
+
+  /**
+   * Sends a confirmation message with navigation buttons ("🔔 Мои подписки", "🏠 Главное меню"),
+   * so the user is not left at a dead end after completing an action (issue #493).
+   *
+   * @param chatId target chat identifier, never null
+   * @param text   confirmation text, never null
+   */
+  private void sendConfirmationWithNav(String chatId, String text) {
+    var keyboard = InlineKeyboardMarkup.builder()
+        .keyboardRow(new InlineKeyboardRow(navBtn(NAV_BUTTON_LABEL, ACTION_SUBSCRIPTIONS)))
+        .keyboardRow(new InlineKeyboardRow(navBtn("🏠 Главное меню", SearchResultSender.ACTION_MENU)))
+        .build();
+    try {
+      telegramClient.execute(SendMessage.builder().chatId(chatId).text(text).replyMarkup(keyboard).build());
+    } catch (TelegramApiException e) {
+      log.warn("Failed to send subscriptions confirmation: chatId={}", chatId, e);
     }
   }
 
