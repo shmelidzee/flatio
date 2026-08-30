@@ -3,15 +3,17 @@ package com.flatio.telegram.callback;
 import com.flatio.common.exception.FavoriteLimitExceededException;
 import com.flatio.common.exception.FavoriteNotFoundException;
 import com.flatio.common.exception.ListingNotFoundException;
-import com.flatio.common.util.TelegramHtmlEscaper;
 import com.flatio.common.util.TelegramPrivateChatGuard;
 import com.flatio.service.FavoriteService;
 import com.flatio.service.UserService;
+import com.flatio.telegram.formatter.ListingFormatter;
+import com.flatio.telegram.handler.PhotoProxyClient;
 import com.flatio.telegram.handler.SearchResultSender;
 import com.flatio.telegram.keyboard.MainMenuKeyboardFactory;
 import com.flatio.web.dto.CreateFavoriteRequest;
 import com.flatio.web.dto.FavoriteResponse;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -20,11 +22,14 @@ import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
+import org.telegram.telegrambots.meta.api.objects.InputFile;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardRow;
@@ -37,10 +42,13 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
  *
  * <p>Reuses {@link FavoriteService}, the same service backing the REST {@code /api/v1/favorites}
  * endpoint (Telegram and REST API share services, per project architecture rules). A page of
- * favorites renders as a single Telegram message — one line per favorite, one inline-keyboard row
- * per favorite for its "remove" button, plus a shared pagination/menu row (issue #476). Earlier
- * (#457) this sent one message per favorite; that flooded the chat once a user had more than a
- * handful of favorites.
+ * favorites renders as one photo card per favorite — title, price and status caption, its photo
+ * (or a placeholder), an "open listing" link button and a "remove" button — followed by a shared
+ * pagination/menu message, mirroring how {@link SearchResultSender} renders search result cards
+ * (issue #494: favorites were previously a single text-only message per page, inconsistent with
+ * search cards). Page size stays {@value #PAGE_SIZE}, the same order of magnitude as search's
+ * per-page card count, so this does not introduce a new flood risk (issue #476 already established
+ * that bound for this section).
  *
  * <p>Restricted to private chats (issue #463): favorites are personal data, so a request made
  * from a group/supergroup/channel is answered with a redirect to a private chat instead of the
@@ -74,6 +82,7 @@ public class FavoritesCallbackHandler {
       + "\n\nДобавьте объявление в избранное с его карточки в поиске.";
   private static final String SESSION_EXPIRED_TEXT = "Список устарел. Откройте раздел «⭐ Избранное» заново.";
   private static final String ITEM_FORMAT_ERROR_TEXT = "⚠️ Не удалось отобразить это объявление.";
+  private static final String LABEL_LISTING_INACTIVE = "❗️Объявление неактуально";
   private static final String UNREGISTERED_TOAST = "Сначала запустите бота командой /start.";
   private static final String ADDED_TOAST = "⭐ Добавлено в избранное";
   private static final String REMOVED_TOAST = "Убрано из избранного";
@@ -81,9 +90,14 @@ public class FavoritesCallbackHandler {
       "Достигнут лимит избранного по вашему тарифу. Уберите что-то из списка, чтобы добавить новое.";
   private static final String LISTING_NOT_FOUND_TOAST = "Это объявление больше недоступно.";
 
+  @Value("${telegram.bot.no-photo-url:https://placehold.co/800x600/e2e8f0/94a3b8.png}")
+  private String noPhotoUrl;
+
   private final UserService userService;
   private final FavoriteService favoriteService;
   private final MainMenuKeyboardFactory keyboardFactory;
+  private final ListingFormatter listingFormatter;
+  private final PhotoProxyClient photoProxyClient;
   private final TelegramClient telegramClient;
 
   private record PageState(int page, int totalPages) {}
@@ -219,47 +233,155 @@ public class FavoritesCallbackHandler {
     sendPage(chatId, result.getContent(), page, result.getTotalPages());
   }
 
+  /**
+   * Sends one photo card per favorite followed by a shared pagination/menu message (issue #494),
+   * mirroring {@link SearchResultSender}'s card-per-listing rendering. A single broken item (e.g.
+   * a data-integrity gap with no linked listing) falls back to an error line instead of taking
+   * down the whole page — see {@link #sendItemCard}.
+   *
+   * @param chatId     target chat identifier, never null
+   * @param items      favorites on this page, never null, never empty
+   * @param page       zero-based page index
+   * @param totalPages total number of pages
+   */
   private void sendPage(String chatId, List<FavoriteResponse> items, int page, int totalPages) {
-    try {
-      telegramClient.execute(SendMessage.builder()
-          .chatId(chatId)
-          .text(buildPageText(items, page, totalPages))
-          .parseMode("HTML")
-          .replyMarkup(buildPageKeyboard(items, page, totalPages))
-          .build());
-    } catch (TelegramApiException e) {
-      log.warn("Failed to send favorites page: chatId={}", chatId, e);
-    }
-  }
-
-  private String buildPageText(List<FavoriteResponse> items, int page, int totalPages) {
-    var sb = new StringBuilder("📄 Страница ").append(page + 1).append(" из ").append(totalPages);
     for (var item : items) {
-      sb.append("\n\n").append(formatItemSafely(item));
+      try {
+        sendItemCard(chatId, item);
+      } catch (Exception e) {
+        log.error("Unexpected error sending favorite card: favoriteId={}", item.id(), e);
+      }
     }
-    return sb.toString();
+    sendNavigationMessage(chatId, page, totalPages);
   }
 
-  private String formatItemSafely(FavoriteResponse item) {
+  private void sendItemCard(String chatId, FavoriteResponse item) {
+    String caption;
+    InlineKeyboardMarkup keyboard;
     try {
-      return formatItem(item);
+      caption = buildCaption(item);
+      keyboard = buildItemKeyboard(item);
     } catch (Exception e) {
       log.error("Unexpected error formatting favorite item: favoriteId={}", item.id(), e);
-      return ITEM_FORMAT_ERROR_TEXT;
+      sendTextCard(chatId, ITEM_FORMAT_ERROR_TEXT, null);
+      return;
+    }
+    sendPhotoOrPlaceholder(chatId, item, caption, keyboard);
+  }
+
+  private String buildCaption(FavoriteResponse item) {
+    var caption = new StringBuilder(listingFormatter.buildCaption(item.listing()));
+    if (item.listingInactive()) {
+      caption.append("\n").append(LABEL_LISTING_INACTIVE);
+    } else if (item.priceChanged()) {
+      caption.append("\n💱 Цена изменилась: ").append(formatDelta(item));
+    }
+    return caption.toString();
+  }
+
+  private InlineKeyboardMarkup buildItemKeyboard(FavoriteResponse item) {
+    var builder = InlineKeyboardMarkup.builder();
+    listingFormatter.buildKeyboard(item.listing().sourceUrl()).getKeyboard().forEach(builder::keyboardRow);
+    removeButtonSafely(item).ifPresent(button -> builder.keyboardRow(new InlineKeyboardRow(button)));
+    return builder.build();
+  }
+
+  /**
+   * Sends a favorite's photo, downloading the real photo via {@link PhotoProxyClient} when a
+   * usable URL is present and falling back to the configured placeholder on a missing URL, a
+   * failed download, or a rejected upload — the same fallback chain {@link SearchResultSender}
+   * uses for search cards, minus its oversized-photo compression/re-encode handling (issue #494:
+   * left out deliberately, favorites is a small curated list rather than a paginated feed of
+   * fresh unvetted source photos; revisit if this turns out to matter in practice).
+   *
+   * @param chatId   target chat identifier, never null
+   * @param item     the favorite whose listing photo is being sent, never null
+   * @param caption  pre-built HTML caption, never null
+   * @param keyboard pre-built inline keyboard, never null
+   */
+  private void sendPhotoOrPlaceholder(String chatId, FavoriteResponse item, String caption, InlineKeyboardMarkup keyboard) {
+    String photoUrl = item.listing().photoUrl();
+    if (!hasUsablePhotoUrl(photoUrl)) {
+      sendPlaceholderPhoto(chatId, caption, keyboard);
+      return;
+    }
+    var photoBytes = photoProxyClient.download(photoUrl, item.listing().id());
+    if (photoBytes.isEmpty()) {
+      sendPlaceholderPhoto(chatId, caption, keyboard);
+      return;
+    }
+    try {
+      telegramClient.execute(SendPhoto.builder()
+          .chatId(chatId)
+          .photo(new InputFile(new ByteArrayInputStream(photoBytes.get()), extractPhotoFilename(photoUrl)))
+          .caption(caption)
+          .parseMode("HTML")
+          .replyMarkup(keyboard)
+          .build());
+    } catch (TelegramApiException e) {
+      log.warn("Failed to send favorite photo, falling back to placeholder: favoriteId={}, listingId={}",
+          item.id(), item.listing().id(), e);
+      sendPlaceholderPhoto(chatId, caption, keyboard);
     }
   }
 
-  private InlineKeyboardMarkup buildPageKeyboard(List<FavoriteResponse> items, int page, int totalPages) {
-    var builder = InlineKeyboardMarkup.builder();
-    for (var item : items) {
-      removeButtonSafely(item).ifPresent(button -> builder.keyboardRow(new InlineKeyboardRow(button)));
+  private void sendPlaceholderPhoto(String chatId, String caption, InlineKeyboardMarkup keyboard) {
+    try {
+      telegramClient.execute(SendPhoto.builder()
+          .chatId(chatId)
+          .photo(new InputFile(noPhotoUrl))
+          .caption(caption)
+          .parseMode("HTML")
+          .replyMarkup(keyboard)
+          .build());
+    } catch (TelegramApiException e) {
+      log.warn("Failed to send favorites placeholder photo, falling back to text: chatId={}", chatId, e);
+      sendTextCard(chatId, caption, keyboard);
     }
+  }
+
+  private void sendTextCard(String chatId, String text, InlineKeyboardMarkup keyboard) {
+    try {
+      var builder = SendMessage.builder().chatId(chatId).text(text).parseMode("HTML");
+      if (keyboard != null) {
+        builder.replyMarkup(keyboard);
+      }
+      telegramClient.execute(builder.build());
+    } catch (TelegramApiException e) {
+      log.error("Failed to send favorites text card: chatId={}", chatId, e);
+    }
+  }
+
+  private void sendNavigationMessage(String chatId, int page, int totalPages) {
+    String pageText = "📄 Страница " + (page + 1) + " из " + totalPages;
     var navButtons = navButtons(page, totalPages);
+    var builder = InlineKeyboardMarkup.builder();
     if (!navButtons.isEmpty()) {
       builder.keyboardRow(new InlineKeyboardRow(navButtons));
     }
     builder.keyboardRow(new InlineKeyboardRow(navBtn("🏠 Главное меню", SearchResultSender.ACTION_MENU)));
-    return builder.build();
+    try {
+      telegramClient.execute(SendMessage.builder()
+          .chatId(chatId)
+          .text(pageText)
+          .replyMarkup(builder.build())
+          .build());
+    } catch (TelegramApiException e) {
+      log.warn("Failed to send favorites navigation message: chatId={}", chatId, e);
+    }
+  }
+
+  private boolean hasUsablePhotoUrl(String url) {
+    return url != null && (url.startsWith("http://") || url.startsWith("https://"));
+  }
+
+  private String extractPhotoFilename(String url) {
+    int slash = url.lastIndexOf('/');
+    int query = url.indexOf('?');
+    String name = slash >= 0
+        ? (query > slash ? url.substring(slash + 1, query) : url.substring(slash + 1))
+        : "photo.jpg";
+    return name.isBlank() ? "photo.jpg" : name;
   }
 
   private Optional<InlineKeyboardButton> removeButtonSafely(FavoriteResponse item) {
@@ -283,26 +405,6 @@ public class FavoritesCallbackHandler {
       navButtons.add(navBtn("Ещё →", PAGE_NEXT));
     }
     return navButtons;
-  }
-
-  private String formatItem(FavoriteResponse item) {
-    var sb = new StringBuilder();
-    sb.append(TelegramHtmlEscaper.escapeHtml(item.listing().title())).append(" — ").append(formatPrice(item));
-    if (item.listingInactive()) {
-      sb.append("\n❗️Объявление неактуально");
-    } else if (item.priceChanged()) {
-      sb.append("\n💱 Цена изменилась: ").append(formatDelta(item));
-    }
-    return sb.toString();
-  }
-
-  private String formatPrice(FavoriteResponse item) {
-    BigDecimal price = item.currentPrice() != null ? item.currentPrice() : item.listing().price();
-    if (price == null) {
-      return "";
-    }
-    String currency = item.listing().currency() != null ? item.listing().currency() : "";
-    return price.stripTrailingZeros().toPlainString() + " " + currency;
   }
 
   private String formatDelta(FavoriteResponse item) {
