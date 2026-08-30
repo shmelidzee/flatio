@@ -403,7 +403,47 @@ class SubscriptionsCallbackHandlerTest {
     var captor = ArgumentCaptor.forClass(SendMessage.class);
     verify(telegramClient, times(2)).execute(captor.capture());
     assertThat(captor.getAllValues().get(0).getText())
-        .contains("Аренда").contains("Минск").contains("400–700 BYN").contains("2 комн.");
+        .contains("Аренда").contains("Квартира").contains("Минск").contains("400–700 BYN").contains("2 комн.");
+  }
+
+  @Test
+  void should_include_property_type_when_only_property_type_is_set() throws Exception {
+    // Given — issue #496: a subscription created via the Telegram wizard with only a property-type
+    // filter (no deal type/price/rooms — the wizard has no city step either) previously rendered
+    // a blank summary because buildCriteriaSummary() ignored propertyType entirely
+    var user = buildUser(7L);
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
+    var criteria = new SubscriptionSearchCriteria(null, "HOUSE", null, null, null, null, null, null, null, null);
+    var subscription = buildSubscriptionResponseWithCriteria(3L, "Дома", true, DeliveryMode.REALTIME, criteria);
+    when(subscriptionService.findByUser(eq(7L), any())).thenReturn(new PageImpl<>(List.of(subscription)));
+    var callback = buildCallback(1L, 100L, true, SubscriptionsCallbackHandler.ACTION_SUBSCRIPTIONS);
+
+    // When
+    handler.handle(callback);
+
+    // Then
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient, times(2)).execute(captor.capture());
+    assertThat(captor.getAllValues().get(0).getText()).contains("Дом");
+  }
+
+  @Test
+  void should_include_owner_only_label_when_owner_only_is_true() throws Exception {
+    // Given — issue #496: ownerOnly is collected by the wizard but was missing from the summary
+    var user = buildUser(7L);
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
+    var criteria = new SubscriptionSearchCriteria(null, null, null, null, null, null, null, null, null, true);
+    var subscription = buildSubscriptionResponseWithCriteria(3L, "От собственника", true, DeliveryMode.REALTIME, criteria);
+    when(subscriptionService.findByUser(eq(7L), any())).thenReturn(new PageImpl<>(List.of(subscription)));
+    var callback = buildCallback(1L, 100L, true, SubscriptionsCallbackHandler.ACTION_SUBSCRIPTIONS);
+
+    // When
+    handler.handle(callback);
+
+    // Then
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient, times(2)).execute(captor.capture());
+    assertThat(captor.getAllValues().get(0).getText()).contains("от собственника");
   }
 
   @Test
