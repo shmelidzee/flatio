@@ -1,10 +1,12 @@
 package com.flatio.service.notification;
 
 import com.flatio.common.constants.NotificationTriggerLabels;
+import com.flatio.common.util.QuietHoursEvaluator;
 import com.flatio.config.NotificationDeliveryProperties;
 import com.flatio.domain.notification.Notification;
 import com.flatio.domain.notification.NotificationStatus;
 import com.flatio.domain.subscription.DeliveryMode;
+import com.flatio.domain.subscription.Subscription;
 import com.flatio.domain.subscription.TriggerType;
 import com.flatio.domain.user.User;
 import com.flatio.repository.NotificationRepository;
@@ -15,6 +17,8 @@ import com.flatio.web.mapper.ListingMapper;
 import java.io.ByteArrayInputStream;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +45,12 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
  * notifications are left unsent for this run rather than delivered — {@link
  * BatchNotificationSender#sendDigest()} is the mechanism that eventually sweeps up whatever a
  * user's real-time quota cannot cover.
+ *
+ * <p>A subscription's quiet hours window ({@link Subscription#getQuietHoursStart()} / {@link
+ * Subscription#getQuietHoursEnd()}) also suppresses immediate delivery (FR-SUB-7, issue #411):
+ * a notification due during the window is left {@code PENDING} and is picked up by {@link
+ * BatchNotificationSender#sendDigest()} once the window has ended. The user's own timezone
+ * (FR-USR-5) is not tracked yet — this assumes the region default, {@code Europe/Minsk}.
  */
 @Component
 @Slf4j
@@ -49,6 +59,7 @@ public class TelegramNotificationSender {
 
   private static final Duration RATE_LIMIT_WINDOW = Duration.ofHours(1);
   private static final int CAPTION_MAX_LENGTH = 1024;
+  private static final ZoneId NOTIFICATION_ZONE = ZoneId.of("Europe/Minsk");
 
   private final NotificationRepository notificationRepository;
   private final TelegramChatResolver chatResolver;
@@ -84,6 +95,11 @@ public class TelegramNotificationSender {
   }
 
   private boolean deliverIfUnderLimit(Notification notification, Map<Long, Long> sentThisRunByUserId) {
+    if (isInQuietHours(notification.getSubscription())) {
+      log.debug("Skipping notification, subscription is within quiet hours: subscriptionId={}, notificationId={}",
+          notification.getSubscription().getId(), notification.getId());
+      return false;
+    }
     User user = notification.getSubscription().getUser();
     long sentCount = sentThisRunByUserId.computeIfAbsent(user.getId(), id -> countRecentlySent(user));
     if (sentCount >= properties.maxPerHour()) {
@@ -101,6 +117,20 @@ public class TelegramNotificationSender {
   private long countRecentlySent(User user) {
     return notificationRepository.countByUserAndStatusAndSentAtAfter(
         user, NotificationStatus.SENT, Instant.now().minus(RATE_LIMIT_WINDOW));
+  }
+
+  /**
+   * Checks whether {@code subscription} is currently inside its configured quiet hours window
+   * (FR-SUB-7, issue #411), using the region default timezone since per-user timezone (FR-USR-5)
+   * is not implemented yet.
+   *
+   * @param subscription the subscription whose quiet hours window is evaluated, never null
+   * @return {@code true} if the current time in {@code Europe/Minsk} falls inside the window
+   */
+  private boolean isInQuietHours(Subscription subscription) {
+    LocalTime now = LocalTime.now(NOTIFICATION_ZONE);
+    return QuietHoursEvaluator.isWithinQuietHours(
+        subscription.getQuietHoursStart(), subscription.getQuietHoursEnd(), now);
   }
 
   private boolean deliver(Notification notification, User user) {

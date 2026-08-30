@@ -16,6 +16,8 @@ import com.flatio.web.mapper.ListingMapper;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -101,6 +103,50 @@ class BatchNotificationSenderTest {
     // Then
     verify(notificationRepository).findPendingForDigest(
         eq(DeliveryMode.DIGEST), eq(DeliveryMode.REALTIME), eq(NotificationStatus.PENDING), any(Instant.class), any());
+  }
+
+  // -------------------------------------------------------------------------
+  // sendDigest — quiet hours (FR-SUB-7, issue #411)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_exclude_realtime_notification_when_subscription_is_within_quiet_hours() throws Exception {
+    // Given — REALTIME (overflow) notification whose subscription's quiet hours window is built
+    // around the real current time, so the test is deterministic regardless of when it runs
+    var now = LocalTime.now(ZoneId.of("Europe/Minsk"));
+    var user = buildUser(1L);
+    var notification = buildNotification(user, DeliveryMode.REALTIME, TriggerType.NEW_LISTING);
+    notification.getSubscription().setQuietHoursStart(now.minusHours(1));
+    notification.getSubscription().setQuietHoursEnd(now.plusHours(1));
+    mockDigestBatch(notification);
+
+    // When
+    sender.sendDigest();
+
+    // Then — left untouched (still PENDING), not swept into this digest run
+    verify(chatResolver, never()).resolveChatId(any());
+    verify(telegramClient, never()).execute(any(SendMessage.class));
+    verify(statusUpdater, never()).markSent(any());
+    verify(statusUpdater, never()).markFailed(any());
+  }
+
+  @Test
+  void should_include_realtime_overflow_notification_when_subscription_is_not_in_quiet_hours() throws Exception {
+    // Given — regression: REALTIME notification overflowing into the digest, subscription has no
+    // quiet hours configured — must still be delivered as before
+    var user = buildUser(1L);
+    var notification = buildNotification(user, DeliveryMode.REALTIME, TriggerType.NEW_LISTING);
+    mockDigestBatch(notification);
+    mockChatId(user, "111222333");
+    mockDigestLine(notification, "line-1");
+    when(telegramClient.execute(any(SendMessage.class))).thenReturn(mock());
+
+    // When
+    sender.sendDigest();
+
+    // Then
+    verify(telegramClient).execute(any(SendMessage.class));
+    verify(statusUpdater).markSent(notification);
   }
 
   // -------------------------------------------------------------------------

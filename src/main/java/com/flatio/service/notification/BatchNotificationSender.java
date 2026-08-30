@@ -1,10 +1,12 @@
 package com.flatio.service.notification;
 
+import com.flatio.common.util.QuietHoursEvaluator;
 import com.flatio.config.NotificationDailyProperties;
 import com.flatio.config.NotificationDigestProperties;
 import com.flatio.domain.notification.Notification;
 import com.flatio.domain.notification.NotificationStatus;
 import com.flatio.domain.subscription.DeliveryMode;
+import com.flatio.domain.subscription.Subscription;
 import com.flatio.domain.user.User;
 import com.flatio.repository.NotificationRepository;
 import com.flatio.telegram.formatter.ListingFormatter;
@@ -12,6 +14,8 @@ import com.flatio.web.mapper.ListingMapper;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -39,6 +43,10 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
  * failing) does not affect any other user's batch in the same run; within a user's batch, one
  * notification's formatting failure does not prevent the rest of that user's notifications from
  * being included.
+ *
+ * <p>{@link #sendDigest()} also excludes REALTIME notifications still inside their subscription's
+ * quiet hours window (FR-SUB-7, issue #411) — see that method's Javadoc for the delivery-timing
+ * trade-off this implies.
  */
 @Component
 @Slf4j
@@ -48,6 +56,7 @@ public class BatchNotificationSender {
   private static final int TEXT_MAX_LENGTH = 4096;
   private static final String DIGEST_HEADER = "🔔 <b>Дайджест по вашим подпискам</b> — новых уведомлений: %d\n\n";
   private static final String DAILY_HEADER = "📰 <b>Ежедневная подборка по вашим подпискам</b> — уведомлений: %d\n\n";
+  private static final ZoneId NOTIFICATION_ZONE = ZoneId.of("Europe/Minsk");
 
   private final NotificationRepository notificationRepository;
   private final TelegramChatResolver chatResolver;
@@ -65,13 +74,38 @@ public class BatchNotificationSender {
   /**
    * Runs a DIGEST batch: DIGEST-subscription notifications, plus REALTIME-subscription
    * notifications that have been rate-limited long enough to overflow into the digest.
+   *
+   * <p>A REALTIME notification whose subscription is still inside its quiet hours window
+   * (FR-SUB-7, issue #411) is excluded from this run and left {@code PENDING} — there is no
+   * separate timer for "quiet hours just ended", so it is picked up by whichever regular digest
+   * run ({@code flatio.notifications.digest.cron}) happens to land after the window closes. This
+   * is a deliberate trade-off, not an oversight: delivery latency after quiet hours end is bounded
+   * by the digest cron interval, not by the exact window boundary.
    */
   public void sendDigest() {
     Instant realtimeOverflowBefore = Instant.now().minus(Duration.ofMinutes(digestProperties.realtimeOverflowMinutes()));
     List<Notification> batch = notificationRepository.findPendingForDigest(
         DeliveryMode.DIGEST, DeliveryMode.REALTIME, NotificationStatus.PENDING,
         realtimeOverflowBefore, PageRequest.of(0, digestProperties.batchSize()));
-    deliverGrouped(batch, DIGEST_HEADER, "digest");
+    deliverGrouped(excludeRealtimeInQuietHours(batch), DIGEST_HEADER, "digest");
+  }
+
+  /**
+   * Filters out REALTIME-subscription notifications whose subscription is currently inside its
+   * quiet hours window (FR-SUB-7, issue #411) — they must stay {@code PENDING} rather than being
+   * swept into this digest run. DIGEST-subscription notifications are never affected.
+   *
+   * @param batch candidate notifications for this digest run, never null
+   * @return {@code batch} without the REALTIME notifications still inside quiet hours
+   */
+  private List<Notification> excludeRealtimeInQuietHours(List<Notification> batch) {
+    LocalTime now = LocalTime.now(NOTIFICATION_ZONE);
+    return batch.stream().filter(n -> !isRealtimeInQuietHours(n.getSubscription(), now)).toList();
+  }
+
+  private boolean isRealtimeInQuietHours(Subscription subscription, LocalTime now) {
+    return subscription.getDeliveryMode() == DeliveryMode.REALTIME
+        && QuietHoursEvaluator.isWithinQuietHours(subscription.getQuietHoursStart(), subscription.getQuietHoursEnd(), now);
   }
 
   /**
