@@ -7,16 +7,12 @@ import com.flatio.domain.notification.NotificationStatus;
 import com.flatio.domain.subscription.DeliveryMode;
 import com.flatio.domain.subscription.Subscription;
 import com.flatio.domain.subscription.TriggerType;
-import com.flatio.domain.user.AuthProvider;
 import com.flatio.domain.user.User;
-import com.flatio.domain.user.UserAuthProvider;
 import com.flatio.repository.NotificationRepository;
-import com.flatio.repository.UserAuthProviderRepository;
 import com.flatio.telegram.formatter.ListingFormatter;
 import com.flatio.telegram.handler.PhotoProxyClient;
 import com.flatio.web.dto.ListingSummaryResponse;
 import com.flatio.web.mapper.ListingMapper;
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -24,7 +20,6 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Pageable;
@@ -34,7 +29,6 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMa
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -51,7 +45,10 @@ class TelegramNotificationSenderTest {
   private NotificationRepository notificationRepository;
 
   @Mock
-  private UserAuthProviderRepository userAuthProviderRepository;
+  private TelegramChatResolver chatResolver;
+
+  @Mock
+  private NotificationStatusUpdater statusUpdater;
 
   @Mock
   private ListingMapper listingMapper;
@@ -66,15 +63,13 @@ class TelegramNotificationSenderTest {
   private TelegramClient telegramClient;
 
   private TelegramNotificationSender sender;
-  private SimpleMeterRegistry meterRegistry;
 
   @BeforeEach
   void setUp() {
     var properties = new NotificationDeliveryProperties(50, 10, 5);
-    meterRegistry = new SimpleMeterRegistry();
     sender = new TelegramNotificationSender(
-        notificationRepository, userAuthProviderRepository, listingMapper, listingFormatter,
-        photoProxyClient, telegramClient, properties, meterRegistry
+        notificationRepository, chatResolver, statusUpdater, listingMapper, listingFormatter,
+        photoProxyClient, telegramClient, properties
     );
   }
 
@@ -92,14 +87,15 @@ class TelegramNotificationSenderTest {
     sender.sendPending();
 
     // Then
-    verify(notificationRepository, never()).save(any());
+    verify(statusUpdater, never()).markSent(any());
+    verify(statusUpdater, never()).markFailed(any());
   }
 
   @Test
   void should_request_only_realtime_deliveries_from_repository() {
-    // Given — DIGEST/DAILY notifications are unsendable until issue #410 exists; filtering them
-    // out at the query level (not in this class) keeps a DIGEST/DAILY backlog from starving
-    // REALTIME delivery out of the batch
+    // Given — DIGEST/DAILY notifications are batched separately (BatchNotificationSender);
+    // filtering them out at the query level (not in this class) keeps a DIGEST/DAILY backlog
+    // from starving REALTIME delivery out of the batch
     when(notificationRepository.findSendable(any(), any(), any(), any(), any())).thenReturn(List.of());
 
     // When
@@ -166,16 +162,12 @@ class TelegramNotificationSenderTest {
     when(listingFormatter.buildCaption(any())).thenReturn("caption");
     when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
     when(telegramClient.execute(any(SendMessage.class))).thenReturn(mock());
-    var savedCaptor = ArgumentCaptor.forClass(Notification.class);
 
     // When
     sender.sendPending();
 
     // Then
-    verify(notificationRepository).save(savedCaptor.capture());
-    assertThat(savedCaptor.getValue().getStatus()).isEqualTo(NotificationStatus.SENT);
-    assertThat(savedCaptor.getValue().getSentAt()).isNotNull();
-    assertThat(meterRegistry.counter("flatio.notifications.sent", "triggerType", "NEW_LISTING").count()).isEqualTo(1.0);
+    verify(statusUpdater).markSent(notification);
   }
 
   // -------------------------------------------------------------------------
@@ -193,15 +185,12 @@ class TelegramNotificationSenderTest {
     when(listingFormatter.buildCaption(any())).thenReturn("caption");
     when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
     when(telegramClient.execute(any(SendMessage.class))).thenThrow(new TelegramApiException("network error"));
-    var savedCaptor = ArgumentCaptor.forClass(Notification.class);
 
     // When
     sender.sendPending();
 
     // Then
-    verify(notificationRepository).save(savedCaptor.capture());
-    assertThat(savedCaptor.getValue().getStatus()).isEqualTo(NotificationStatus.FAILED);
-    assertThat(meterRegistry.counter("flatio.notifications.failed", "triggerType", "NEW_LISTING").count()).isEqualTo(1.0);
+    verify(statusUpdater).markFailed(notification);
   }
 
   @Test
@@ -210,16 +199,13 @@ class TelegramNotificationSenderTest {
     var user = buildUser(1L);
     var notification = buildNotification(user, DeliveryMode.REALTIME, TriggerType.NEW_LISTING);
     mockBatch(notification);
-    when(userAuthProviderRepository.findByUserAndProvider(user, AuthProvider.TELEGRAM)).thenReturn(Optional.empty());
-    var savedCaptor = ArgumentCaptor.forClass(Notification.class);
+    when(chatResolver.resolveChatId(user)).thenReturn(Optional.empty());
 
     // When
     sender.sendPending();
 
     // Then
-    verify(notificationRepository).save(savedCaptor.capture());
-    assertThat(savedCaptor.getValue().getStatus()).isEqualTo(NotificationStatus.FAILED);
-    assertThat(meterRegistry.counter("flatio.notifications.failed", "triggerType", "NEW_LISTING").count()).isEqualTo(1.0);
+    verify(statusUpdater).markFailed(notification);
   }
 
   // -------------------------------------------------------------------------
@@ -241,7 +227,8 @@ class TelegramNotificationSenderTest {
     // Then
     verify(telegramClient, never()).execute(any(SendMessage.class));
     verify(telegramClient, never()).execute(any(SendPhoto.class));
-    verify(notificationRepository, never()).save(any());
+    verify(statusUpdater, never()).markSent(any());
+    verify(statusUpdater, never()).markFailed(any());
   }
 
   // -------------------------------------------------------------------------
@@ -254,12 +241,7 @@ class TelegramNotificationSenderTest {
   }
 
   private void mockChatId(User user, String chatId) {
-    var authProvider = new UserAuthProvider();
-    authProvider.setUser(user);
-    authProvider.setProvider(AuthProvider.TELEGRAM);
-    authProvider.setExternalId(chatId);
-    when(userAuthProviderRepository.findByUserAndProvider(user, AuthProvider.TELEGRAM))
-        .thenReturn(Optional.of(authProvider));
+    when(chatResolver.resolveChatId(user)).thenReturn(Optional.of(chatId));
   }
 
   private void mockListingSummary(Notification notification, String photoUrl) {

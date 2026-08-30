@@ -1,7 +1,9 @@
 package com.flatio.telegram.formatter;
 
+import com.flatio.common.constants.NotificationTriggerLabels;
 import com.flatio.common.util.TelegramHtmlEscaper;
 import com.flatio.domain.listing.ListingStatus;
+import com.flatio.domain.subscription.TriggerType;
 import com.flatio.telegram.callback.BlacklistCallbackHandler;
 import com.flatio.telegram.callback.FavoritesCallbackHandler;
 import com.flatio.telegram.config.SourceDisplayProperties;
@@ -167,6 +169,36 @@ public class ListingFormatter {
         .keyboardRow(new InlineKeyboardRow(favoriteButton))
         .keyboardRow(new InlineKeyboardRow(hideListingButton, hideSourceButton))
         .build();
+  }
+
+  /**
+   * Builds a compact one-line digest entry for a listing (issue #410).
+   *
+   * <p>Unlike {@link #buildCaption}, this is a single HTML line meant to sit alongside many
+   * others in one batched (DIGEST/DAILY) delivery message, not a full card — sending one full
+   * card per notification in a batch would flood the chat.
+   *
+   * @param triggerType the event that raised this notification, never null
+   * @param listing     the listing summary to format, never null
+   * @return one HTML-formatted line with an "Open listing" link, never null
+   */
+  public String buildDigestLine(TriggerType triggerType, ListingSummaryResponse listing) {
+    String roomPrefix = buildRoomTypePrefix(listing.rooms(), listing.propertyType());
+    String priceFormatted = Boolean.TRUE.equals(listing.isNegotiable())
+        ? "<b>" + LABEL_NEGOTIABLE + "</b>"
+        : formatPrice(listing.price(), listing.currency(), listing.priceUsd(), listing.priceByn());
+    String title = roomPrefix.isEmpty()
+        ? priceFormatted
+        : TelegramHtmlEscaper.escapeHtml(roomPrefix) + " за " + priceFormatted;
+    return NotificationTriggerLabels.label(triggerType) + ": " + title + buildDigestLink(listing.sourceUrl());
+  }
+
+  private String buildDigestLink(String sourceUrl) {
+    if (sourceUrl == null || sourceUrl.isBlank()) {
+      return "";
+    }
+    String safeUrl = TelegramHtmlEscaper.escapeHtml(sourceUrl).replace("\"", "&quot;");
+    return " — <a href=\"" + safeUrl + "\">Открыть</a>";
   }
 
   private String assembleCaption(ListingSummaryResponse listing) {

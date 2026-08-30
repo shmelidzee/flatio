@@ -1,20 +1,17 @@
 package com.flatio.service.notification;
 
+import com.flatio.common.constants.NotificationTriggerLabels;
 import com.flatio.config.NotificationDeliveryProperties;
 import com.flatio.domain.notification.Notification;
 import com.flatio.domain.notification.NotificationStatus;
 import com.flatio.domain.subscription.DeliveryMode;
 import com.flatio.domain.subscription.TriggerType;
-import com.flatio.domain.user.AuthProvider;
 import com.flatio.domain.user.User;
-import com.flatio.domain.user.UserAuthProvider;
 import com.flatio.repository.NotificationRepository;
-import com.flatio.repository.UserAuthProviderRepository;
 import com.flatio.telegram.formatter.ListingFormatter;
 import com.flatio.telegram.handler.PhotoProxyClient;
 import com.flatio.web.dto.ListingSummaryResponse;
 import com.flatio.web.mapper.ListingMapper;
-import io.micrometer.core.instrument.MeterRegistry;
 import java.io.ByteArrayInputStream;
 import java.time.Duration;
 import java.time.Instant;
@@ -35,13 +32,15 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
 
 /**
  * Delivers {@code PENDING} notifications to their subscription's owner over Telegram
- * (REALTIME delivery mode only — DIGEST/DAILY batching is issue #410).
+ * (REALTIME delivery mode only — DIGEST/DAILY batching is {@link BatchNotificationSender},
+ * issue #410).
  *
  * <p>Each notification is delivered and its status updated independently, so one failure does
  * not affect the rest of the batch. A per-user hourly cap ({@link NotificationDeliveryProperties
  * #maxPerHour}) enforces FR-SUB-9: once reached, the user's remaining {@code PENDING}
- * notifications are left unsent for this run rather than delivered — issue #410's digest
- * mechanism is the intended home for whatever a user's real-time quota cannot cover.
+ * notifications are left unsent for this run rather than delivered — {@link
+ * BatchNotificationSender#sendDigest()} is the mechanism that eventually sweeps up whatever a
+ * user's real-time quota cannot cover.
  */
 @Component
 @Slf4j
@@ -51,26 +50,20 @@ public class TelegramNotificationSender {
   private static final Duration RATE_LIMIT_WINDOW = Duration.ofHours(1);
   private static final int CAPTION_MAX_LENGTH = 1024;
 
-  private static final Map<TriggerType, String> TRIGGER_LABELS = Map.of(
-      TriggerType.NEW_LISTING, "🆕 Новое объявление по вашей подписке",
-      TriggerType.PRICE_DROP, "📉 Цена снижена",
-      TriggerType.REPOSTED, "🔁 Объявление опубликовано повторно",
-      TriggerType.REACTIVATED, "✅ Объявление снова активно"
-  );
-
   private final NotificationRepository notificationRepository;
-  private final UserAuthProviderRepository userAuthProviderRepository;
+  private final TelegramChatResolver chatResolver;
+  private final NotificationStatusUpdater statusUpdater;
   private final ListingMapper listingMapper;
   private final ListingFormatter listingFormatter;
   private final PhotoProxyClient photoProxyClient;
   private final TelegramClient telegramClient;
   private final NotificationDeliveryProperties properties;
-  private final MeterRegistry meterRegistry;
 
   /**
    * Selects a batch of sendable notifications and attempts to deliver each REALTIME one,
    * skipping any subscription whose delivery mode is not REALTIME (left {@code PENDING} for
-   * issue #410) and any user who has already reached their hourly delivery cap this run.
+   * {@link BatchNotificationSender}) and any user who has already reached their hourly delivery
+   * cap this run.
    */
   public void sendPending() {
     Instant retryBefore = Instant.now().minus(Duration.ofMinutes(properties.retryDelayMinutes()));
@@ -111,11 +104,11 @@ public class TelegramNotificationSender {
   }
 
   private boolean deliver(Notification notification, User user) {
-    Optional<String> chatId = resolveChatId(user);
+    Optional<String> chatId = chatResolver.resolveChatId(user);
     if (chatId.isEmpty()) {
       log.error("No Telegram account linked for user, cannot deliver notification: userId={}, notificationId={}",
           user.getId(), notification.getId());
-      markFailed(notification);
+      statusUpdater.markFailed(notification);
       return false;
     }
 
@@ -124,23 +117,18 @@ public class TelegramNotificationSender {
     InlineKeyboardMarkup keyboard = listingFormatter.buildKeyboard(listing.sourceUrl());
     try {
       sendCard(chatId.get(), caption, keyboard, listing.photoUrl(), listing.id());
-      markSent(notification);
+      statusUpdater.markSent(notification);
       return true;
     } catch (TelegramApiException e) {
       log.error("Failed to deliver notification: notificationId={}, userId={}, error={}",
           notification.getId(), user.getId(), e.getMessage(), e);
-      markFailed(notification);
+      statusUpdater.markFailed(notification);
       return false;
     }
   }
 
-  private Optional<String> resolveChatId(User user) {
-    return userAuthProviderRepository.findByUserAndProvider(user, AuthProvider.TELEGRAM)
-        .map(UserAuthProvider::getExternalId);
-  }
-
   private String buildCaption(TriggerType triggerType, ListingSummaryResponse listing) {
-    String label = "<b>" + TRIGGER_LABELS.getOrDefault(triggerType, "🔔 Уведомление по подписке") + "</b>\n\n";
+    String label = "<b>" + NotificationTriggerLabels.label(triggerType) + "</b>\n\n";
     String combined = label + listingFormatter.buildCaption(listing);
     if (combined.length() <= CAPTION_MAX_LENGTH) {
       return combined;
@@ -167,20 +155,5 @@ public class TelegramNotificationSender {
         .parseMode("HTML")
         .replyMarkup(keyboard)
         .build());
-  }
-
-  private void markSent(Notification notification) {
-    notification.setStatus(NotificationStatus.SENT);
-    notification.setSentAt(Instant.now());
-    notificationRepository.save(notification);
-    meterRegistry.counter("flatio.notifications.sent", "triggerType", notification.getTriggerType().name())
-        .increment();
-  }
-
-  private void markFailed(Notification notification) {
-    notification.setStatus(NotificationStatus.FAILED);
-    notificationRepository.save(notification);
-    meterRegistry.counter("flatio.notifications.failed", "triggerType", notification.getTriggerType().name())
-        .increment();
   }
 }

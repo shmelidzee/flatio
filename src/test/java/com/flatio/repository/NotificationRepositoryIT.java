@@ -133,6 +133,91 @@ class NotificationRepositoryIT {
   }
 
   // -------------------------------------------------------------------------
+  // findPendingForDigest (issue #410)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_return_digest_notification_when_subscription_delivery_mode_is_digest() {
+    // Given
+    var user = buildUser("Pavel", true);
+    var subscription = buildSubscription(user, DeliveryMode.DIGEST);
+    saveNotification(subscription, buildListing("ext-digest-1"), NotificationStatus.PENDING);
+
+    // When
+    var result = notificationRepository.findPendingForDigest(DeliveryMode.DIGEST, DeliveryMode.REALTIME,
+        NotificationStatus.PENDING, Instant.now(), PageRequest.of(0, 10));
+
+    // Then
+    assertThat(result).hasSize(1);
+  }
+
+  @Test
+  void should_exclude_recent_realtime_notification_from_digest() {
+    // Given — a fresh REALTIME notification is still within its normal delivery window
+    var user = buildUser("Pavel", true);
+    var subscription = buildSubscription(user, DeliveryMode.REALTIME);
+    saveNotification(subscription, buildListing("ext-digest-2"), NotificationStatus.PENDING);
+    var overflowBefore = Instant.now().minusSeconds(3600);
+
+    // When
+    var result = notificationRepository.findPendingForDigest(DeliveryMode.DIGEST, DeliveryMode.REALTIME,
+        NotificationStatus.PENDING, overflowBefore, PageRequest.of(0, 10));
+
+    // Then
+    assertThat(result).isEmpty();
+  }
+
+  @Test
+  void should_include_overflowed_realtime_notification_in_digest() {
+    // Given — FR-SUB-9 forced fallback: a REALTIME notification old enough to have overflowed
+    var user = buildUser("Pavel", true);
+    var subscription = buildSubscription(user, DeliveryMode.REALTIME);
+    saveNotification(subscription, buildListing("ext-digest-3"), NotificationStatus.PENDING);
+    var overflowBefore = Instant.now().plusSeconds(3600);
+
+    // When
+    var result = notificationRepository.findPendingForDigest(DeliveryMode.DIGEST, DeliveryMode.REALTIME,
+        NotificationStatus.PENDING, overflowBefore, PageRequest.of(0, 10));
+
+    // Then
+    assertThat(result).hasSize(1);
+  }
+
+  // -------------------------------------------------------------------------
+  // findPendingByDeliveryMode (issue #410)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_return_daily_notification_when_subscription_delivery_mode_is_daily() {
+    // Given
+    var user = buildUser("Pavel", true);
+    var subscription = buildSubscription(user, DeliveryMode.DAILY);
+    saveNotification(subscription, buildListing("ext-daily-1"), NotificationStatus.PENDING);
+
+    // When
+    var result = notificationRepository.findPendingByDeliveryMode(
+        DeliveryMode.DAILY, NotificationStatus.PENDING, PageRequest.of(0, 10));
+
+    // Then
+    assertThat(result).hasSize(1);
+  }
+
+  @Test
+  void should_exclude_realtime_notification_from_daily_batch() {
+    // Given
+    var user = buildUser("Pavel", true);
+    var subscription = buildSubscription(user, DeliveryMode.REALTIME);
+    saveNotification(subscription, buildListing("ext-daily-2"), NotificationStatus.PENDING);
+
+    // When
+    var result = notificationRepository.findPendingByDeliveryMode(
+        DeliveryMode.DAILY, NotificationStatus.PENDING, PageRequest.of(0, 10));
+
+    // Then
+    assertThat(result).isEmpty();
+  }
+
+  // -------------------------------------------------------------------------
   // helpers
   // -------------------------------------------------------------------------
 
@@ -153,11 +238,15 @@ class NotificationRepositoryIT {
   }
 
   private Subscription buildSubscription(User user) {
+    return buildSubscription(user, DeliveryMode.REALTIME);
+  }
+
+  private Subscription buildSubscription(User user, DeliveryMode deliveryMode) {
     var subscription = new Subscription();
     subscription.setUser(user);
     subscription.setName("Filter");
     subscription.setSearchCriteria(Map.of());
-    subscription.setDeliveryMode(DeliveryMode.REALTIME);
+    subscription.setDeliveryMode(deliveryMode);
     subscription.setChannelType(SubscriptionChannelType.TELEGRAM);
     subscription.setTriggers(Set.of(TriggerType.NEW_LISTING));
     return subscriptionRepository.save(subscription);
