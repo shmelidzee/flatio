@@ -126,9 +126,28 @@ class BlacklistCallbackHandlerTest {
     assertThat(emptyMessage.getText()).isEqualTo("🚫 Ваш чёрный список пока пуст."
         + "\n\nСкрывайте объявления и источники прямо с их карточки в поиске, либо добавьте стоп-слово кнопкой ниже.");
     var keyboard = (InlineKeyboardMarkup) emptyMessage.getReplyMarkup();
-    assertThat(keyboard.getKeyboard().get(0).get(0).getText()).isEqualTo("🔍 Перейти к поиску");
-    assertThat(keyboard.getKeyboard().get(0).get(0).getCallbackData()).isEqualTo(FilterCallbackHandler.ACTION_SEARCH);
-    assertThat(keyboard.getKeyboard().get(1).get(0).getCallbackData()).isEqualTo(SearchResultSender.ACTION_MENU);
+    assertThat(keyboard.getKeyboard().get(1).get(0).getText()).isEqualTo("🔍 Перейти к поиску");
+    assertThat(keyboard.getKeyboard().get(1).get(0).getCallbackData()).isEqualTo(FilterCallbackHandler.ACTION_SEARCH);
+    assertThat(keyboard.getKeyboard().get(2).get(0).getCallbackData()).isEqualTo(SearchResultSender.ACTION_MENU);
+  }
+
+  @Test
+  void should_include_add_keyword_button_when_blacklist_is_empty() throws Exception {
+    // Given — issue #492: EMPTY_TEXT promises an "add stop-word" button that the keyboard lacked
+    var user = buildUser(8L);
+    when(userService.findByTelegramId(2L)).thenReturn(Optional.of(user));
+    when(blacklistService.findByUser(eq(8L), isNull(), any())).thenReturn(Page.empty());
+    var callback = buildCallback(2L, 200L, true, BlacklistCallbackHandler.ACTION_BLACKLIST);
+
+    // When
+    handler.handle(callback);
+
+    // Then
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient, times(1)).execute(captor.capture());
+    var keyboard = (InlineKeyboardMarkup) captor.getValue().getReplyMarkup();
+    assertThat(keyboard.getKeyboard().get(0).get(0).getText()).isEqualTo("➕ Добавить стоп-слово");
+    assertThat(keyboard.getKeyboard().get(0).get(0).getCallbackData()).isEqualTo(BlacklistCallbackHandler.ADD_KEYWORD);
   }
 
   @Test
