@@ -557,7 +557,7 @@ public class SearchResultSender {
       return "WebP";
     }
     if (bytes.length >= 12 && matchesAscii(bytes, 4, "ftyp")) {
-      String brand = new String(bytes, 8, 4, StandardCharsets.US_ASCII);
+      String brand = sanitizeAsciiForLog(new String(bytes, 8, 4, StandardCharsets.US_ASCII));
       if (brand.startsWith("avi")) {
         return "AVIF (ISOBMFF, brand=" + brand + ")";
       }
@@ -574,6 +574,26 @@ public class SearchResultSender {
       return "JPEG 2000 (raw codestream)";
     }
     return "unrecognized signature (hex=" + toHexPrefix(bytes) + ")";
+  }
+
+  /**
+   * Replaces every character outside the printable ASCII range (0x20–0x7E) with {@code .} so that
+   * untrusted bytes decoded from a CDN response can be safely embedded into a log message.
+   *
+   * <p>Without this, an ISOBMFF {@code ftyp} brand crafted by a malicious/compromised image source
+   * could inject control characters (CR/LF, ESC) into the WARN log, enabling log forging or
+   * terminal escape-sequence injection (issue #490).
+   *
+   * @param value raw string decoded from untrusted bytes, never null
+   * @return {@code value} with all non-printable-ASCII characters replaced by {@code .}
+   */
+  private String sanitizeAsciiForLog(String value) {
+    var sanitized = new StringBuilder(value.length());
+    for (int i = 0; i < value.length(); i++) {
+      char c = value.charAt(i);
+      sanitized.append(c >= 0x20 && c <= 0x7E ? c : '.');
+    }
+    return sanitized.toString();
   }
 
   private boolean matchesAscii(byte[] bytes, int offset, String ascii) {
