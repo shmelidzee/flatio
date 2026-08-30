@@ -93,13 +93,13 @@ com.flatio
 │       └── scheduler/   # OnlinerDeltaSyncJob (every 10 min), OnlinerFullSyncJob (daily 02:00)
 ├── telegram/            # Telegram Bot
 │   ├── handler/         # FlatioBot — диспетчер апдейтов (глобальный try-catch, параллельный dispatch через TelegramExecutorConfig); SearchResultSender — отправка карточек с валидацией URL и photo/text fallback
-│   ├── command/         # StartCommandHandler — /start (+ deep link `/start listing_<id>` → карточка объявления по ссылке, issue #418), приветственное меню строится через MainMenuKeyboardFactory (issue #456); HelpCommandHandler — /help и action:help callback
-│   ├── callback/        # FilterCallbackHandler — обработка callback FILTER:*; FavoritesCallbackHandler/SubscriptionsCallbackHandler/BlacklistCallbackHandler — обработка action:favorites/action:subscriptions/action:blacklist из главного меню, переиспользуют FavoriteService/SubscriptionService/BlacklistService (issue #456)
+│   ├── command/         # StartCommandHandler — /start (+ deep link `/start listing_<id>` → карточка объявления по ссылке, issue #418), приветственное меню строится через MainMenuKeyboardFactory (issue #456); HelpCommandHandler — /help и action:help callback (список команд включает /favorites, /subscriptions, /blacklist, issue #473); FavoritesCommandHandler/SubscriptionsCommandHandler/BlacklistCommandHandler — /favorites, /subscriptions, /blacklist, делегируют тем же callback-хендлерам что и кнопки главного меню, без новой бизнес-логики (issue #473)
+│   ├── callback/        # FilterCallbackHandler — обработка callback FILTER:*, в т.ч. ветвление на сохранение подписки при редактировании (issue #479); FavoritesCallbackHandler/SubscriptionsCallbackHandler/BlacklistCallbackHandler — обработка action:favorites/action:subscriptions/action:blacklist из главного меню, переиспользуют FavoriteService/SubscriptionService/BlacklistService (issue #456). Каждый список рендерится одним сообщением на страницу (строка на элемент + ряд кнопок на элемент) с пагинацией `*:PAGE:NEXT/PREV` вместо сообщения на элемент — избранное (issue #476), чёрный список (issue #477), подписки со сводкой критериев поиска (issue #478); ошибка форматирования одного элемента не ломает страницу. Пустые состояния избранного/чёрного списка и подписок предлагают «🔍 Перейти к поиску» вместо тупика с одной кнопкой «Главное меню» (issues #474, #475). SubscriptionsCallbackHandler также запускает мастер фильтров, предзаполненный текущими критериями подписки, для редактирования (issue #479)
 │   ├── keyboard/        # FilterKeyboardFactory — InlineKeyboardMarkup для шагов wizard; MainMenuKeyboardFactory — клавиатура приветственного меню (Искать/Помощь/⭐ Избранное/🔔 Мои подписки/🚫 Чёрный список) + кнопка «🏠 Главное меню» для возврата из секций (issue #456)
-│   ├── state/           # FSM и пользовательские сценарии: FilterStep (enum шагов), SearchFilterState (in-memory состояние), SearchFilterWizard (управление переходами); SearchSession (пагинация результатов, TTL 30 мин)
+│   ├── state/           # FSM и пользовательские сценарии: FilterStep (enum шагов), SearchFilterState (in-memory состояние, несёт editingSubscriptionId при редактировании подписки), SearchFilterWizard (управление переходами); SearchSession (пагинация результатов, TTL 30 мин); SubscriptionEditState — снапшот редактируемой подписки на время прохождения мастера, чтобы имя/триггеры/способ доставки не терялись (issue #479)
 │   ├── formatter/       # ListingFormatter — форматирование ListingSummaryResponse (поиск) и ListingResponse (deep link, issue #418) в HTML-caption и InlineKeyboardMarkup; имя источника и флаг «адрес не указан» читаются из SourceDisplayProperties (issue #423), не хардкожены
-│   └── config/          # BotConfig (@ConfigurationProperties) + BotConfiguration (@EnableConfigurationProperties); BotCommandsRegistrar (@PostConstruct, регистрирует /start, /search, /help); TelegramStartupValidator (@PostConstruct, валидирует токен и вебхук); SourceDisplayProperties (@ConfigurationProperties, telegram.source-display.sources — per-источник display name + address-unknown флаг, issue #423)
-├── scheduler/           # Generic scheduled tasks (currently empty; source-specific jobs live in integration/)
+│   └── config/          # BotConfig (@ConfigurationProperties) + BotConfiguration (@EnableConfigurationProperties); BotCommandsRegistrar (@PostConstruct, регистрирует /start, /search, /favorites, /subscriptions, /blacklist, /help — issue #473); TelegramStartupValidator (@PostConstruct, валидирует токен и вебхук); SourceDisplayProperties (@ConfigurationProperties, telegram.source-display.sources — per-источник display name + address-unknown флаг, issue #423)
+├── scheduler/           # Generic scheduled tasks: ActiveListingsMetricsJob, SourceAlertCheckJob, SyncRunCleanupJob, DataFreshnessWatchdog, GeocodingJob, NotificationDeliveryJob (REALTIME); DigestNotificationDeliveryJob/DailyNotificationDeliveryJob — batched DIGEST/DAILY notification delivery via BatchNotificationSender (issue #410). Source-specific sync jobs live in integration/
 ├── security/            # JWT authentication
 │   ├── JwtService       # Token generation and validation (HMAC-SHA256)
 │   ├── JwtAuthenticationFilter # OncePerRequestFilter — extracts Bearer token, populates SecurityContext
@@ -559,6 +559,32 @@ responses (retrying an already-rate-limited caller only makes it worse).
 - OpenAPI spec: `/v3/api-docs`
 
 See `docs/api.md` for endpoint reference.
+
+---
+
+## Notification Delivery (issue #410)
+
+A subscription's `deliveryMode` (`REALTIME` | `DIGEST` | `DAILY`) decides which of two senders
+picks up its `PENDING` notifications; both share `TelegramChatResolver` (resolves the recipient's
+linked Telegram chat ID) and `NotificationStatusUpdater` (applies the SENT/FAILED outcome and
+records the `flatio.notifications.sent`/`flatio.notifications.failed` metrics) instead of
+duplicating that logic:
+
+| Mode | Sender | Trigger | Shape |
+|---|---|---|---|
+| REALTIME | `TelegramNotificationSender` | `NotificationDeliveryJob` (`scheduler`) | one full card per notification, per-user hourly cap (`flatio.notifications.realtime.max-per-hour`) |
+| DIGEST | `BatchNotificationSender#sendDigest` | `DigestNotificationDeliveryJob`, cron `flatio.notifications.digest.cron` (default every 3h) | one compact-line message per user grouping every sendable notification, capped at Telegram's 4096-char message length (overflow noted as "… и ещё N объявлений" and left `PENDING` for the next run) |
+| DAILY | `BatchNotificationSender#sendDaily` | `DailyNotificationDeliveryJob`, cron `flatio.notifications.daily.cron` (default 09:00) | same grouped-message shape as DIGEST, once a day |
+
+**REALTIME → DIGEST overflow (FR-SUB-9).** A REALTIME notification that stays `PENDING` past
+`flatio.notifications.digest.realtime-overflow-minutes` (default 60) because its owner keeps
+hitting the hourly real-time cap is swept into the next DIGEST run instead of waiting indefinitely
+— `BatchNotificationSender#sendDigest` reads both `DeliveryMode.DIGEST` subscriptions and overflowed
+`DeliveryMode.REALTIME` ones in the same query.
+
+One user's delivery failure (no linked Telegram account, or the Telegram API call itself failing)
+never affects another user's batch in the same run; within a user's batch, one notification's
+formatting failure is skipped without breaking the rest of that user's message.
 
 ---
 
