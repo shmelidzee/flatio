@@ -551,6 +551,38 @@ class SearchResultSenderTest {
     assertThat(result).isEqualTo("unrecognized signature (hex=0102)");
   }
 
+  @Test
+  void should_sanitize_control_characters_when_isobmff_brand_contains_non_printable_bytes() {
+    // Given — a ftyp brand crafted with CR, LF and ESC bytes among otherwise printable ones
+    // (issue #490: untrusted CDN bytes must not reach the log with raw control characters)
+    for (String brand : new String[]{"m\r42", "m\n42", "m\u001B42"}) {
+      byte[] bytes = buildFtypBox(brand);
+
+      // When
+      String result = ReflectionTestUtils.invokeMethod(searchResultSender, "detectUnsupportedFormat", bytes);
+
+      // Then — control character replaced with '.', no raw CR/LF/ESC leaks into the log line
+      assertThat(result)
+          .isEqualTo("unrecognized ISOBMFF container (brand=m.42)")
+          .doesNotContain("\r")
+          .doesNotContain("\n")
+          .doesNotContain("\u001B");
+    }
+  }
+
+  @Test
+  void should_leave_printable_isobmff_brand_unchanged_when_sanitizing_for_log() {
+    // Given — a normal, fully printable major brand (already covered by AVIF/HEIC tests above);
+    // this confirms sanitization is a no-op on the happy path
+    byte[] bytes = buildFtypBox("avif");
+
+    // When
+    String result = ReflectionTestUtils.invokeMethod(searchResultSender, "detectUnsupportedFormat", bytes);
+
+    // Then
+    assertThat(result).isEqualTo("AVIF (ISOBMFF, brand=avif)");
+  }
+
   /**
    * Builds a minimal 12-byte ISOBMFF {@code ftyp} box: a 4-byte box size (arbitrary, unchecked by
    * the production code), the {@code ftyp} box type, and the given 4-character major brand.

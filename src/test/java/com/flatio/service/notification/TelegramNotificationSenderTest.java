@@ -15,6 +15,8 @@ import com.flatio.web.dto.ListingSummaryResponse;
 import com.flatio.web.mapper.ListingMapper;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -229,6 +231,51 @@ class TelegramNotificationSenderTest {
     verify(telegramClient, never()).execute(any(SendPhoto.class));
     verify(statusUpdater, never()).markSent(any());
     verify(statusUpdater, never()).markFailed(any());
+  }
+
+  // -------------------------------------------------------------------------
+  // sendPending — quiet hours (FR-SUB-7, issue #411)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_leave_notification_pending_when_subscription_is_within_quiet_hours() throws Exception {
+    // Given — quiet hours window built around the real current time so the test is deterministic
+    // regardless of when it runs
+    var now = LocalTime.now(ZoneId.of("Europe/Minsk"));
+    var user = buildUser(1L);
+    var notification = buildNotification(user, DeliveryMode.REALTIME, TriggerType.NEW_LISTING);
+    notification.getSubscription().setQuietHoursStart(now.minusHours(1));
+    notification.getSubscription().setQuietHoursEnd(now.plusHours(1));
+    mockBatch(notification);
+
+    // When
+    sender.sendPending();
+
+    // Then — delivery skipped entirely, notification left PENDING
+    verify(telegramClient, never()).execute(any(SendMessage.class));
+    verify(telegramClient, never()).execute(any(SendPhoto.class));
+    verify(statusUpdater, never()).markSent(any());
+    verify(statusUpdater, never()).markFailed(any());
+  }
+
+  @Test
+  void should_deliver_notification_when_subscription_has_no_quiet_hours_configured() throws Exception {
+    // Given — regression: quietHoursStart/End both null (default) must not affect delivery
+    var user = buildUser(1L);
+    var notification = buildNotification(user, DeliveryMode.REALTIME, TriggerType.NEW_LISTING);
+    mockBatch(notification);
+    mockChatId(user, "111222333");
+    mockListingSummary(notification, null);
+    when(listingFormatter.buildCaption(any())).thenReturn("caption");
+    when(listingFormatter.buildKeyboard(anyString())).thenReturn(mock(InlineKeyboardMarkup.class));
+    when(telegramClient.execute(any(SendMessage.class))).thenReturn(mock());
+
+    // When
+    sender.sendPending();
+
+    // Then
+    verify(telegramClient).execute(any(SendMessage.class));
+    verify(statusUpdater).markSent(notification);
   }
 
   // -------------------------------------------------------------------------
