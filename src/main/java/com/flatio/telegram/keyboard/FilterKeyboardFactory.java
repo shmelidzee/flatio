@@ -39,7 +39,7 @@ public class FilterKeyboardFactory {
       case PRICE -> buildPriceKeyboard(state.getDealType());
       case OWNER_ONLY -> buildOwnerOnlyKeyboard();
       case KEYWORD -> buildKeywordKeyboard();
-      case DONE -> buildDoneKeyboard();
+      case DONE -> buildDoneKeyboard(state);
     };
   }
 
@@ -151,11 +151,21 @@ public class FilterKeyboardFactory {
         .build();
   }
 
-  private InlineKeyboardMarkup buildDoneKeyboard() {
-    var search = btn("🔍 Найти", P + ":SEARCH");
+  /**
+   * Builds the DONE-step keyboard. The primary button reads "🔍 Найти" for a plain search, or
+   * "💾 Сохранить изменения" when the wizard is editing an existing subscription's criteria
+   * (issue #479) — both use the same {@code FILTER:SEARCH} callback, which the router dispatches
+   * to search execution or subscription update based on {@link SearchFilterState#getEditingSubscriptionId()}.
+   *
+   * @param state current filter state, never null
+   * @return DONE-step keyboard markup, never null
+   */
+  private InlineKeyboardMarkup buildDoneKeyboard(SearchFilterState state) {
+    String primaryLabel = state.getEditingSubscriptionId() != null ? "💾 Сохранить изменения" : "🔍 Найти";
+    var primary = btn(primaryLabel, P + ":SEARCH");
     var reset = btn("🔄 Изменить фильтр", P + ":RESET");
     return InlineKeyboardMarkup.builder()
-        .keyboardRow(new InlineKeyboardRow(search))
+        .keyboardRow(new InlineKeyboardRow(primary))
         .keyboardRow(new InlineKeyboardRow(reset))
         .build();
   }

@@ -291,6 +291,21 @@ class FlatioBotTest {
   }
 
   @Test
+  void should_delegate_to_subscriptions_page_handler_when_sub_page_callback_received() {
+    // Given — issue #478
+    var telegramClient = mock(TelegramClient.class);
+    var subscriptionsCallbackHandler = mock(SubscriptionsCallbackHandler.class);
+    var bot = buildBotWithSubscriptionsHandler(telegramClient, subscriptionsCallbackHandler, executor);
+    var update = buildCallbackUpdate(1, 100L, "SUB:PAGE:NEXT");
+
+    // When
+    bot.handleUpdate(update);
+
+    // Then
+    verify(subscriptionsCallbackHandler).handlePage(update.getCallbackQuery());
+  }
+
+  @Test
   void should_delegate_to_blacklist_page_handler_when_bl_page_callback_received() {
     // Given — issue #477: blacklist pagination
     var telegramClient = mock(TelegramClient.class);
@@ -306,6 +321,21 @@ class FlatioBotTest {
   }
 
   @Test
+  void should_delegate_to_subscriptions_edit_handler_when_sub_edit_callback_received() {
+    // Given — issue #479
+    var telegramClient = mock(TelegramClient.class);
+    var subscriptionsCallbackHandler = mock(SubscriptionsCallbackHandler.class);
+    var bot = buildBotWithSubscriptionsHandler(telegramClient, subscriptionsCallbackHandler, executor);
+    var update = buildCallbackUpdate(1, 100L, "SUB:EDIT:5");
+
+    // When
+    bot.handleUpdate(update);
+
+    // Then
+    verify(subscriptionsCallbackHandler).handleEdit(update.getCallbackQuery());
+  }
+
+  @Test
   void should_delegate_to_start_search_handler_when_sub_start_search_callback_received() {
     // Given — issue #475
     var telegramClient = mock(TelegramClient.class);
@@ -318,6 +348,34 @@ class FlatioBotTest {
 
     // Then
     verify(subscriptionsCallbackHandler).handleStartSearch(update.getCallbackQuery());
+  }
+
+  @Test
+  void should_save_subscription_edit_when_filter_search_callback_received_during_edit() {
+    // Given — issue #479: the wizard is editing subscription #5 for this user
+    var telegramClient = mock(TelegramClient.class);
+    var searchResultSender = mock(SearchResultSender.class);
+    var subscriptionsCallbackHandler = mock(SubscriptionsCallbackHandler.class);
+    var wizard = mock(SearchFilterWizard.class);
+    var editingState = new com.flatio.telegram.state.SearchFilterState();
+    editingState.setEditingSubscriptionId(5L);
+    when(wizard.getState(100L)).thenReturn(java.util.Optional.of(editingState));
+    var bot = new FlatioBot(
+        telegramClient, mock(StartCommandHandler.class), mock(HelpCommandHandler.class),
+        mock(SearchCommandHandler.class), mock(FilterCallbackHandler.class),
+        searchResultSender, mock(FavoritesCallbackHandler.class),
+        subscriptionsCallbackHandler, mock(BlacklistCallbackHandler.class),
+        mock(FavoritesCommandHandler.class), mock(SubscriptionsCommandHandler.class), mock(BlacklistCommandHandler.class),
+        wizard, executor
+    );
+    var update = buildCallbackUpdate(1, 100L, "FILTER:SEARCH");
+
+    // When
+    bot.handleUpdate(update);
+
+    // Then — routed to saving the subscription, not listing search
+    verify(subscriptionsCallbackHandler).handleSaveEdit(update.getCallbackQuery());
+    verify(searchResultSender, never()).handle(any());
   }
 
   @Test
@@ -619,6 +677,12 @@ class FlatioBotTest {
   }
 
   private static Update buildCallbackUpdate(int updateId, long chatId, String data) {
+    // getFrom() is stubbed (issue #479: FILTER:SEARCH routing now reads the caller's Telegram ID
+    // to decide between a plain search and saving a subscription being edited) — chatId doubles as
+    // the Telegram user ID here since these tests don't care about the distinction.
+    var from = mock(User.class);
+    when(from.getId()).thenReturn(chatId);
+
     var message = mock(Message.class);
     when(message.getChatId()).thenReturn(chatId);
 
@@ -626,6 +690,7 @@ class FlatioBotTest {
     when(callbackQuery.getData()).thenReturn(data);
     when(callbackQuery.getId()).thenReturn(String.valueOf(updateId));
     when(callbackQuery.getMessage()).thenReturn(message);
+    when(callbackQuery.getFrom()).thenReturn(from);
 
     var update = mock(Update.class);
     when(update.getUpdateId()).thenReturn(updateId);

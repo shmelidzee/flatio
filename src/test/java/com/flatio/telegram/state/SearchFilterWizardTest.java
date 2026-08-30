@@ -51,6 +51,25 @@ class SearchFilterWizardTest {
   }
 
   @Test
+  void should_start_at_deal_type_step_with_prefilled_values_when_started_for_edit() {
+    // Given — issue #479: editing subscription #7's criteria
+    var prefilled = new SearchFilterState();
+    prefilled.setDealType(DealType.RENT);
+    prefilled.setRooms(2);
+    prefilled.setEditingSubscriptionId(7L);
+
+    // When
+    var state = wizard.startForEdit(1L, prefilled);
+
+    // Then
+    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.DEAL_TYPE);
+    assertThat(state.getDealType()).isEqualTo(DealType.RENT);
+    assertThat(state.getRooms()).isEqualTo(2);
+    assertThat(state.getEditingSubscriptionId()).isEqualTo(7L);
+    assertThat(wizard.getState(1L)).contains(state);
+  }
+
+  @Test
   void should_return_state_when_wizard_started() {
     // Given
     wizard.start(1L);

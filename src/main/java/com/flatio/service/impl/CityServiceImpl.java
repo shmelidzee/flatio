@@ -34,4 +34,9 @@ public class CityServiceImpl implements CityService {
   public boolean existsById(Long id) {
     return cityRepository.existsById(id);
   }
+
+  @Override
+  public Optional<City> findById(Long id) {
+    return cityRepository.findById(id);
+  }
 }
