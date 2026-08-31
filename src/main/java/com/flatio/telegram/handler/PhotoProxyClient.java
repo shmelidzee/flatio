@@ -1,6 +1,11 @@
 package com.flatio.telegram.handler;
 
 import com.flatio.common.util.ImageUrlValidator;
+import com.flatio.telegram.config.PhotoDownloadProperties;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -27,18 +32,33 @@ import org.springframework.web.client.RestClient;
  *
  * <p>As of issue #455, {@link ImageUrlValidator} no longer restricts photos by source domain —
  * only loopback/private/link-local hosts are rejected. See its Javadoc for the rationale.
+ *
+ * <p><b>Kufar CDN anti-bot mitigation (issue #497):</b> requests to the configured Kufar photo
+ * CDN host ({@link PhotoDownloadProperties#kufarCdnHost()}) carry a browser-like
+ * {@code User-Agent} and {@code Referer}, since a request without them occasionally receives an
+ * HTML challenge page instead of image bytes. The response body is also sniffed for an HTML
+ * signature regardless of source, so a mistaken HTML response is treated as a failed download
+ * (falls back to the placeholder) rather than being uploaded to Telegram as a broken image. See
+ * {@code docs/integrations.md} for what was found about this behaviour.
  */
 @Component
 @Slf4j
 public class PhotoProxyClient {
 
+  /** Bytes are sniffed against these prefixes (case-insensitive) to detect an HTML page
+   * mistakenly returned instead of image bytes, e.g. by a CDN anti-bot/geo gate (issue #497). */
+  private static final String[] HTML_SIGNATURES = {"<html", "<!doctype html"};
+  private static final int HTML_SIGNATURE_SNIFF_LENGTH = 64;
+
   private final RestClient restClient;
   private final ImageUrlValidator imageUrlValidator;
+  private final PhotoDownloadProperties photoDownloadProperties;
 
   public PhotoProxyClient(@Qualifier("photoDownloadRestClient") RestClient restClient,
-      ImageUrlValidator imageUrlValidator) {
+      ImageUrlValidator imageUrlValidator, PhotoDownloadProperties photoDownloadProperties) {
     this.restClient = restClient;
     this.imageUrlValidator = imageUrlValidator;
+    this.photoDownloadProperties = photoDownloadProperties;
   }
 
   /**
@@ -58,12 +78,20 @@ public class PhotoProxyClient {
       return Optional.empty();
     }
     try {
-      byte[] bytes = restClient.get()
-          .uri(url)
-          .retrieve()
-          .body(byte[].class);
+      RestClient.RequestHeadersSpec<?> request = restClient.get().uri(url);
+      if (isKufarCdnUrl(url)) {
+        request = request
+            .header("User-Agent", photoDownloadProperties.kufarUserAgent())
+            .header("Referer", photoDownloadProperties.kufarReferer());
+      }
+      byte[] bytes = request.retrieve().body(byte[].class);
       if (bytes == null || bytes.length == 0) {
         log.warn("Photo download returned empty body: listingId={}, url={}", listingId, url);
+        return Optional.empty();
+      }
+      if (looksLikeHtml(bytes)) {
+        log.warn("Photo download returned HTML instead of image bytes, likely CDN anti-bot/geo "
+            + "gate (issue #497): listingId={}, url={}", listingId, url);
         return Optional.empty();
       }
       return Optional.of(bytes);
@@ -71,5 +99,46 @@ public class PhotoProxyClient {
       log.warn("Photo download failed: listingId={}, url={}, error={}", listingId, url, e.getMessage());
       return Optional.empty();
     }
+  }
+
+  /**
+   * Checks whether the given URL targets the configured Kufar photo CDN host, so that
+   * browser-like headers can be applied only for that host rather than for every source
+   * (issue #497).
+   *
+   * @param url photo URL being downloaded, never null
+   * @return true if the URL's host matches {@link PhotoDownloadProperties#kufarCdnHost()}
+   */
+  private boolean isKufarCdnUrl(String url) {
+    String configuredHost = photoDownloadProperties.kufarCdnHost();
+    if (configuredHost == null || configuredHost.isBlank()) {
+      return false;
+    }
+    try {
+      String host = new URI(url).getHost();
+      return host != null && host.equalsIgnoreCase(configuredHost);
+    } catch (URISyntaxException e) {
+      return false;
+    }
+  }
+
+  /**
+   * Sniffs the start of the downloaded bytes for an HTML document signature, which indicates the
+   * CDN returned an anti-bot/geo challenge page instead of the requested image (issue #497).
+   *
+   * @param bytes downloaded response body, never null or empty
+   * @return true if the bytes look like an HTML document rather than image data
+   */
+  private boolean looksLikeHtml(byte[] bytes) {
+    int sniffLength = Math.min(bytes.length, HTML_SIGNATURE_SNIFF_LENGTH);
+    String prefix = new String(bytes, 0, sniffLength, StandardCharsets.US_ASCII)
+        .strip()
+        .toLowerCase(Locale.ROOT);
+    for (String signature : HTML_SIGNATURES) {
+      if (prefix.startsWith(signature)) {
+        return true;
+      }
+    }
+    return false;
   }
 }

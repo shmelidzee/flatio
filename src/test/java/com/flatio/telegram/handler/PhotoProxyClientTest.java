@@ -1,6 +1,8 @@
 package com.flatio.telegram.handler;
 
 import com.flatio.common.util.ImageUrlValidator;
+import com.flatio.telegram.config.PhotoDownloadProperties;
+import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -17,6 +19,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -46,17 +50,21 @@ class PhotoProxyClientTest {
   @Mock
   private ImageUrlValidator imageUrlValidator;
 
+  private static final PhotoDownloadProperties PHOTO_DOWNLOAD_PROPERTIES = new PhotoDownloadProperties(
+      "rms.kufar.by", "Mozilla/5.0 TestAgent", "https://www.kufar.by/");
+
   private PhotoProxyClient photoProxyClient;
 
   @BeforeEach
   @SuppressWarnings("unchecked")
   void setUp() {
-    photoProxyClient = new PhotoProxyClient(restClient, imageUrlValidator);
+    photoProxyClient = new PhotoProxyClient(restClient, imageUrlValidator, PHOTO_DOWNLOAD_PROPERTIES);
     // lenient: only the SSRF-guard/scheme tests below override this to false, and short-circuit
     // before restClient is touched
     lenient().when(imageUrlValidator.isAllowedImageUrl(anyString())).thenReturn(true);
     lenient().when(restClient.get()).thenReturn(uriSpec);
     lenient().doReturn(headersSpec).when(uriSpec).uri(anyString());
+    lenient().doReturn(headersSpec).when(headersSpec).header(anyString(), anyString());
     lenient().when(headersSpec.retrieve()).thenReturn(responseSpec);
   }
 
@@ -180,6 +188,77 @@ class PhotoProxyClientTest {
     // Given
     doThrow(new ResourceAccessException("I/O error: read timed out"))
         .when(responseSpec).body(byte[].class);
+
+    // When
+    var result = photoProxyClient.download("https://cdn.onliner.by/photo.jpg", 42L);
+
+    // Then
+    assertThat(result).isEmpty();
+  }
+
+  // -------------------------------------------------------------------------
+  // Kufar CDN headers and HTML-response detection (#497)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_send_browser_like_headers_when_url_targets_kufar_cdn_host() {
+    // Given
+    byte[] expectedBytes = new byte[]{0x01, 0x02, 0x03};
+    when(responseSpec.body(byte[].class)).thenReturn(expectedBytes);
+
+    // When
+    var result = photoProxyClient.download("https://rms.kufar.by/v1/gallery/photo.jpg", 42L);
+
+    // Then
+    assertThat(result).isPresent().contains(expectedBytes);
+    verify(headersSpec).header("User-Agent", PHOTO_DOWNLOAD_PROPERTIES.kufarUserAgent());
+    verify(headersSpec).header("Referer", PHOTO_DOWNLOAD_PROPERTIES.kufarReferer());
+  }
+
+  @Test
+  void should_not_send_kufar_headers_when_url_does_not_target_kufar_cdn_host() {
+    // Given
+    when(responseSpec.body(byte[].class)).thenReturn(new byte[]{0x01});
+
+    // When
+    photoProxyClient.download("https://cdn.onliner.by/photo.jpg", 42L);
+
+    // Then
+    verify(headersSpec, never()).header(anyString(), anyString());
+  }
+
+  @Test
+  void should_not_send_kufar_headers_when_kufar_cdn_host_is_blank() {
+    // Given — override disabled entirely via blank config
+    var disabledProperties = new PhotoDownloadProperties("", "unused", "unused");
+    var client = new PhotoProxyClient(restClient, imageUrlValidator, disabledProperties);
+    when(responseSpec.body(byte[].class)).thenReturn(new byte[]{0x01});
+
+    // When
+    client.download("https://rms.kufar.by/v1/gallery/photo.jpg", 42L);
+
+    // Then
+    verify(headersSpec, never()).header(anyString(), anyString());
+  }
+
+  @Test
+  void should_return_empty_when_response_body_is_html_page() {
+    // Given — CDN anti-bot/geo gate returns an HTML page instead of image bytes (issue #497)
+    byte[] htmlBytes = "<html>\r\n<head></head><body>blocked</body></html>".getBytes(StandardCharsets.UTF_8);
+    when(responseSpec.body(byte[].class)).thenReturn(htmlBytes);
+
+    // When
+    var result = photoProxyClient.download("https://rms.kufar.by/v1/gallery/photo.jpg", 42L);
+
+    // Then
+    assertThat(result).isEmpty();
+  }
+
+  @Test
+  void should_return_empty_when_response_body_is_html_doctype_page() {
+    // Given
+    byte[] htmlBytes = "<!DOCTYPE html><html><body>blocked</body></html>".getBytes(StandardCharsets.UTF_8);
+    when(responseSpec.body(byte[].class)).thenReturn(htmlBytes);
 
     // When
     var result = photoProxyClient.download("https://cdn.onliner.by/photo.jpg", 42L);
