@@ -403,8 +403,10 @@ public class BlacklistCallbackHandler {
 
   private String buildListText(List<BlacklistEntryResponse> items, BlacklistEntryType type) {
     var textBuilder = new StringBuilder("🚫 Фильтр: ").append(type == null ? "Все" : typeLabel(type));
-    for (var item : items) {
-      textBuilder.append("\n").append(formatItemLineSafely(item));
+    for (int i = 0; i < items.size(); i++) {
+      // Number matches the corresponding delete button in buildListKeyboard() (issue #513) —
+      // both iterate the same items list in the same order, so index i is shared between them.
+      textBuilder.append("\n").append(i + 1).append(". ").append(formatItemLineSafely(items.get(i)));
     }
     textBuilder.append("\n\n").append(HINT_TEXT);
     return textBuilder.toString();
