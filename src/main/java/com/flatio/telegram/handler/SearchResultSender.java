@@ -281,6 +281,11 @@ public class SearchResultSender {
       return;
     }
 
+    if (photoProxyClient.isKufarCdnUrl(photoUrl)) {
+      sendDirectUrlPhoto(chatId, photoUrl, caption, keyboard, listing.id());
+      return;
+    }
+
     Instant start = Instant.now();
     Optional<byte[]> photoBytes = photoProxyClient.download(photoUrl, listing.id());
     if (photoBytes.isEmpty()) {
@@ -620,6 +625,40 @@ public class SearchResultSender {
 
   private boolean isImageProcessFailed(TelegramApiException e) {
     return e.getMessage() != null && e.getMessage().contains("IMAGE_PROCESS_FAILED");
+  }
+
+  /**
+   * Sends a Kufar photo to Telegram as a direct URL, bypassing {@link PhotoProxyClient} entirely
+   * (issue #515) — server-side download for this CDN was abandoned after a browser-like
+   * {@code User-Agent}/{@code Referer} (issue #497) failed to resolve its anti-bot/geo gate in
+   * production (issue #511). Falls back to the placeholder, not to {@link PhotoProxyClient},
+   * if Telegram itself rejects the direct URL — retrying via download would hit the same gate.
+   *
+   * @param chatId    target chat identifier, never null
+   * @param photoUrl  the Kufar CDN photo URL, never null
+   * @param caption   pre-built HTML caption, never null
+   * @param keyboard  pre-built inline keyboard, never null
+   * @param listingId used only for logging
+   */
+  private void sendDirectUrlPhoto(String chatId, String photoUrl, String caption,
+      InlineKeyboardMarkup keyboard, Long listingId) {
+    try {
+      telegramClient.execute(SendPhoto.builder()
+          .chatId(chatId)
+          .photo(new InputFile(photoUrl))
+          .caption(caption)
+          .parseMode("HTML")
+          .replyMarkup(keyboard)
+          .build());
+    } catch (TelegramApiException e) {
+      if (isBlockedByUser(e)) {
+        handleBlockedByUser(chatId);
+        return;
+      }
+      log.warn("Direct-URL Kufar photo send failed, falling back to placeholder: listingId={}, url={}",
+          listingId, photoUrl, e);
+      sendPlaceholderPhoto(chatId, caption, keyboard, listingId);
+    }
   }
 
   private void sendPlaceholderPhoto(String chatId, String caption, InlineKeyboardMarkup keyboard, Long listingId) {

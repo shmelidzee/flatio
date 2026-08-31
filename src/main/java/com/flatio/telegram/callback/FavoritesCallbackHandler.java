@@ -305,6 +305,10 @@ public class FavoritesCallbackHandler {
       sendPlaceholderPhoto(chatId, caption, keyboard);
       return;
     }
+    if (photoProxyClient.isKufarCdnUrl(photoUrl)) {
+      sendDirectUrlPhoto(chatId, photoUrl, caption, keyboard, item.listing().id());
+      return;
+    }
     var photoBytes = photoProxyClient.download(photoUrl, item.listing().id());
     if (photoBytes.isEmpty()) {
       sendPlaceholderPhoto(chatId, caption, keyboard);
@@ -321,6 +325,35 @@ public class FavoritesCallbackHandler {
     } catch (TelegramApiException e) {
       log.warn("Failed to send favorite photo, falling back to placeholder: favoriteId={}, listingId={}",
           item.id(), item.listing().id(), e);
+      sendPlaceholderPhoto(chatId, caption, keyboard);
+    }
+  }
+
+  /**
+   * Sends a Kufar photo to Telegram as a direct URL, bypassing {@link PhotoProxyClient} entirely
+   * (issue #515) — see {@link SearchResultSender}'s equivalent method for the full rationale
+   * (issues #497, #511). Falls back to the placeholder, not to {@link PhotoProxyClient}, if
+   * Telegram itself rejects the direct URL.
+   *
+   * @param chatId    target chat identifier, never null
+   * @param photoUrl  the Kufar CDN photo URL, never null
+   * @param caption   pre-built HTML caption, never null
+   * @param keyboard  pre-built inline keyboard, never null
+   * @param listingId used only for logging
+   */
+  private void sendDirectUrlPhoto(String chatId, String photoUrl, String caption,
+      InlineKeyboardMarkup keyboard, Long listingId) {
+    try {
+      telegramClient.execute(SendPhoto.builder()
+          .chatId(chatId)
+          .photo(new InputFile(photoUrl))
+          .caption(caption)
+          .parseMode("HTML")
+          .replyMarkup(keyboard)
+          .build());
+    } catch (TelegramApiException e) {
+      log.warn("Direct-URL Kufar photo send failed, falling back to placeholder: listingId={}, url={}",
+          listingId, photoUrl, e);
       sendPlaceholderPhoto(chatId, caption, keyboard);
     }
   }

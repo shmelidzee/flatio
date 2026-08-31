@@ -182,13 +182,12 @@ telegram:
         address-unknown-label-enabled: true
 
 photo-download:
-  # Browser-like headers applied when downloading photo bytes from the Kufar CDN (issue #497):
-  # some requests without them come back as an HTML page instead of image bytes, most likely an
-  # anti-bot/geo gate. kufar-cdn-host is blank-disable-able and intentionally matches
-  # connector.kufar.photo-cdn-base-url's host rather than a literal in code.
+  # Identifies the Kufar photo CDN host so it can be bypassed entirely — photos from this host are
+  # sent to Telegram as a direct URL instead of being downloaded server-side (issue #515; a
+  # browser-like User-Agent/Referer, issue #497, did not resolve the anti-bot/geo gate, issue #511).
+  # Blank disables the bypass. Intentionally matches connector.kufar.photo-cdn-base-url's host
+  # rather than a literal in code.
   kufar-cdn-host: ${KUFAR_PHOTO_CDN_HOST:rms.kufar.by}
-  kufar-user-agent: ${KUFAR_PHOTO_USER_AGENT:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36}
-  kufar-referer: ${KUFAR_PHOTO_REFERER:https://www.kufar.by/}
 
 nominatim:
   base-url: ${NOMINATIM_BASE_URL:https://nominatim.openstreetmap.org}
