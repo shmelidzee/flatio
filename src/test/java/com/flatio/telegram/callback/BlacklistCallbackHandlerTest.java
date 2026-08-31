@@ -185,7 +185,7 @@ class BlacklistCallbackHandlerTest {
     var captor = ArgumentCaptor.forClass(SendMessage.class);
     verify(telegramClient, times(1)).execute(captor.capture());
     var message = captor.getValue();
-    assertThat(message.getText()).isEqualTo("Записей типа «Источник» нет.");
+    assertThat(message.getText()).isEqualTo("Записей типа «Источники» нет.");
     assertThat(extractButtonLabels(message)).contains("Все", "✅ Источники", "Стоп-слова");
   }
 

@@ -451,10 +451,25 @@ public class BlacklistCallbackHandler {
   private InlineKeyboardRow filterRow(BlacklistEntryType current) {
     return new InlineKeyboardRow(
         filterBtn("Все", null, current),
-        filterBtn("Объявления", BlacklistEntryType.LISTING, current),
-        filterBtn("Источники", BlacklistEntryType.SOURCE, current),
-        filterBtn("Стоп-слова", BlacklistEntryType.KEYWORD, current)
+        filterBtn(filterTypeLabel(BlacklistEntryType.LISTING), BlacklistEntryType.LISTING, current),
+        filterBtn(filterTypeLabel(BlacklistEntryType.SOURCE), BlacklistEntryType.SOURCE, current),
+        filterBtn(filterTypeLabel(BlacklistEntryType.KEYWORD), BlacklistEntryType.KEYWORD, current)
     );
+  }
+
+  /**
+   * Plural type label used on filter buttons and in the empty-filter message (issue #506) — kept
+   * separate from {@link #typeLabel}, which returns the singular form used per-entry in the list.
+   *
+   * @param type the type to label, never null
+   * @return plural label for the type, never null
+   */
+  private String filterTypeLabel(BlacklistEntryType type) {
+    return switch (type) {
+      case LISTING -> "Объявления";
+      case SOURCE -> "Источники";
+      case KEYWORD -> "Стоп-слова";
+    };
   }
 
   private InlineKeyboardRow paginationRow(int page, int totalPages) {
@@ -492,7 +507,7 @@ public class BlacklistCallbackHandler {
    * @param type   active type filter, or null when the whole blacklist is empty
    */
   private void sendEmptyState(String chatId, BlacklistEntryType type) {
-    String text = type == null ? EMPTY_TEXT : "Записей типа «" + typeLabel(type) + "» нет.";
+    String text = type == null ? EMPTY_TEXT : "Записей типа «" + filterTypeLabel(type) + "» нет.";
     var keyboardBuilder = InlineKeyboardMarkup.builder();
     if (type != null) {
       keyboardBuilder.keyboardRow(filterRow(type));
