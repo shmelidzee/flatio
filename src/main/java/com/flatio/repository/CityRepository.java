@@ -22,13 +22,6 @@ public interface CityRepository extends JpaRepository<City, Long> {
   Optional<City> findByNameRu(String nameRu);
 
   /**
-   * Returns all cities ordered alphabetically by Russian name.
-   *
-   * @return all cities sorted by name_ru, never null
-   */
-  List<City> findAllByOrderByNameRuAsc();
-
-  /**
    * Finds cities whose Russian name contains the given query (case-insensitive).
    *
    * <p>Results are sorted alphabetically by Russian name.

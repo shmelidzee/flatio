@@ -33,13 +33,17 @@ import org.springframework.web.client.RestClient;
  * <p>As of issue #455, {@link ImageUrlValidator} no longer restricts photos by source domain —
  * only loopback/private/link-local hosts are rejected. See its Javadoc for the rationale.
  *
- * <p><b>Kufar CDN anti-bot mitigation (issue #497):</b> requests to the configured Kufar photo
- * CDN host ({@link PhotoDownloadProperties#kufarCdnHost()}) carry a browser-like
- * {@code User-Agent} and {@code Referer}, since a request without them occasionally receives an
- * HTML challenge page instead of image bytes. The response body is also sniffed for an HTML
- * signature regardless of source, so a mistaken HTML response is treated as a failed download
- * (falls back to the placeholder) rather than being uploaded to Telegram as a broken image. See
- * {@code docs/integrations.md} for what was found about this behaviour.
+ * <p>The response body is sniffed for an HTML signature regardless of source (issue #497), so a
+ * CDN that mistakenly returns an HTML challenge page instead of image bytes is treated as a
+ * failed download (falls back to the placeholder) rather than being uploaded to Telegram as a
+ * broken image.
+ *
+ * <p><b>Kufar is bypassed entirely (issue #515):</b> a browser-like {@code User-Agent}/{@code
+ * Referer} (issue #497) did not resolve the CDN anti-bot/geo gate in production (issue #511), so
+ * callers — {@link com.flatio.telegram.handler.SearchResultSender} and {@code
+ * FavoritesCallbackHandler} — check {@link #isKufarCdnUrl} and pass the photo URL straight to
+ * Telegram instead of calling {@link #download} for that host. See {@code docs/integrations.md}
+ * for what was found about this behaviour.
  */
 @Component
 @Slf4j
@@ -78,13 +82,10 @@ public class PhotoProxyClient {
       return Optional.empty();
     }
     try {
-      RestClient.RequestHeadersSpec<?> request = restClient.get().uri(url);
-      if (isKufarCdnUrl(url)) {
-        request = request
-            .header("User-Agent", photoDownloadProperties.kufarUserAgent())
-            .header("Referer", photoDownloadProperties.kufarReferer());
-      }
-      byte[] bytes = request.retrieve().body(byte[].class);
+      byte[] bytes = restClient.get()
+          .uri(url)
+          .retrieve()
+          .body(byte[].class);
       if (bytes == null || bytes.length == 0) {
         log.warn("Photo download returned empty body: listingId={}, url={}", listingId, url);
         return Optional.empty();
@@ -102,14 +103,17 @@ public class PhotoProxyClient {
   }
 
   /**
-   * Checks whether the given URL targets the configured Kufar photo CDN host, so that
-   * browser-like headers can be applied only for that host rather than for every source
-   * (issue #497).
+   * Checks whether the given URL targets the configured Kufar photo CDN host.
+   *
+   * <p>Public so callers — {@link SearchResultSender} and {@code
+   * com.flatio.telegram.callback.FavoritesCallbackHandler} — can use the same check to bypass
+   * this class entirely for Kufar and pass the photo URL straight to Telegram instead (issue
+   * #515), rather than each duplicating the host comparison.
    *
    * @param url photo URL being downloaded, never null
    * @return true if the URL's host matches {@link PhotoDownloadProperties#kufarCdnHost()}
    */
-  private boolean isKufarCdnUrl(String url) {
+  public boolean isKufarCdnUrl(String url) {
     String configuredHost = photoDownloadProperties.kufarCdnHost();
     if (configuredHost == null || configuredHost.isBlank()) {
       return false;

@@ -2,8 +2,10 @@ package com.flatio.telegram.handler;
 
 import com.flatio.domain.listing.DealType;
 import com.flatio.domain.listing.ListingStatus;
+import com.flatio.domain.user.User;
 import com.flatio.service.ListingService;
 import com.flatio.service.UserSavedSearchService;
+import com.flatio.service.UserService;
 import com.flatio.service.domain.SearchFilter;
 import com.flatio.telegram.command.SearchCommandHandler;
 import com.flatio.telegram.callback.FilterCallbackHandler;
@@ -141,6 +143,7 @@ public class SearchResultSender {
   private final TelegramClient telegramClient;
   private final UserSavedSearchService userSavedSearchService;
   private final PhotoProxyClient photoProxyClient;
+  private final UserService userService;
 
   // Caffeine, not a plain ConcurrentHashMap, so an abandoned session is actually evicted instead
   // of occupying memory for the lifetime of the JVM (issue #382). expireAfterAccess mirrors the
@@ -177,9 +180,7 @@ public class SearchResultSender {
     var criteria = buildCriteria(stateOpt.get());
     var pageable = PageRequest.of(0, PAGE_SIZE,
         Sort.by(Sort.Order.desc("publishedAt").with(Sort.NullHandling.NULLS_LAST)));
-    // userId=null: the bot flow only has the caller's Telegram ID here, not their internal user
-    // ID — blacklist exclusion (issue #414) is scoped to the REST search API for now.
-    var page = listingService.search(criteria, pageable, null, null);
+    var page = listingService.search(criteria, pageable, resolveUserId(telegramId), null);
 
     if (page.isEmpty()) {
       log.debug("No results found: telegramId={}, criteria={}", telegramId, criteria);
@@ -220,8 +221,7 @@ public class SearchResultSender {
 
     var pageable = PageRequest.of(newPage, PAGE_SIZE,
         Sort.by(Sort.Order.desc("publishedAt").with(Sort.NullHandling.NULLS_LAST)));
-    // userId=null — see handle() above for why the bot flow does not resolve one here.
-    var page = listingService.search(session.getCriteria(), pageable, null, null);
+    var page = listingService.search(session.getCriteria(), pageable, resolveUserId(telegramId), null);
 
     if (page.isEmpty()) {
       sendNoResultsMessage(chatId);
@@ -278,6 +278,11 @@ public class SearchResultSender {
         log.debug("Invalid photo url, using placeholder: listingId={}, url={}", listing.id(), photoUrl);
       }
       sendPlaceholderPhoto(chatId, caption, keyboard, listing.id());
+      return;
+    }
+
+    if (photoProxyClient.isKufarCdnUrl(photoUrl)) {
+      sendDirectUrlPhoto(chatId, photoUrl, caption, keyboard, listing.id());
       return;
     }
 
@@ -622,6 +627,46 @@ public class SearchResultSender {
     return e.getMessage() != null && e.getMessage().contains("IMAGE_PROCESS_FAILED");
   }
 
+  /**
+   * Sends a Kufar photo to Telegram as a direct URL, bypassing {@link PhotoProxyClient} entirely
+   * (issue #515) — server-side download for this CDN was abandoned after a browser-like
+   * {@code User-Agent}/{@code Referer} (issue #497) failed to resolve its anti-bot/geo gate in
+   * production (issue #511). Falls back to the placeholder, not to {@link PhotoProxyClient},
+   * if Telegram itself rejects the direct URL — retrying via download would hit the same gate.
+   *
+   * <p><b>SSRF note:</b> this path does not run {@code ImageUrlValidator} — that guard exists to
+   * stop {@link PhotoProxyClient} from making an outbound request to an attacker-controlled
+   * address on our behalf, and here it's Telegram's servers fetching the URL, not ours. The URL
+   * is still constrained: {@link PhotoProxyClient#isKufarCdnUrl} only returns true for the exact
+   * configured Kufar CDN host, which listing data cannot redirect elsewhere.
+   *
+   * @param chatId    target chat identifier, never null
+   * @param photoUrl  the Kufar CDN photo URL, never null
+   * @param caption   pre-built HTML caption, never null
+   * @param keyboard  pre-built inline keyboard, never null
+   * @param listingId used only for logging
+   */
+  private void sendDirectUrlPhoto(String chatId, String photoUrl, String caption,
+      InlineKeyboardMarkup keyboard, Long listingId) {
+    try {
+      telegramClient.execute(SendPhoto.builder()
+          .chatId(chatId)
+          .photo(new InputFile(photoUrl))
+          .caption(caption)
+          .parseMode("HTML")
+          .replyMarkup(keyboard)
+          .build());
+    } catch (TelegramApiException e) {
+      if (isBlockedByUser(e)) {
+        handleBlockedByUser(chatId);
+        return;
+      }
+      log.warn("Direct-URL Kufar photo send failed, falling back to placeholder: listingId={}, url={}",
+          listingId, photoUrl, e);
+      sendPlaceholderPhoto(chatId, caption, keyboard, listingId);
+    }
+  }
+
   private void sendPlaceholderPhoto(String chatId, String caption, InlineKeyboardMarkup keyboard, Long listingId) {
     try {
       telegramClient.execute(SendPhoto.builder()
@@ -826,6 +871,19 @@ public class SearchResultSender {
     }
   }
 
+  /**
+   * Resolves a Telegram user ID to the internal {@code User.id} needed for blacklist exclusion
+   * in {@link ListingService#search} (issue #514) — the bot only has the caller's Telegram ID at
+   * each call site, not the internal ID the search query is scoped by.
+   *
+   * @param telegramId Telegram user identifier, never null
+   * @return the internal user ID, or null if the caller is not a registered user (search then
+   *     proceeds without blacklist exclusion, same as an anonymous REST caller)
+   */
+  private Long resolveUserId(Long telegramId) {
+    return userService.findByTelegramId(telegramId).map(User::getId).orElse(null);
+  }
+
   private SearchSession getActiveSession(Long telegramId) {
     SearchSession session = sessions.get(telegramId);
     if (session == null) {
@@ -857,8 +915,7 @@ public class SearchResultSender {
     var criteria = buildCriteriaFromFilter(filterOpt.get());
     var pageable = PageRequest.of(0, PAGE_SIZE,
         Sort.by(Sort.Order.desc("publishedAt").with(Sort.NullHandling.NULLS_LAST)));
-    // userId=null — see handle() above for why the bot flow does not resolve one here.
-    var page = listingService.search(criteria, pageable, null, null);
+    var page = listingService.search(criteria, pageable, resolveUserId(telegramId), null);
 
     if (page.isEmpty()) {
       log.debug("No results for last-search: telegramId={}", telegramId);

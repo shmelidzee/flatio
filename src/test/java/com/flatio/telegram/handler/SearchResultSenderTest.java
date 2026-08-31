@@ -2,6 +2,7 @@ package com.flatio.telegram.handler;
 
 import com.flatio.service.ListingService;
 import com.flatio.service.UserSavedSearchService;
+import com.flatio.service.UserService;
 import com.flatio.service.domain.SearchFilter;
 import com.flatio.telegram.formatter.ListingFormatter;
 import com.flatio.telegram.state.SearchFilterState;
@@ -82,6 +83,9 @@ class SearchResultSenderTest {
   @Mock
   private PhotoProxyClient photoProxyClient;
 
+  @Mock
+  private UserService userService;
+
   @InjectMocks
   private SearchResultSender searchResultSender;
 
@@ -106,6 +110,11 @@ class SearchResultSenderTest {
     // Default: photo download succeeds for all URLs
     lenient().when(photoProxyClient.download(anyString(), anyLong()))
         .thenReturn(Optional.of(DUMMY_PHOTO_BYTES));
+    // Default: no Kufar CDN photos unless a test opts in explicitly (issue #515)
+    lenient().when(photoProxyClient.isKufarCdnUrl(anyString())).thenReturn(false);
+    // Default: caller not registered — most tests don't care about the exact userId passed to
+    // search() (issue #514) since they match it with any()
+    lenient().when(userService.findByTelegramId(anyLong())).thenReturn(Optional.empty());
   }
 
   // -------------------------------------------------------------------------
@@ -1152,8 +1161,148 @@ class SearchResultSenderTest {
   }
 
   // -------------------------------------------------------------------------
+  // userId resolution for blacklist exclusion (issue #514)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_pass_resolved_user_id_to_search_when_caller_is_registered_on_handle() throws TelegramApiException {
+    // Given
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(buildDomainUser(7L)));
+    var listing = buildListing(1L, null, "https://realt.by/1");
+    when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
+    var criteriaCaptor = ArgumentCaptor.forClass(ListingSearchCriteria.class);
+    var userIdCaptor = ArgumentCaptor.forClass(Long.class);
+    when(listingService.search(criteriaCaptor.capture(), any(), userIdCaptor.capture(), any()))
+        .thenReturn(pageOf(listing));
+    when(listingFormatter.buildCaption(listing)).thenReturn("caption");
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
+
+    // When
+    searchResultSender.handle(buildCallback(1L, 100L, 10));
+
+    // Then — issue #514: the caller's internal user ID reaches search(), not null, so blacklist
+    // exclusion actually applies
+    assertThat(userIdCaptor.getValue()).isEqualTo(7L);
+  }
+
+  @Test
+  void should_pass_null_user_id_to_search_when_caller_is_not_registered_on_handle() throws TelegramApiException {
+    // Given — default setUp() stub: findByTelegramId returns empty
+    var listing = buildListing(1L, null, "https://realt.by/1");
+    when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
+    var userIdCaptor = ArgumentCaptor.forClass(Long.class);
+    when(listingService.search(any(), any(), userIdCaptor.capture(), any())).thenReturn(pageOf(listing));
+    when(listingFormatter.buildCaption(listing)).thenReturn("caption");
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
+
+    // When
+    searchResultSender.handle(buildCallback(1L, 100L, 10));
+
+    // Then — unregistered caller: search proceeds without blacklist exclusion, same as before
+    assertThat(userIdCaptor.getValue()).isNull();
+  }
+
+  @Test
+  void should_pass_resolved_user_id_to_search_on_page_navigation() throws TelegramApiException {
+    // Given
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(buildDomainUser(9L)));
+    var session = new SearchSession(
+        new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null),
+        0, 5);
+    var sessions = new ConcurrentHashMap<Long, SearchSession>();
+    sessions.put(1L, session);
+    ReflectionTestUtils.setField(searchResultSender, "sessions", sessions);
+    var listing = buildListing(1L, null, "https://realt.by/1");
+    var userIdCaptor = ArgumentCaptor.forClass(Long.class);
+    when(listingService.search(any(), any(), userIdCaptor.capture(), any())).thenReturn(pageOf(listing));
+    when(listingFormatter.buildCaption(listing)).thenReturn("caption");
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
+
+    // When
+    searchResultSender.handlePageCallback(buildPageCallback(1L, 100L, SearchResultSender.PAGE_NEXT));
+
+    // Then
+    assertThat(userIdCaptor.getValue()).isEqualTo(9L);
+  }
+
+  @Test
+  void should_pass_resolved_user_id_to_search_on_last_search() throws TelegramApiException {
+    // Given
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(buildDomainUser(11L)));
+    var savedFilter = new SearchFilter(null, null, null, null, null, null, null, null, null, null);
+    when(userSavedSearchService.getByTelegramUserId(1L)).thenReturn(Optional.of(savedFilter));
+    var listing = buildListing(1L, null, "https://realt.by/1");
+    var userIdCaptor = ArgumentCaptor.forClass(Long.class);
+    when(listingService.search(any(), any(), userIdCaptor.capture(), any())).thenReturn(pageOf(listing));
+    when(listingFormatter.buildCaption(listing)).thenReturn("caption");
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
+
+    // When
+    searchResultSender.handleLastSearch(buildCallback(1L, 100L, 10));
+
+    // Then
+    assertThat(userIdCaptor.getValue()).isEqualTo(11L);
+  }
+
+  // -------------------------------------------------------------------------
+  // Kufar CDN direct-URL bypass (issue #515)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_send_photo_by_direct_url_when_kufar_cdn_photo() throws TelegramApiException {
+    // Given
+    String kufarUrl = "https://rms.kufar.by/v1/gallery/adim1/x.jpg";
+    when(photoProxyClient.isKufarCdnUrl(kufarUrl)).thenReturn(true);
+    var listing = buildListing(80L, kufarUrl, "https://kufar.by/80");
+    when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
+    when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing));
+    when(listingFormatter.buildCaption(listing)).thenReturn("caption");
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
+
+    // When
+    searchResultSender.handle(buildCallback(1L, 100L, 10));
+
+    // Then — the Kufar URL itself is sent to Telegram, not downloaded bytes
+    ArgumentCaptor<SendPhoto> photoCaptor = ArgumentCaptor.forClass(SendPhoto.class);
+    verify(telegramClient).execute(photoCaptor.capture());
+    assertThat(photoCaptor.getValue().getPhoto().getAttachName()).isEqualTo(kufarUrl);
+    verify(photoProxyClient, never()).download(anyString(), eq(80L));
+  }
+
+  @Test
+  void should_fall_back_to_placeholder_when_kufar_direct_url_send_fails() throws TelegramApiException {
+    // Given
+    String kufarUrl = "https://rms.kufar.by/v1/gallery/adim1/y.jpg";
+    when(photoProxyClient.isKufarCdnUrl(kufarUrl)).thenReturn(true);
+    var listing = buildListing(81L, kufarUrl, "https://kufar.by/81");
+    when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
+    when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing));
+    when(listingFormatter.buildCaption(listing)).thenReturn("caption");
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
+    lenient().when(telegramClient.execute(any(EditMessageText.class))).thenReturn(mock());
+    when(telegramClient.execute(any(SendPhoto.class)))
+        .thenThrow(new TelegramApiException("Direct URL rejected"))
+        .thenReturn(null);
+
+    // When
+    searchResultSender.handle(buildCallback(1L, 100L, 10));
+
+    // Then — falls back to the placeholder, not to PhotoProxyClient.download()
+    ArgumentCaptor<SendPhoto> photoCaptor = ArgumentCaptor.forClass(SendPhoto.class);
+    verify(telegramClient, times(2)).execute(photoCaptor.capture());
+    assertThat(photoCaptor.getAllValues().get(1).getPhoto().getAttachName()).isEqualTo(TEST_NO_PHOTO_URL);
+    verify(photoProxyClient, never()).download(anyString(), eq(81L));
+  }
+
+  // -------------------------------------------------------------------------
   // helpers
   // -------------------------------------------------------------------------
+
+  private static com.flatio.domain.user.User buildDomainUser(Long id) {
+    var user = new com.flatio.domain.user.User();
+    user.setId(id);
+    return user;
+  }
 
   private static ListingSummaryResponse buildListing(Long id, String photoUrl, String sourceUrl) {
     return new ListingSummaryResponse(

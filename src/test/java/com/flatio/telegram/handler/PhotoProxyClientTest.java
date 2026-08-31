@@ -19,8 +19,6 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -50,8 +48,8 @@ class PhotoProxyClientTest {
   @Mock
   private ImageUrlValidator imageUrlValidator;
 
-  private static final PhotoDownloadProperties PHOTO_DOWNLOAD_PROPERTIES = new PhotoDownloadProperties(
-      "rms.kufar.by", "Mozilla/5.0 TestAgent", "https://www.kufar.by/");
+  private static final PhotoDownloadProperties PHOTO_DOWNLOAD_PROPERTIES =
+      new PhotoDownloadProperties("rms.kufar.by");
 
   private PhotoProxyClient photoProxyClient;
 
@@ -64,7 +62,6 @@ class PhotoProxyClientTest {
     lenient().when(imageUrlValidator.isAllowedImageUrl(anyString())).thenReturn(true);
     lenient().when(restClient.get()).thenReturn(uriSpec);
     lenient().doReturn(headersSpec).when(uriSpec).uri(anyString());
-    lenient().doReturn(headersSpec).when(headersSpec).header(anyString(), anyString());
     lenient().when(headersSpec.retrieve()).thenReturn(responseSpec);
   }
 
@@ -197,58 +194,17 @@ class PhotoProxyClientTest {
   }
 
   // -------------------------------------------------------------------------
-  // Kufar CDN headers and HTML-response detection (#497)
+  // HTML-response detection (#497) — applies regardless of source
   // -------------------------------------------------------------------------
 
   @Test
-  void should_send_browser_like_headers_when_url_targets_kufar_cdn_host() {
-    // Given
-    byte[] expectedBytes = new byte[]{0x01, 0x02, 0x03};
-    when(responseSpec.body(byte[].class)).thenReturn(expectedBytes);
-
-    // When
-    var result = photoProxyClient.download("https://rms.kufar.by/v1/gallery/photo.jpg", 42L);
-
-    // Then
-    assertThat(result).isPresent().contains(expectedBytes);
-    verify(headersSpec).header("User-Agent", PHOTO_DOWNLOAD_PROPERTIES.kufarUserAgent());
-    verify(headersSpec).header("Referer", PHOTO_DOWNLOAD_PROPERTIES.kufarReferer());
-  }
-
-  @Test
-  void should_not_send_kufar_headers_when_url_does_not_target_kufar_cdn_host() {
-    // Given
-    when(responseSpec.body(byte[].class)).thenReturn(new byte[]{0x01});
-
-    // When
-    photoProxyClient.download("https://cdn.onliner.by/photo.jpg", 42L);
-
-    // Then
-    verify(headersSpec, never()).header(anyString(), anyString());
-  }
-
-  @Test
-  void should_not_send_kufar_headers_when_kufar_cdn_host_is_blank() {
-    // Given — override disabled entirely via blank config
-    var disabledProperties = new PhotoDownloadProperties("", "unused", "unused");
-    var client = new PhotoProxyClient(restClient, imageUrlValidator, disabledProperties);
-    when(responseSpec.body(byte[].class)).thenReturn(new byte[]{0x01});
-
-    // When
-    client.download("https://rms.kufar.by/v1/gallery/photo.jpg", 42L);
-
-    // Then
-    verify(headersSpec, never()).header(anyString(), anyString());
-  }
-
-  @Test
   void should_return_empty_when_response_body_is_html_page() {
-    // Given — CDN anti-bot/geo gate returns an HTML page instead of image bytes (issue #497)
+    // Given — a CDN anti-bot/geo gate returns an HTML page instead of image bytes
     byte[] htmlBytes = "<html>\r\n<head></head><body>blocked</body></html>".getBytes(StandardCharsets.UTF_8);
     when(responseSpec.body(byte[].class)).thenReturn(htmlBytes);
 
     // When
-    var result = photoProxyClient.download("https://rms.kufar.by/v1/gallery/photo.jpg", 42L);
+    var result = photoProxyClient.download("https://cdn.onliner.by/photo.jpg", 42L);
 
     // Then
     assertThat(result).isEmpty();
@@ -265,5 +221,44 @@ class PhotoProxyClientTest {
 
     // Then
     assertThat(result).isEmpty();
+  }
+
+  // -------------------------------------------------------------------------
+  // isKufarCdnUrl (#515) — used by SearchResultSender/FavoritesCallbackHandler to bypass
+  // server-side download entirely for Kufar
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_identify_kufar_cdn_url_when_host_matches_configured_host() {
+    // When / Then
+    assertThat(photoProxyClient.isKufarCdnUrl("https://rms.kufar.by/v1/gallery/adim1/x.jpg")).isTrue();
+  }
+
+  @Test
+  void should_identify_kufar_cdn_url_case_insensitively() {
+    // When / Then
+    assertThat(photoProxyClient.isKufarCdnUrl("https://RMS.KUFAR.BY/v1/gallery/adim1/x.jpg")).isTrue();
+  }
+
+  @Test
+  void should_not_identify_other_hosts_as_kufar_cdn_url() {
+    // When / Then
+    assertThat(photoProxyClient.isKufarCdnUrl("https://cdn.onliner.by/photo.jpg")).isFalse();
+  }
+
+  @Test
+  void should_not_identify_kufar_cdn_url_when_configured_host_is_blank() {
+    // Given — override disabled entirely via blank config
+    var disabledProperties = new PhotoDownloadProperties("");
+    var client = new PhotoProxyClient(restClient, imageUrlValidator, disabledProperties);
+
+    // When / Then
+    assertThat(client.isKufarCdnUrl("https://rms.kufar.by/v1/gallery/adim1/x.jpg")).isFalse();
+  }
+
+  @Test
+  void should_not_identify_malformed_url_as_kufar_cdn_url() {
+    // When / Then
+    assertThat(photoProxyClient.isKufarCdnUrl("not a url")).isFalse();
   }
 }

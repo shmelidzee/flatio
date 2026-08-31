@@ -291,6 +291,27 @@ class BlacklistCallbackHandlerTest {
   }
 
   @Test
+  void should_number_list_lines_matching_delete_buttons_when_multiple_entries_present() throws Exception {
+    // Given — issue #513: only the delete button was numbered, the list text itself was not
+    var user = buildUser(7L);
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
+    var first = buildBlacklistEntry(1L, BlacklistEntryType.KEYWORD, "аренда");
+    var second = buildBlacklistEntry(2L, BlacklistEntryType.SOURCE, "realt");
+    when(blacklistService.findByUser(eq(7L), isNull(), any())).thenReturn(new PageImpl<>(List.of(first, second)));
+    var callback = buildCallback(1L, 100L, true, BlacklistCallbackHandler.ACTION_BLACKLIST);
+
+    // When
+    handler.handle(callback);
+
+    // Then — line numbers match the delete buttons' numbers, same order
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient, times(1)).execute(captor.capture());
+    assertThat(captor.getValue().getText())
+        .contains("1. Стоп-слово: аренда")
+        .contains("2. Источник: realt");
+  }
+
+  @Test
   void should_not_show_pagination_row_when_only_one_page_exists() throws Exception {
     // Given
     var user = buildUser(7L);

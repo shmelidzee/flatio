@@ -2,7 +2,6 @@ package com.flatio.telegram.state;
 
 import com.flatio.domain.listing.DealType;
 import com.flatio.config.SellPriceFilterProperties;
-import com.flatio.service.CityService;
 import java.math.BigDecimal;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -10,14 +9,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.when;
 
-@ExtendWith(MockitoExtension.class)
 class SearchFilterWizardTest {
 
   private static final SellPriceFilterProperties DEFAULT_SELL_PROPS = new SellPriceFilterProperties(
@@ -26,14 +20,11 @@ class SearchFilterWizardTest {
       BigDecimal.valueOf(400_000)
   );
 
-  @Mock
-  private CityService cityService;
-
   private SearchFilterWizard wizard;
 
   @BeforeEach
   void setUp() {
-    wizard = new SearchFilterWizard(DEFAULT_SELL_PROPS, cityService);
+    wizard = new SearchFilterWizard(DEFAULT_SELL_PROPS);
   }
 
   @Test
@@ -91,7 +82,7 @@ class SearchFilterWizardTest {
   }
 
   @Test
-  void should_advance_to_city_when_deal_type_selected() {
+  void should_advance_to_property_type_when_deal_type_selected() {
     // Given
     wizard.start(1L);
 
@@ -100,7 +91,7 @@ class SearchFilterWizardTest {
 
     // Then
     assertThat(state.getDealType()).isEqualTo(DealType.RENT);
-    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.CITY);
+    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.PROPERTY_TYPE);
   }
 
   @Test
@@ -113,64 +104,6 @@ class SearchFilterWizardTest {
 
     // Then
     assertThat(state.getDealType()).isNull();
-    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.CITY);
-  }
-
-  // -------------------------------------------------------------------------
-  // CITY step (#503)
-  // -------------------------------------------------------------------------
-
-  @Test
-  void should_advance_to_property_type_when_city_selected() {
-    // Given
-    when(cityService.existsById(5L)).thenReturn(true);
-    wizard.start(1L);
-
-    // When
-    var state = wizard.applySelection(1L, FilterStep.CITY, "5");
-
-    // Then
-    assertThat(state.getCityId()).isEqualTo(5L);
-    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.PROPERTY_TYPE);
-  }
-
-  @Test
-  void should_set_null_city_when_any_selected() {
-    // Given
-    wizard.start(1L);
-
-    // When
-    var state = wizard.applySelection(1L, FilterStep.CITY, "ANY");
-
-    // Then
-    assertThat(state.getCityId()).isNull();
-    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.PROPERTY_TYPE);
-  }
-
-  @Test
-  void should_set_null_city_when_unknown_city_id_received() {
-    // Given — id has valid Long syntax but does not exist in the cities reference table
-    when(cityService.existsById(999L)).thenReturn(false);
-    wizard.start(1L);
-
-    // When
-    var state = wizard.applySelection(1L, FilterStep.CITY, "999");
-
-    // Then
-    assertThat(state.getCityId()).isNull();
-    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.PROPERTY_TYPE);
-  }
-
-  @Test
-  void should_set_null_city_when_unparsable_value_received() {
-    // Given
-    wizard.start(1L);
-
-    // When
-    var state = wizard.applySelection(1L, FilterStep.CITY, "not-a-number");
-
-    // Then
-    assertThat(state.getCityId()).isNull();
     assertThat(state.getCurrentStep()).isEqualTo(FilterStep.PROPERTY_TYPE);
   }
 
@@ -362,7 +295,7 @@ class SearchFilterWizardTest {
   }
 
   @Test
-  void should_return_to_deal_type_when_back_pressed_at_city() {
+  void should_return_to_deal_type_when_back_pressed_at_property_type() {
     // Given
     wizard.start(1L);
     wizard.applySelection(1L, FilterStep.DEAL_TYPE, "RENT");
@@ -373,22 +306,6 @@ class SearchFilterWizardTest {
     // Then
     assertThat(state.getCurrentStep()).isEqualTo(FilterStep.DEAL_TYPE);
     assertThat(state.getDealType()).isNull();
-  }
-
-  @Test
-  void should_return_to_city_when_back_pressed_at_property_type() {
-    // Given
-    when(cityService.existsById(5L)).thenReturn(true);
-    wizard.start(1L);
-    wizard.applySelection(1L, FilterStep.DEAL_TYPE, "RENT");
-    wizard.applySelection(1L, FilterStep.CITY, "5");
-
-    // When
-    var state = wizard.stepBack(1L);
-
-    // Then
-    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.CITY);
-    assertThat(state.getCityId()).isNull();
   }
 
   @Test
@@ -512,7 +429,7 @@ class SearchFilterWizardTest {
 
     // Then
     assertThat(state.getDealType()).isNull();
-    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.CITY);
+    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.PROPERTY_TYPE);
   }
 
   @Test
@@ -622,7 +539,7 @@ class SearchFilterWizardTest {
         BigDecimal.valueOf(150_000),
         BigDecimal.valueOf(300_000)
     );
-    var customWizard = new SearchFilterWizard(customProps, cityService);
+    var customWizard = new SearchFilterWizard(customProps);
     customWizard.start(2L);
     customWizard.applySelection(2L, FilterStep.DEAL_TYPE, "SELL");
     customWizard.applySelection(2L, FilterStep.PROPERTY_TYPE, "ANY");

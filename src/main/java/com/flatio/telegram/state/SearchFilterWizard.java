@@ -2,7 +2,6 @@ package com.flatio.telegram.state;
 
 import com.flatio.domain.listing.DealType;
 import com.flatio.config.SellPriceFilterProperties;
-import com.flatio.service.CityService;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -49,7 +48,6 @@ public class SearchFilterWizard {
   static final BigDecimal RENT_PRICE_PREMIUM_MIN = BigDecimal.valueOf(4_000);
 
   private final SellPriceFilterProperties sellPriceProps;
-  private final CityService cityService;
 
   private final Map<Long, SearchFilterState> states = Caffeine.newBuilder()
       .expireAfterWrite(Duration.ofMinutes(STATE_TTL_MINUTES))
@@ -122,10 +120,6 @@ public class SearchFilterWizard {
       switch (step) {
         case DEAL_TYPE -> {
           state.setDealType(VALUE_ANY.equals(value) ? null : parseDealType(value));
-          state.setCurrentStep(FilterStep.CITY);
-        }
-        case CITY -> {
-          state.setCityId(VALUE_ANY.equals(value) ? null : parseCityId(value));
           state.setCurrentStep(FilterStep.PROPERTY_TYPE);
         }
         case PROPERTY_TYPE -> {
@@ -179,8 +173,7 @@ public class SearchFilterWizard {
           state = new SearchFilterState();
           log.debug("Filter wizard started: telegramId={}", telegramId);
         }
-        case CITY -> { state.setDealType(null); state.setCurrentStep(FilterStep.DEAL_TYPE); }
-        case PROPERTY_TYPE -> { state.setCityId(null); state.setCurrentStep(FilterStep.CITY); }
+        case PROPERTY_TYPE -> { state.setDealType(null); state.setCurrentStep(FilterStep.DEAL_TYPE); }
         case ROOMS -> { state.setPropertyType(null); state.setCurrentStep(FilterStep.PROPERTY_TYPE); }
         case PRICE -> {
           state.setRooms(null);
@@ -251,21 +244,6 @@ public class SearchFilterWizard {
       log.warn("Unknown deal type value in callback: {}", value);
       return null;
     }
-  }
-
-  private Long parseCityId(String value) {
-    Long cityId;
-    try {
-      cityId = Long.valueOf(value);
-    } catch (NumberFormatException e) {
-      log.warn("Unparseable city id value in callback: {}", value);
-      return null;
-    }
-    if (!cityService.existsById(cityId)) {
-      log.warn("Unknown city id in callback: {}", cityId);
-      return null;
-    }
-    return cityId;
   }
 
   private Integer parseRooms(String value) {
