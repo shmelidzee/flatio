@@ -1,13 +1,16 @@
 package com.flatio.telegram.keyboard;
 
 import com.flatio.common.util.TelegramHtmlEscaper;
+import com.flatio.domain.city.City;
 import com.flatio.domain.listing.DealType;
 import com.flatio.config.SellPriceFilterProperties;
+import com.flatio.service.CityService;
 import com.flatio.telegram.state.FilterStep;
 import com.flatio.telegram.state.SearchFilterState;
 import com.flatio.telegram.state.SearchFilterWizard;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
@@ -22,8 +25,10 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
 public class FilterKeyboardFactory {
 
   private static final String P = SearchFilterWizard.CALLBACK_PREFIX;
+  private static final int CITY_BUTTONS_PER_ROW = 2;
 
   private final SellPriceFilterProperties sellPriceProps;
+  private final CityService cityService;
 
   /**
    * Returns the inline keyboard markup for the current wizard step.
@@ -34,6 +39,7 @@ public class FilterKeyboardFactory {
   public InlineKeyboardMarkup buildForStep(SearchFilterState state) {
     return switch (state.getCurrentStep()) {
       case DEAL_TYPE -> buildDealTypeKeyboard();
+      case CITY -> buildCityKeyboard();
       case PROPERTY_TYPE -> buildPropertyTypeKeyboard();
       case ROOMS -> buildRoomsKeyboard();
       case PRICE -> buildPriceKeyboard(state.getDealType());
@@ -52,6 +58,7 @@ public class FilterKeyboardFactory {
   public String getStepText(SearchFilterState state) {
     return switch (state.getCurrentStep()) {
       case DEAL_TYPE -> "🏠 Выберите тип сделки:";
+      case CITY -> "🏙 Выберите город:";
       case PROPERTY_TYPE -> "🏢 Тип недвижимости:";
       case ROOMS -> "🛏 Количество комнат:";
       case PRICE -> state.getDealType() == DealType.SELL
@@ -71,6 +78,23 @@ public class FilterKeyboardFactory {
         .keyboardRow(new InlineKeyboardRow(rent, sell))
         .keyboardRow(new InlineKeyboardRow(any))
         .keyboardRow(resetRow())
+        .build();
+  }
+
+  private InlineKeyboardMarkup buildCityKeyboard() {
+    List<City> cities = cityService.findAll();
+    var builder = InlineKeyboardMarkup.builder();
+    for (int i = 0; i < cities.size(); i += CITY_BUTTONS_PER_ROW) {
+      List<City> rowCities = cities.subList(i, Math.min(i + CITY_BUTTONS_PER_ROW, cities.size()));
+      var buttons = rowCities.stream()
+          .map(city -> btn(city.getNameRu(), P + ":CITY:" + city.getId()))
+          .toList();
+      builder.keyboardRow(new InlineKeyboardRow(buttons));
+    }
+    var any = btn("Любой", P + ":CITY:ANY");
+    return builder
+        .keyboardRow(new InlineKeyboardRow(any))
+        .keyboardRow(navRow())
         .build();
   }
 
@@ -188,6 +212,7 @@ public class FilterKeyboardFactory {
   private String buildSummaryText(SearchFilterState state) {
     var sb = new StringBuilder("✅ Фильтр настроен:\n")
         .append("Сделка: ").append(dealTypeLabel(state.getDealType())).append("\n")
+        .append("Город: ").append(cityLabel(state.getCityId())).append("\n")
         .append("Тип: ").append(propertyTypeLabel(state.getPropertyType())).append("\n")
         .append("Комнат: ").append(roomsLabel(state.getRooms())).append("\n")
         .append("Цена: ").append(priceLabel(state.getPriceMin(), state.getPriceMax())).append("\n")
@@ -205,6 +230,11 @@ public class FilterKeyboardFactory {
       case SELL -> "Продажа";
       case RENT_DAILY -> "Посуточно";
     };
+  }
+
+  private String cityLabel(Long cityId) {
+    if (cityId == null) return "Любой";
+    return cityService.findById(cityId).map(City::getNameRu).orElse("Любой");
   }
 
   private String propertyTypeLabel(String propertyType) {

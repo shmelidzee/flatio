@@ -21,6 +21,15 @@ public interface CityService {
   List<City> searchByName(String query);
 
   /**
+   * Returns all cities in the reference table, sorted alphabetically by Russian name.
+   *
+   * <p>Used to render a full city selection keyboard (e.g. in the Telegram search wizard).
+   *
+   * @return all cities sorted by name_ru, never null
+   */
+  List<City> findAll();
+
+  /**
    * Finds the city nearest to the given geographic coordinates.
    *
    * @param latitude  latitude in decimal degrees (WGS-84), never null

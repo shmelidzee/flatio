@@ -26,6 +26,11 @@ public class CityServiceImpl implements CityService {
   }
 
   @Override
+  public List<City> findAll() {
+    return cityRepository.findAllByOrderByNameRuAsc();
+  }
+
+  @Override
   public Optional<City> findNearestCity(BigDecimal latitude, BigDecimal longitude) {
     return cityRepository.findNearestCity(latitude, longitude);
   }
