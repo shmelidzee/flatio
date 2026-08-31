@@ -2,6 +2,7 @@ package com.flatio.telegram.config;
 
 import java.net.http.HttpClient;
 import java.time.Duration;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
@@ -15,6 +16,7 @@ import org.springframework.web.client.RestClient;
  * can be enforced without affecting sync jobs, and to avoid sharing a base URL.
  */
 @Configuration
+@EnableConfigurationProperties(PhotoDownloadProperties.class)
 public class PhotoDownloadConfig {
 
   private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(5);
