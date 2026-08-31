@@ -58,6 +58,8 @@ public class BlacklistCallbackHandler {
   public static final String CALLBACK_PREFIX = "BL:";
   /** Callback data for starting the "add stop-word" free-text prompt. */
   public static final String ADD_KEYWORD = "BL:ADD_KEYWORD";
+  /** Callback data for cancelling the pending "add stop-word" prompt (issue #508). */
+  public static final String CANCEL_KEYWORD = "BL:CANCEL_KEYWORD";
   /** Callback prefix for the type-filter buttons (suffix: {@code ALL}, or a {@link BlacklistEntryType} name). */
   public static final String FILTER_PREFIX = "BL:FILTER:";
   /** Callback prefix for deleting a blacklist entry. */
@@ -179,7 +181,19 @@ public class BlacklistCallbackHandler {
       return;
     }
     keywordPromptState.await(telegramId);
-    sendPlainText(chatId, KEYWORD_PROMPT_TEXT);
+    sendKeywordPrompt(chatId, KEYWORD_PROMPT_TEXT);
+  }
+
+  /**
+   * Handles the {@code BL:CANCEL_KEYWORD} callback, cancelling the pending stop-word prompt and
+   * returning the user to the blacklist list (issue #508) — the prompt otherwise had no way to
+   * back out of without typing something.
+   *
+   * @param callbackQuery the incoming callback query, never null
+   */
+  public void handleCancelKeyword(CallbackQuery callbackQuery) {
+    keywordPromptState.clear(callbackQuery.getFrom().getId());
+    handle(callbackQuery);
   }
 
   /**
@@ -206,7 +220,7 @@ public class BlacklistCallbackHandler {
   public void handleKeywordText(Long telegramId, String chatId, String text) {
     String keyword = text == null ? "" : text.strip();
     if (keyword.isBlank() || keyword.length() > MAX_KEYWORD_LENGTH) {
-      sendPlainText(chatId, INVALID_KEYWORD_TEXT);
+      sendKeywordPrompt(chatId, INVALID_KEYWORD_TEXT);
       return;
     }
     var userOpt = userService.findByTelegramId(telegramId);
@@ -227,7 +241,7 @@ public class BlacklistCallbackHandler {
       keywordPromptState.clear(telegramId);
       sendPlainText(chatId, LIMIT_EXCEEDED_TEXT);
     } catch (BlacklistInvalidValueException e) {
-      sendPlainText(chatId, INVALID_KEYWORD_TEXT);
+      sendKeywordPrompt(chatId, INVALID_KEYWORD_TEXT);
     }
   }
 
@@ -524,6 +538,29 @@ public class BlacklistCallbackHandler {
       telegramClient.execute(SendMessage.builder().chatId(chatId).text(text).parseMode("HTML").build());
     } catch (TelegramApiException e) {
       log.warn("Failed to send blacklist prompt: chatId={}", chatId, e);
+    }
+  }
+
+  /**
+   * Sends the stop-word prompt (initial or re-prompt after invalid input) with a "Отмена" button,
+   * so the user is never stuck waiting for text input with no way back (issue #508).
+   *
+   * @param chatId target chat identifier, never null
+   * @param text   prompt text, never null
+   */
+  private void sendKeywordPrompt(String chatId, String text) {
+    var keyboard = InlineKeyboardMarkup.builder()
+        .keyboardRow(new InlineKeyboardRow(navBtn("Отмена", CANCEL_KEYWORD)))
+        .build();
+    try {
+      telegramClient.execute(SendMessage.builder()
+          .chatId(chatId)
+          .text(text)
+          .parseMode("HTML")
+          .replyMarkup(keyboard)
+          .build());
+    } catch (TelegramApiException e) {
+      log.warn("Failed to send blacklist keyword prompt: chatId={}", chatId, e);
     }
   }
 

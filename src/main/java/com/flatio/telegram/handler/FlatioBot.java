@@ -378,6 +378,9 @@ public class FlatioBot {
     } else if (BlacklistCallbackHandler.ADD_KEYWORD.equals(data)) {
       answerCallbackQuery(callbackQuery.getId());
       blacklistCallbackHandler.handleAddKeywordPrompt(callbackQuery);
+    } else if (BlacklistCallbackHandler.CANCEL_KEYWORD.equals(data)) {
+      answerCallbackQuery(callbackQuery.getId());
+      blacklistCallbackHandler.handleCancelKeyword(callbackQuery);
     } else if (data.startsWith(BlacklistCallbackHandler.FILTER_PREFIX)) {
       answerCallbackQuery(callbackQuery.getId());
       blacklistCallbackHandler.handleFilter(callbackQuery);
