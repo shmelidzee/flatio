@@ -109,6 +109,44 @@ class BlacklistCallbackHandlerTest {
   }
 
   @Test
+  void should_explain_delete_button_numbering_in_hint_when_blacklist_has_entries() throws Exception {
+    // Given — issue #507: numbered delete buttons (#498) were never explained in the UI
+    var user = buildUser(7L);
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
+    var entry = buildBlacklistEntry(3L, BlacklistEntryType.KEYWORD, "новостройка");
+    when(blacklistService.findByUser(eq(7L), isNull(), any())).thenReturn(new PageImpl<>(List.of(entry)));
+    var callback = buildCallback(1L, 100L, true, BlacklistCallbackHandler.ACTION_BLACKLIST);
+
+    // When
+    handler.handle(callback);
+
+    // Then
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient, times(1)).execute(captor.capture());
+    assertThat(captor.getValue().getText())
+        .contains("Номер на кнопке «Удалить» соответствует порядку записи в списке выше");
+  }
+
+  @Test
+  void should_mark_active_filter_with_checkmark_when_filter_selected() throws Exception {
+    // Given — issue #507: "• " prefix was too subtle as an active-filter marker
+    var user = buildUser(7L);
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
+    var entry = buildBlacklistEntry(3L, BlacklistEntryType.KEYWORD, "новостройка");
+    when(blacklistService.findByUser(eq(7L), eq(BlacklistEntryType.KEYWORD), any()))
+        .thenReturn(new PageImpl<>(List.of(entry)));
+    var callback = buildCallback(1L, 100L, true, "BL:FILTER:KEYWORD");
+
+    // When
+    handler.handleFilter(callback);
+
+    // Then
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient, times(1)).execute(captor.capture());
+    assertThat(extractButtonLabels(captor.getValue())).contains("✅ Стоп-слова").doesNotContain("• Стоп-слова");
+  }
+
+  @Test
   void should_send_empty_state_with_search_shortcut_when_user_has_no_entries() throws Exception {
     // Given — issue #474: empty blacklist must not be a dead end
     var user = buildUser(8L);
@@ -129,6 +167,46 @@ class BlacklistCallbackHandlerTest {
     assertThat(keyboard.getKeyboard().get(1).get(0).getText()).isEqualTo("🔍 Перейти к поиску");
     assertThat(keyboard.getKeyboard().get(1).get(0).getCallbackData()).isEqualTo(FilterCallbackHandler.ACTION_SEARCH);
     assertThat(keyboard.getKeyboard().get(2).get(0).getCallbackData()).isEqualTo(SearchResultSender.ACTION_MENU);
+  }
+
+  @Test
+  void should_show_type_specific_message_and_keep_filter_row_when_filtered_result_is_empty() throws Exception {
+    // Given — issue #506: filtering to a type with zero entries must not look like the whole
+    // blacklist is empty when other types still have entries
+    var user = buildUser(7L);
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
+    when(blacklistService.findByUser(eq(7L), eq(BlacklistEntryType.SOURCE), any())).thenReturn(Page.empty());
+    var callback = buildCallback(1L, 100L, true, "BL:FILTER:SOURCE");
+
+    // When
+    handler.handleFilter(callback);
+
+    // Then
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient, times(1)).execute(captor.capture());
+    var message = captor.getValue();
+    assertThat(message.getText()).isEqualTo("Записей типа «Источник» нет.");
+    assertThat(extractButtonLabels(message)).contains("Все", "✅ Источники", "Стоп-слова");
+  }
+
+  @Test
+  void should_show_generic_empty_message_without_filter_row_when_blacklist_is_fully_empty() throws Exception {
+    // Given — issue #506: the fully-empty case (no type filter active) keeps its original shape
+    var user = buildUser(8L);
+    when(userService.findByTelegramId(2L)).thenReturn(Optional.of(user));
+    when(blacklistService.findByUser(eq(8L), isNull(), any())).thenReturn(Page.empty());
+    var callback = buildCallback(2L, 200L, true, BlacklistCallbackHandler.ACTION_BLACKLIST);
+
+    // When
+    handler.handle(callback);
+
+    // Then
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient, times(1)).execute(captor.capture());
+    var message = captor.getValue();
+    assertThat(message.getText()).isEqualTo("🚫 Ваш чёрный список пока пуст."
+        + "\n\nСкрывайте объявления и источники прямо с их карточки в поиске, либо добавьте стоп-слово кнопкой ниже.");
+    assertThat(extractButtonLabels(message)).doesNotContain("Все", "Объявления", "Источники", "Стоп-слова");
   }
 
   @Test
@@ -334,6 +412,40 @@ class BlacklistCallbackHandlerTest {
   }
 
   @Test
+  void should_include_cancel_button_when_prompting_for_keyword() throws Exception {
+    // Given — issue #508: the prompt had no way out short of typing something
+    var callback = buildCallback(1L, 100L, true, BlacklistCallbackHandler.ADD_KEYWORD);
+
+    // When
+    handler.handleAddKeywordPrompt(callback);
+
+    // Then
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient).execute(captor.capture());
+    var message = captor.getValue();
+    assertThat(extractButtonLabels(message)).contains("Отмена");
+    assertThat(extractCallbackData(message)).contains(BlacklistCallbackHandler.CANCEL_KEYWORD);
+  }
+
+  @Test
+  void should_clear_prompt_state_and_render_list_when_cancel_keyword_received() throws Exception {
+    // Given — issue #508
+    var user = buildUser(7L);
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
+    when(blacklistService.findByUser(eq(7L), isNull(), any())).thenReturn(Page.empty());
+    var callback = buildCallback(1L, 100L, true, BlacklistCallbackHandler.CANCEL_KEYWORD);
+
+    // When
+    handler.handleCancelKeyword(callback);
+
+    // Then
+    verify(keywordPromptState).clear(1L);
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient, times(1)).execute(captor.capture());
+    assertThat(captor.getValue().getText()).contains("Ваш чёрный список пока пуст.");
+  }
+
+  @Test
   void should_send_private_chat_required_message_when_add_keyword_from_non_private_chat() throws Exception {
     // Given
     var callback = buildCallback(1L, 100L, false, BlacklistCallbackHandler.ADD_KEYWORD);
@@ -362,7 +474,7 @@ class BlacklistCallbackHandlerTest {
   }
 
   @Test
-  void should_reprompt_when_keyword_is_blank() {
+  void should_reprompt_when_keyword_is_blank() throws Exception {
     // When
     handler.handleKeywordText(1L, "100", "   ");
 
@@ -372,7 +484,7 @@ class BlacklistCallbackHandlerTest {
   }
 
   @Test
-  void should_reprompt_when_keyword_exceeds_max_length() {
+  void should_reprompt_when_keyword_exceeds_max_length() throws Exception {
     // Given — 101 characters, one over the FR-BL-3 limit
     String tooLong = "a".repeat(101);
 
@@ -381,6 +493,20 @@ class BlacklistCallbackHandlerTest {
 
     // Then
     verify(blacklistService, never()).create(any(), any());
+  }
+
+  @Test
+  void should_include_cancel_button_when_reprompting_for_invalid_keyword() throws Exception {
+    // Given — issue #508: the re-prompt after invalid input must also offer a way out
+    // When
+    handler.handleKeywordText(1L, "100", "   ");
+
+    // Then
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient).execute(captor.capture());
+    var message = captor.getValue();
+    assertThat(extractButtonLabels(message)).contains("Отмена");
+    assertThat(extractCallbackData(message)).contains(BlacklistCallbackHandler.CANCEL_KEYWORD);
   }
 
   @Test
