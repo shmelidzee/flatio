@@ -1,18 +1,26 @@
 package com.flatio.telegram.keyboard;
 
+import com.flatio.domain.city.City;
 import com.flatio.domain.listing.DealType;
 import com.flatio.config.SellPriceFilterProperties;
+import com.flatio.service.CityService;
 import com.flatio.telegram.state.FilterStep;
 import com.flatio.telegram.state.SearchFilterState;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.when;
 
+@ExtendWith(MockitoExtension.class)
 class FilterKeyboardFactoryTest {
 
   private static final SellPriceFilterProperties DEFAULT_PROPS = new SellPriceFilterProperties(
@@ -21,11 +29,21 @@ class FilterKeyboardFactoryTest {
       BigDecimal.valueOf(400_000)
   );
 
+  @Mock
+  private CityService cityService;
+
   private FilterKeyboardFactory factory;
 
   @BeforeEach
   void setUp() {
-    factory = new FilterKeyboardFactory(DEFAULT_PROPS);
+    factory = new FilterKeyboardFactory(DEFAULT_PROPS, cityService);
+  }
+
+  private static City buildCity(Long id, String nameRu) {
+    var city = new City();
+    city.setId(id);
+    city.setNameRu(nameRu);
+    return city;
   }
 
   // -------------------------------------------------------------------------
@@ -76,7 +94,7 @@ class FilterKeyboardFactoryTest {
         BigDecimal.valueOf(100_000),
         BigDecimal.valueOf(200_000)
     );
-    var customFactory = new FilterKeyboardFactory(customProps);
+    var customFactory = new FilterKeyboardFactory(customProps, cityService);
     var state = new SearchFilterState();
     state.setCurrentStep(FilterStep.PRICE);
     state.setDealType(DealType.SELL);
@@ -150,6 +168,65 @@ class FilterKeyboardFactoryTest {
     // Then
     assertThat(labels).contains("💾 Сохранить изменения");
     assertThat(labels).doesNotContain("🔍 Найти");
+  }
+
+  // -------------------------------------------------------------------------
+  // CITY step (#503)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_show_city_prompt_at_city_step() {
+    // Given
+    var state = new SearchFilterState();
+    state.setCurrentStep(FilterStep.CITY);
+
+    // When
+    String text = factory.getStepText(state);
+
+    // Then
+    assertThat(text).isEqualTo("🏙 Выберите город:");
+  }
+
+  @Test
+  void should_show_city_buttons_from_city_service_at_city_step() {
+    // Given
+    when(cityService.findAll()).thenReturn(List.of(buildCity(1L, "Минск"), buildCity(2L, "Брест")));
+    var state = new SearchFilterState();
+    state.setCurrentStep(FilterStep.CITY);
+
+    // When
+    List<String> labels = extractButtonLabels(factory.buildForStep(state));
+
+    // Then
+    assertThat(labels).contains("Минск", "Брест", "Любой");
+  }
+
+  @Test
+  void should_show_any_city_label_in_summary_when_city_not_selected() {
+    // Given
+    var state = new SearchFilterState();
+    state.setCurrentStep(FilterStep.DONE);
+
+    // When
+    String text = factory.getStepText(state);
+
+    // Then
+    assertThat(text).contains("Город: Любой");
+  }
+
+  @Test
+  void should_show_city_name_in_summary_when_city_selected() {
+    // Given
+    when(cityService.findById(1L)).thenReturn(Optional.of(buildCity(1L, "Минск")));
+    var state = new SearchFilterState();
+    state.setCurrentStep(FilterStep.DONE);
+    state.setCityId(1L);
+
+    // When
+    String text = factory.getStepText(state);
+
+    // Then
+    assertThat(text).contains("Город: Минск");
   }
 
   // -------------------------------------------------------------------------
