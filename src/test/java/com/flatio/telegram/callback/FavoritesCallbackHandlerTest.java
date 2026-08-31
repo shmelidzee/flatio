@@ -162,6 +162,51 @@ class FavoritesCallbackHandlerTest {
   }
 
   @Test
+  void should_send_photo_by_direct_url_when_kufar_cdn_photo() throws Exception {
+    // Given — issue #515: Kufar CDN photos bypass PhotoProxyClient entirely
+    String kufarUrl = "https://rms.kufar.by/v1/gallery/adim1/x.jpg";
+    var user = buildUser(7L);
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
+    var favorite = buildFavoriteResponse(3L, 3L, "Квартира в центре", BigDecimal.valueOf(50_000), "USD", kufarUrl);
+    when(favoriteService.findByUser(eq(7L), any())).thenReturn(new PageImpl<>(List.of(favorite)));
+    when(photoProxyClient.isKufarCdnUrl(kufarUrl)).thenReturn(true);
+    var callback = buildCallback(1L, 100L, true, FavoritesCallbackHandler.ACTION_FAVORITES);
+
+    // When
+    handler.handle(callback);
+
+    // Then — the Kufar URL itself is sent to Telegram, not downloaded bytes
+    var photoCaptor = ArgumentCaptor.forClass(SendPhoto.class);
+    verify(telegramClient).execute(photoCaptor.capture());
+    assertThat(photoCaptor.getValue().getPhoto().getAttachName()).isEqualTo(kufarUrl);
+    verify(photoProxyClient, never()).download(anyString(), anyLong());
+  }
+
+  @Test
+  void should_fall_back_to_placeholder_when_kufar_direct_url_send_fails() throws Exception {
+    // Given
+    String kufarUrl = "https://rms.kufar.by/v1/gallery/adim1/y.jpg";
+    var user = buildUser(7L);
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
+    var favorite = buildFavoriteResponse(3L, 3L, "Квартира в центре", BigDecimal.valueOf(50_000), "USD", kufarUrl);
+    when(favoriteService.findByUser(eq(7L), any())).thenReturn(new PageImpl<>(List.of(favorite)));
+    when(photoProxyClient.isKufarCdnUrl(kufarUrl)).thenReturn(true);
+    when(telegramClient.execute(any(SendPhoto.class)))
+        .thenThrow(new org.telegram.telegrambots.meta.exceptions.TelegramApiException("Direct URL rejected"))
+        .thenReturn(null);
+    var callback = buildCallback(1L, 100L, true, FavoritesCallbackHandler.ACTION_FAVORITES);
+
+    // When
+    handler.handle(callback);
+
+    // Then — falls back to the placeholder, not to PhotoProxyClient.download()
+    var photoCaptor = ArgumentCaptor.forClass(SendPhoto.class);
+    verify(telegramClient, times(2)).execute(photoCaptor.capture());
+    assertThat(photoCaptor.getAllValues().get(1).getPhoto().getAttachName()).isEqualTo(TEST_NO_PHOTO_URL);
+    verify(photoProxyClient, never()).download(anyString(), anyLong());
+  }
+
+  @Test
   void should_append_inactive_label_to_caption_when_listing_inactive() throws Exception {
     // Given
     var user = buildUser(7L);
