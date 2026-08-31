@@ -338,7 +338,7 @@ public class BlacklistCallbackHandler {
 
     if (result.isEmpty()) {
       pageSessions.remove(telegramId);
-      sendEmptyState(chatId);
+      sendEmptyState(chatId, type);
     } else {
       pageSessions.put(telegramId, new PageState(page, result.getTotalPages(), type));
       sendListMessage(chatId, result.getContent(), type, page, result.getTotalPages());
@@ -465,13 +465,24 @@ public class BlacklistCallbackHandler {
   }
 
   /**
-   * Sends the empty-blacklist message with a shortcut into the search wizard, so the user is not
+   * Sends the "no entries" message with a shortcut into the search wizard, so the user is not
    * left at a dead end without knowing how to hide a first listing or source (issue #474).
    *
+   * <p>Distinguishes "the blacklist is empty overall" ({@code type == null}) from "the selected
+   * type filter has no entries, but other types might" ({@code type != null}, issue #506) — the
+   * latter keeps the filter row visible so the user can switch type without leaving the section,
+   * and uses a type-specific message instead of the generic {@link #EMPTY_TEXT}.
+   *
    * @param chatId target chat identifier, never null
+   * @param type   active type filter, or null when the whole blacklist is empty
    */
-  private void sendEmptyState(String chatId) {
-    var keyboard = InlineKeyboardMarkup.builder()
+  private void sendEmptyState(String chatId, BlacklistEntryType type) {
+    String text = type == null ? EMPTY_TEXT : "Записей типа «" + typeLabel(type) + "» нет.";
+    var keyboardBuilder = InlineKeyboardMarkup.builder();
+    if (type != null) {
+      keyboardBuilder.keyboardRow(filterRow(type));
+    }
+    var keyboard = keyboardBuilder
         .keyboardRow(new InlineKeyboardRow(navBtn("➕ Добавить стоп-слово", ADD_KEYWORD)))
         .keyboardRow(new InlineKeyboardRow(navBtn("🔍 Перейти к поиску", FilterCallbackHandler.ACTION_SEARCH)))
         .keyboardRow(new InlineKeyboardRow(navBtn("🏠 Главное меню", SearchResultSender.ACTION_MENU)))
@@ -479,7 +490,7 @@ public class BlacklistCallbackHandler {
     try {
       telegramClient.execute(SendMessage.builder()
           .chatId(chatId)
-          .text(EMPTY_TEXT)
+          .text(text)
           .parseMode("HTML")
           .replyMarkup(keyboard)
           .build());
