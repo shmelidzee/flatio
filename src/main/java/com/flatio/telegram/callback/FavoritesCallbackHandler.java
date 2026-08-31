@@ -332,8 +332,10 @@ public class FavoritesCallbackHandler {
   /**
    * Sends a Kufar photo to Telegram as a direct URL, bypassing {@link PhotoProxyClient} entirely
    * (issue #515) — see {@link SearchResultSender}'s equivalent method for the full rationale
-   * (issues #497, #511). Falls back to the placeholder, not to {@link PhotoProxyClient}, if
-   * Telegram itself rejects the direct URL.
+   * (issues #497, #511), including why skipping {@code ImageUrlValidator} here is safe (Telegram
+   * fetches the URL, not us, and the host is constrained to the exact configured Kufar CDN host).
+   * Falls back to the placeholder, not to {@link PhotoProxyClient}, if Telegram itself rejects
+   * the direct URL.
    *
    * @param chatId    target chat identifier, never null
    * @param photoUrl  the Kufar CDN photo URL, never null

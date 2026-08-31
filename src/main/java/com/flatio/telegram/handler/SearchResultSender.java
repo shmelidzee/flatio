@@ -634,6 +634,12 @@ public class SearchResultSender {
    * production (issue #511). Falls back to the placeholder, not to {@link PhotoProxyClient},
    * if Telegram itself rejects the direct URL — retrying via download would hit the same gate.
    *
+   * <p><b>SSRF note:</b> this path does not run {@code ImageUrlValidator} — that guard exists to
+   * stop {@link PhotoProxyClient} from making an outbound request to an attacker-controlled
+   * address on our behalf, and here it's Telegram's servers fetching the URL, not ours. The URL
+   * is still constrained: {@link PhotoProxyClient#isKufarCdnUrl} only returns true for the exact
+   * configured Kufar CDN host, which listing data cannot redirect elsewhere.
+   *
    * @param chatId    target chat identifier, never null
    * @param photoUrl  the Kufar CDN photo URL, never null
    * @param caption   pre-built HTML caption, never null
