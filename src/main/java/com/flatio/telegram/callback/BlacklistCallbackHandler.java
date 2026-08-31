@@ -82,7 +82,8 @@ public class BlacklistCallbackHandler {
       + "\n\nСкрывайте объявления и источники прямо с их карточки в поиске, либо добавьте стоп-слово кнопкой ниже.";
   private static final String HINT_TEXT =
       "Объявления и источники скрываются кнопкой «🚫 Скрыть» с карточки в поиске."
-      + " Стоп-слова добавляются кнопкой «➕ Добавить стоп-слово» ниже.";
+      + " Стоп-слова добавляются кнопкой «➕ Добавить стоп-слово» ниже."
+      + " Номер на кнопке «Удалить» соответствует порядку записи в списке выше.";
   private static final String SESSION_EXPIRED_TEXT = "Список устарел. Откройте раздел «🚫 Чёрный список» заново.";
   private static final String FORMAT_ERROR_LINE = "⚠️ Не удалось отобразить запись";
   private static final String KEYWORD_PROMPT_TEXT = "Введите стоп-слово:";
@@ -500,7 +501,8 @@ public class BlacklistCallbackHandler {
   }
 
   private InlineKeyboardButton filterBtn(String label, BlacklistEntryType type, BlacklistEntryType current) {
-    String text = type == current ? "• " + label : label;
+    // issue #507: "• " was too subtle as an active-filter marker in a flat row of short buttons
+    String text = type == current ? "✅ " + label : label;
     return navBtn(text, FILTER_PREFIX + (type == null ? "ALL" : type.name()));
   }
 
