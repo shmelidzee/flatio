@@ -34,6 +34,9 @@ public class SearchFilterWizard {
   /** Callback value meaning "no filter applied" for a given step. */
   public static final String VALUE_ANY = "ANY";
 
+  /** Callback value meaning "leave the KEYWORD step's current value untouched" (issue #523). */
+  public static final String VALUE_KEEP = "KEEP";
+
   private static final Set<String> ALLOWED_PROPERTY_TYPES = Set.of("APARTMENT", "HOUSE", "ROOM");
 
   private static final long STATE_TTL_MINUTES = 30;
@@ -141,7 +144,12 @@ public class SearchFilterWizard {
           state.setCurrentStep(FilterStep.KEYWORD);
         }
         case KEYWORD -> {
-          state.setQuery(VALUE_ANY.equals(value) ? null : value);
+          // KEEP (issue #523): "Пропустить" while editing a subscription that already has a
+          // keyword leaves it untouched — only VALUE_ANY ("Очистить"/plain skip elsewhere)
+          // clears it, same as every other step's "no value" semantics.
+          if (!VALUE_KEEP.equals(value)) {
+            state.setQuery(VALUE_ANY.equals(value) ? null : value);
+          }
           state.setCurrentStep(FilterStep.DONE);
         }
         default -> log.warn("Unexpected step in applySelection: step={}", step);
