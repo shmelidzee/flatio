@@ -31,6 +31,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -185,10 +186,16 @@ public class ListingServiceImpl implements ListingService {
     if (ids.isEmpty()) {
       return Map.of();
     }
-    return listingRepository.findAllById(ids).stream()
-        .map(listing -> Map.entry(listing.getId(), resolveDisplayLabel(listing)))
-        .filter(entry -> entry.getValue() != null)
-        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+    // Not a stream + Map.entry()/Collectors.toMap(): Map.entry() rejects a null value outright,
+    // and resolveDisplayLabel() returns null for a listing with neither a title nor an address.
+    Map<Long, String> labels = new HashMap<>();
+    for (Listing listing : listingRepository.findAllById(ids)) {
+      String label = resolveDisplayLabel(listing);
+      if (label != null) {
+        labels.put(listing.getId(), label);
+      }
+    }
+    return labels;
   }
 
   private String resolveDisplayLabel(Listing listing) {
