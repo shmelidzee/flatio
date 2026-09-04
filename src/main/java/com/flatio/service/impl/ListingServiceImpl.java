@@ -361,40 +361,53 @@ public class ListingServiceImpl implements ListingService {
     if (criteria.priceMin() == null && criteria.priceMax() == null) {
       return List.of();
     }
-    Expression<BigDecimal> effectivePrice;
-    Predicate noRateAvailable;
-    if (usdToByn != null) {
-      Expression<BigDecimal> derivedFromUsdRate = cb.prod(root.get("price"), usdToByn);
-      Expression<BigDecimal> nonBynFallback = cb.<BigDecimal>selectCase()
-          .when(cb.equal(root.get("currency").<String>get("code"), CURRENCY_USD), derivedFromUsdRate)
-          .otherwise(root.get("price"));
-      effectivePrice = cb.coalesce(root.get("priceByn"), nonBynFallback);
-      // Bypass only for a currency this branch cannot convert — neither BYN (compared via its own
-      // raw price above) nor USD (converted above via usdToByn). No connector produces such a
-      // listing today, but comparing e.g. a hypothetical EUR amount as if it were already BYN
-      // would silently be wrong, so it gets the same graceful bypass as "no rate at all" instead.
-      noRateAvailable = cb.and(
-          cb.isNull(root.get("priceByn")),
-          cb.notEqual(root.get("currency").<String>get("code"), CURRENCY_BYN),
-          cb.notEqual(root.get("currency").<String>get("code"), CURRENCY_USD)
-      );
-    } else {
-      effectivePrice = cb.coalesce(root.get("priceByn"), root.get("price"));
-      noRateAvailable = cb.and(
-          cb.isNull(root.get("priceByn")),
-          cb.notEqual(root.get("currency").<String>get("code"), CURRENCY_BYN)
-      );
-    }
+    var comparison = resolveEffectivePriceComparison(cb, root, usdToByn);
     List<Predicate> result = new ArrayList<>();
     // Negotiable listings have no meaningful price — exclude them when any price filter is active.
     result.add(cb.notEqual(root.get("isNegotiable"), Boolean.TRUE));
     if (criteria.priceMin() != null) {
-      result.add(cb.or(noRateAvailable, cb.greaterThanOrEqualTo(effectivePrice, criteria.priceMin())));
+      result.add(cb.or(comparison.bypass(), cb.greaterThanOrEqualTo(comparison.effectivePrice(), criteria.priceMin())));
     }
     if (criteria.priceMax() != null) {
-      result.add(cb.or(noRateAvailable, cb.lessThanOrEqualTo(effectivePrice, criteria.priceMax())));
+      result.add(cb.or(comparison.bypass(), cb.lessThanOrEqualTo(comparison.effectivePrice(), criteria.priceMax())));
     }
     return result;
+  }
+
+  /** The price expression to compare against the requested range, and when to bypass that
+   *  comparison entirely because the listing's price cannot be meaningfully converted to BYN. */
+  private record PriceComparison(Expression<BigDecimal> effectivePrice, Predicate bypass) {}
+
+  /**
+   * Resolves how to compare a listing's price against a BYN range, given whether a live USD→BYN
+   * rate is available — see {@link #buildPricePredicates} for the full rationale (issue #528).
+   *
+   * @param cb       JPA criteria builder
+   * @param root     root of the query over {@link Listing}
+   * @param usdToByn current USD→BYN rate from NBRB, or null if no rate has ever been recorded
+   * @return the effective-price expression and the bypass predicate to combine it with
+   */
+  private PriceComparison resolveEffectivePriceComparison(CriteriaBuilder cb, Root<Listing> root, BigDecimal usdToByn) {
+    Expression<String> currencyCode = root.get("currency").get("code");
+    if (usdToByn == null) {
+      Predicate bypass = cb.and(cb.isNull(root.get("priceByn")), cb.notEqual(currencyCode, CURRENCY_BYN));
+      return new PriceComparison(cb.coalesce(root.get("priceByn"), root.get("price")), bypass);
+    }
+    Expression<BigDecimal> derivedFromUsdRate = cb.prod(root.get("price"), usdToByn);
+    Expression<BigDecimal> nonBynFallback = cb.<BigDecimal>selectCase()
+        .when(cb.equal(currencyCode, CURRENCY_USD), derivedFromUsdRate)
+        .otherwise(root.get("price"));
+    Expression<BigDecimal> effectivePrice = cb.coalesce(root.get("priceByn"), nonBynFallback);
+    // Bypass only for a currency this method cannot convert — neither BYN (compared via its own
+    // raw price above) nor USD (converted above via usdToByn). No connector produces such a
+    // listing today, but comparing e.g. a hypothetical EUR amount as if it were already BYN would
+    // silently be wrong, so it gets the same graceful bypass as "no rate at all" instead.
+    Predicate bypass = cb.and(
+        cb.isNull(root.get("priceByn")),
+        cb.notEqual(currencyCode, CURRENCY_BYN),
+        cb.notEqual(currencyCode, CURRENCY_USD)
+    );
+    return new PriceComparison(effectivePrice, bypass);
   }
 
   private Specification<Listing> buildSearchSpec(ListingSearchCriteria criteria, Long userId, BigDecimal usdToByn) {
