@@ -11,6 +11,8 @@ import com.flatio.telegram.command.SearchCommandHandler;
 import com.flatio.telegram.command.StartCommandHandler;
 import com.flatio.telegram.command.SubscriptionsCommandHandler;
 import com.flatio.telegram.state.SearchFilterWizard;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,6 +28,7 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiRequestException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -130,15 +133,16 @@ class FlatioBotTest {
     var telegramClient = mock(TelegramClient.class);
     var startCommandHandler = mock(StartCommandHandler.class);
     var menuMessage = mock(SendMessage.class);
-    when(startCommandHandler.buildMenuMessage("100")).thenReturn(menuMessage);
+    when(startCommandHandler.buildMenuMessage("100", "Pavel")).thenReturn(menuMessage);
     var bot = buildBot(telegramClient, startCommandHandler, mock(SearchResultSender.class), executor);
     var update = buildCallbackUpdate(1, 100L, "action:menu");
+    when(update.getCallbackQuery().getFrom().getFirstName()).thenReturn("Pavel");
 
     // When
     bot.handleUpdate(update);
 
     // Then
-    verify(startCommandHandler).buildMenuMessage("100");
+    verify(startCommandHandler).buildMenuMessage("100", "Pavel");
     verify(telegramClient).execute(menuMessage);
   }
 
@@ -431,6 +435,46 @@ class FlatioBotTest {
   }
 
   // -------------------------------------------------------------------------
+  // Free-text routing for an active-but-button-only wizard step (issue #520)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_reply_with_hint_when_free_text_arrives_at_button_only_wizard_step() throws TelegramApiException {
+    // Given — wizard active (e.g. at "Тип сделки"), no keyword/name/stop-word prompt pending
+    var telegramClient = mock(TelegramClient.class);
+    var filterCallbackHandler = mock(FilterCallbackHandler.class);
+    when(filterCallbackHandler.isAtKeywordStep(777L)).thenReturn(false);
+    when(filterCallbackHandler.isWizardActive(777L)).thenReturn(true);
+    var hintMessage = mock(SendMessage.class);
+    when(filterCallbackHandler.handleInvalidFreeText(777L, "777")).thenReturn(hintMessage);
+    var bot = buildBotWithFilterHandler(telegramClient, filterCallbackHandler, executor);
+    var update = buildTextUpdate(1, 777L, "asdf123");
+
+    // When
+    bot.handleUpdate(update);
+
+    // Then
+    verify(filterCallbackHandler).handleInvalidFreeText(777L, "777");
+    verify(telegramClient).execute(hintMessage);
+  }
+
+  @Test
+  void should_ignore_free_text_when_no_wizard_and_no_pending_prompt() {
+    // Given — no wizard started, no prompt pending: unchanged pre-#520 behaviour (silently ignored)
+    var filterCallbackHandler = mock(FilterCallbackHandler.class);
+    when(filterCallbackHandler.isAtKeywordStep(777L)).thenReturn(false);
+    when(filterCallbackHandler.isWizardActive(777L)).thenReturn(false);
+    var bot = buildBotWithFilterHandler(mock(TelegramClient.class), filterCallbackHandler, executor);
+    var update = buildTextUpdate(1, 777L, "random message");
+
+    // When
+    bot.handleUpdate(update);
+
+    // Then
+    verify(filterCallbackHandler, never()).handleInvalidFreeText(any(), any());
+  }
+
+  // -------------------------------------------------------------------------
   // Blocked-by-user handling (issue #383)
   // -------------------------------------------------------------------------
 
@@ -486,6 +530,79 @@ class FlatioBotTest {
     // Then — not classified as a block, so wizard/session state is left untouched
     verify(wizard, never()).reset(any());
     verify(searchResultSender, never()).clearSession(any());
+  }
+
+  // -------------------------------------------------------------------------
+  // Per-user update ordering (issue #518)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_process_updates_from_same_user_strictly_in_order() throws InterruptedException {
+    // Given — a slow first update and a fast second update from the SAME Telegram user; the pool
+    // has spare threads, so the two would race if updates were not chained per user
+    var telegramClient = mock(TelegramClient.class);
+    var helpCommandHandler = mock(HelpCommandHandler.class);
+    var bot = buildBotWithHelpHandler(telegramClient, helpCommandHandler, executor);
+
+    var firstEntered = new CountDownLatch(1);
+    var releaseFirst = new CountDownLatch(1);
+    var secondCompleted = new CountDownLatch(1);
+
+    var firstUpdate = buildTextUpdate(1, 555L, "/help");
+    var secondUpdate = buildTextUpdate(2, 555L, "/help");
+
+    when(helpCommandHandler.handle(firstUpdate)).thenAnswer(invocation -> {
+      firstEntered.countDown();
+      assertThat(releaseFirst.await(2, TimeUnit.SECONDS)).isTrue();
+      return mock(SendMessage.class);
+    });
+    when(helpCommandHandler.handle(secondUpdate)).thenAnswer(invocation -> {
+      secondCompleted.countDown();
+      return mock(SendMessage.class);
+    });
+
+    // When
+    bot.handleUpdateAsync(firstUpdate);
+    assertThat(firstEntered.await(1, TimeUnit.SECONDS)).isTrue();
+    bot.handleUpdateAsync(secondUpdate);
+
+    // Then — second update must not run while the first is still blocked
+    assertThat(secondCompleted.await(300, TimeUnit.MILLISECONDS)).isFalse();
+
+    // And — once the first is released, the chained second update runs to completion
+    releaseFirst.countDown();
+    assertThat(secondCompleted.await(2, TimeUnit.SECONDS)).isTrue();
+  }
+
+  @Test
+  void should_process_updates_from_different_users_without_waiting_on_each_other() throws InterruptedException {
+    // Given — two different users; a slow update from user 555 must not delay user 556's update
+    var telegramClient = mock(TelegramClient.class);
+    var helpCommandHandler = mock(HelpCommandHandler.class);
+    var bot = buildBotWithHelpHandler(telegramClient, helpCommandHandler, executor);
+
+    var firstEntered = new CountDownLatch(1);
+    var releaseFirst = new CountDownLatch(1);
+
+    var firstUpdate = buildTextUpdate(1, 555L, "/help");
+    var otherUserUpdate = buildTextUpdate(2, 556L, "/help");
+
+    when(helpCommandHandler.handle(firstUpdate)).thenAnswer(invocation -> {
+      firstEntered.countDown();
+      assertThat(releaseFirst.await(2, TimeUnit.SECONDS)).isTrue();
+      return mock(SendMessage.class);
+    });
+    when(helpCommandHandler.handle(otherUserUpdate)).thenReturn(mock(SendMessage.class));
+
+    // When
+    bot.handleUpdateAsync(firstUpdate);
+    assertThat(firstEntered.await(1, TimeUnit.SECONDS)).isTrue();
+    bot.handleUpdateAsync(otherUserUpdate);
+
+    // Then — the other user's update completes without waiting for user 555 to be released
+    verify(helpCommandHandler, timeout(ASYNC_TIMEOUT_MS)).handle(otherUserUpdate);
+
+    releaseFirst.countDown();
   }
 
   private static TelegramApiRequestException buildBlockedException() {
@@ -608,6 +725,46 @@ class FlatioBotTest {
         mock(FavoritesCallbackHandler.class),
         mock(SubscriptionsCallbackHandler.class),
         blacklistCallbackHandler,
+        mock(FavoritesCommandHandler.class),
+        mock(SubscriptionsCommandHandler.class),
+        mock(BlacklistCommandHandler.class),
+        mock(SearchFilterWizard.class),
+        executor
+    );
+  }
+
+  private static FlatioBot buildBotWithFilterHandler(
+      TelegramClient telegramClient, FilterCallbackHandler filterCallbackHandler, ThreadPoolTaskExecutor executor) {
+    return new FlatioBot(
+        telegramClient,
+        mock(StartCommandHandler.class),
+        mock(HelpCommandHandler.class),
+        mock(SearchCommandHandler.class),
+        filterCallbackHandler,
+        mock(SearchResultSender.class),
+        mock(FavoritesCallbackHandler.class),
+        mock(SubscriptionsCallbackHandler.class),
+        mock(BlacklistCallbackHandler.class),
+        mock(FavoritesCommandHandler.class),
+        mock(SubscriptionsCommandHandler.class),
+        mock(BlacklistCommandHandler.class),
+        mock(SearchFilterWizard.class),
+        executor
+    );
+  }
+
+  private static FlatioBot buildBotWithHelpHandler(
+      TelegramClient telegramClient, HelpCommandHandler helpCommandHandler, ThreadPoolTaskExecutor executor) {
+    return new FlatioBot(
+        telegramClient,
+        mock(StartCommandHandler.class),
+        helpCommandHandler,
+        mock(SearchCommandHandler.class),
+        mock(FilterCallbackHandler.class),
+        mock(SearchResultSender.class),
+        mock(FavoritesCallbackHandler.class),
+        mock(SubscriptionsCallbackHandler.class),
+        mock(BlacklistCallbackHandler.class),
         mock(FavoritesCommandHandler.class),
         mock(SubscriptionsCommandHandler.class),
         mock(BlacklistCommandHandler.class),

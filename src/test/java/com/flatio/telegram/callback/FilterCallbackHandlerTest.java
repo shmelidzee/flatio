@@ -278,6 +278,64 @@ class FilterCallbackHandlerTest {
     assertThat(handler.isAtKeywordStep(1L)).isFalse();
   }
 
+  // -------------------------------------------------------------------------
+  // isWizardActive / handleInvalidFreeText — free text at a button-only step (#520)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_return_true_when_wizard_has_active_state_regardless_of_step() {
+    // Given — active at a button-only step, not KEYWORD
+    var state = new SearchFilterState();
+    state.setCurrentStep(FilterStep.DEAL_TYPE);
+    when(wizard.getState(1L)).thenReturn(Optional.of(state));
+
+    // When / Then
+    assertThat(handler.isWizardActive(1L)).isTrue();
+  }
+
+  @Test
+  void should_return_false_from_is_wizard_active_when_no_state_exists() {
+    // Given
+    when(wizard.getState(1L)).thenReturn(Optional.empty());
+
+    // When / Then
+    assertThat(handler.isWizardActive(1L)).isFalse();
+  }
+
+  @Test
+  void should_include_hint_and_current_step_when_handling_invalid_free_text() {
+    // Given
+    var state = new SearchFilterState();
+    state.setCurrentStep(FilterStep.PROPERTY_TYPE);
+    when(wizard.getState(1L)).thenReturn(Optional.of(state));
+    when(keyboardFactory.getStepText(state)).thenReturn("Тип недвижимости:");
+
+    // When
+    var result = handler.handleInvalidFreeText(1L, "100");
+
+    // Then
+    assertThat(result.getChatId()).isEqualTo("100");
+    assertThat(result.getParseMode()).isEqualTo("HTML");
+    assertThat(result.getText())
+        .contains("Пожалуйста, воспользуйтесь кнопками ниже.")
+        .contains("Тип недвижимости:");
+  }
+
+  @Test
+  void should_start_wizard_when_handling_invalid_free_text_but_no_state_exists() {
+    // Given — defensive fallback: should not normally happen since FlatioBot only calls this
+    // when isWizardActive() was already true, but the handler must not throw either way
+    when(wizard.getState(1L)).thenReturn(Optional.empty());
+    when(wizard.start(1L)).thenReturn(freshState);
+
+    // When
+    var result = handler.handleInvalidFreeText(1L, "100");
+
+    // Then
+    verify(wizard).start(1L);
+    assertThat(result).isNotNull();
+  }
+
   private void assertEditMessage(EditMessageText result, String expectedChatId, int expectedMessageId) {
     assertThat(result).isNotNull();
     assertThat(result.getChatId()).isEqualTo(expectedChatId);

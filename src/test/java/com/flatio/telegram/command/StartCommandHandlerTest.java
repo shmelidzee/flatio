@@ -130,11 +130,52 @@ class StartCommandHandlerTest {
     when(mainMenuKeyboardFactory.build()).thenReturn(expectedKeyboard);
 
     // When
-    SendMessage result = handler.buildMenuMessage("100");
+    SendMessage result = handler.buildMenuMessage("100", "Pavel");
 
     // Then
     assertThat(result.getChatId()).isEqualTo("100");
     assertThat(result.getReplyMarkup()).isSameAs(expectedKeyboard);
+  }
+
+  // -------------------------------------------------------------------------
+  // Menu message personalization (issue #522) — buildMenuMessage() previously
+  // always greeted anonymously regardless of the caller-supplied first name.
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_include_first_name_in_menu_greeting_when_present() {
+    // Given
+    when(mainMenuKeyboardFactory.build()).thenReturn(mock(InlineKeyboardMarkup.class));
+
+    // When
+    SendMessage result = handler.buildMenuMessage("100", "Pavel");
+
+    // Then
+    assertThat(result.getText()).startsWith("Привет, Pavel!");
+  }
+
+  @Test
+  void should_use_generic_menu_greeting_when_first_name_is_null() {
+    // Given
+    when(mainMenuKeyboardFactory.build()).thenReturn(mock(InlineKeyboardMarkup.class));
+
+    // When
+    SendMessage result = handler.buildMenuMessage("100", null);
+
+    // Then
+    assertThat(result.getText()).startsWith("Привет!");
+  }
+
+  @Test
+  void should_use_generic_menu_greeting_when_first_name_is_blank() {
+    // Given
+    when(mainMenuKeyboardFactory.build()).thenReturn(mock(InlineKeyboardMarkup.class));
+
+    // When
+    SendMessage result = handler.buildMenuMessage("100", "   ");
+
+    // Then
+    assertThat(result.getText()).startsWith("Привет!");
   }
 
   // -------------------------------------------------------------------------
