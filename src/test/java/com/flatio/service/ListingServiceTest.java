@@ -816,6 +816,141 @@ class ListingServiceTest {
   }
 
   // -------------------------------------------------------------------------
+  // search — BYN price enrichment for USD-priced listings (issue #517)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_enrich_usd_listing_with_byn_equivalent_when_price_byn_missing_and_rate_available() {
+    // Given — Realt listing: priced in USD, priceByn null (rate was unavailable at ingestion time)
+    var pageable = PageRequest.of(0, 20);
+    var listing = buildListing(1L);
+    var summaryUsdNoByn = new ListingSummaryResponse(
+        1L, "Test", BigDecimal.valueOf(650), "USD",
+        null, null, 2, null, null, "Минск", null, null,
+        "realt", Instant.now(), null, "https://realt.by/1", null
+    );
+    var page = new PageImpl<>(List.of(listing), pageable, 1);
+
+    when(listingRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(page);
+    when(listingMapper.toSummaryResponse(listing)).thenReturn(summaryUsdNoByn);
+    when(currencyRateService.getUsdToByn()).thenReturn(Optional.of(BigDecimal.valueOf(3.0792)));
+
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
+
+    // When
+    var result = listingService.search(criteria, pageable, null, null);
+
+    // Then — priceByn is derived from USD * rate; currency and price remain unchanged
+    var enriched = result.getContent().get(0);
+    assertThat(enriched.currency()).isEqualTo("USD");
+    assertThat(enriched.price()).isEqualByComparingTo(BigDecimal.valueOf(650));
+    assertThat(enriched.priceByn()).isEqualByComparingTo(BigDecimal.valueOf(2001.48));
+  }
+
+  @Test
+  void should_not_enrich_price_byn_when_nbrb_rate_unavailable() {
+    // Given — NBRB unavailable; USD listing must be returned as-is without priceByn
+    var pageable = PageRequest.of(0, 20);
+    var listing = buildListing(1L);
+    var summaryUsdNoByn = new ListingSummaryResponse(
+        1L, "Test", BigDecimal.valueOf(600), "USD",
+        null, null, 2, null, null, "Минск", null, null,
+        "realt", Instant.now(), null, "https://realt.by/1", null
+    );
+    var page = new PageImpl<>(List.of(listing), pageable, 1);
+
+    when(listingRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(page);
+    when(listingMapper.toSummaryResponse(listing)).thenReturn(summaryUsdNoByn);
+    // currencyRateService.getUsdToByn() returns empty by default (set in setUp)
+
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
+
+    // When
+    var result = listingService.search(criteria, pageable, null, null);
+
+    // Then
+    assertThat(result.getContent().get(0).priceByn()).isNull();
+  }
+
+  @Test
+  void should_not_overwrite_price_byn_when_already_set() {
+    // Given — priceByn already stored (rate was available at ingestion); must not be recomputed
+    var pageable = PageRequest.of(0, 20);
+    var listing = buildListing(1L);
+    var summaryWithByn = new ListingSummaryResponse(
+        1L, "Test", BigDecimal.valueOf(506.63), "USD",
+        null, BigDecimal.valueOf(1_560), 2, null, null, "Минск", null, null,
+        "realt", Instant.now(), null, "https://realt.by/1", null
+    );
+    var page = new PageImpl<>(List.of(listing), pageable, 1);
+
+    when(listingRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(page);
+    when(listingMapper.toSummaryResponse(listing)).thenReturn(summaryWithByn);
+    when(currencyRateService.getUsdToByn()).thenReturn(Optional.of(BigDecimal.valueOf(3.0792)));
+
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
+
+    // When
+    var result = listingService.search(criteria, pageable, null, null);
+
+    // Then — priceByn stays as originally stored (1560), not recomputed from the current rate
+    assertThat(result.getContent().get(0).priceByn()).isEqualByComparingTo(BigDecimal.valueOf(1_560));
+  }
+
+  @Test
+  void should_not_enrich_price_byn_when_currency_is_not_usd() {
+    // Given — BYN listing with (edge-case) null priceByn; must be left alone by this enrichment
+    var pageable = PageRequest.of(0, 20);
+    var listing = buildListing(1L);
+    var bynSummary = new ListingSummaryResponse(
+        1L, "Test", BigDecimal.valueOf(1_800), "BYN",
+        null, null, 2, null, null, "Минск", null, null,
+        "onliner", Instant.now(), null, "https://onliner.by/1", null
+    );
+    var page = new PageImpl<>(List.of(listing), pageable, 1);
+
+    when(listingRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(page);
+    when(listingMapper.toSummaryResponse(listing)).thenReturn(bynSummary);
+    when(currencyRateService.getUsdToByn()).thenReturn(Optional.of(BigDecimal.valueOf(3.0792)));
+
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, null, null);
+
+    // When
+    var result = listingService.search(criteria, pageable, null, null);
+
+    // Then — non-USD listings are not touched by this enrichment
+    assertThat(result.getContent().get(0).priceByn()).isNull();
+  }
+
+  @Test
+  void should_enrich_usd_listing_with_byn_equivalent_via_fts_path_when_rate_available() {
+    // Given — FTS search path: query is present, listing is USD-priced without priceByn
+    var pageable = PageRequest.of(0, 20);
+    var listing = buildListing(1L);
+    var summaryUsdNoByn = new ListingSummaryResponse(
+        1L, "Test", BigDecimal.valueOf(650), "USD",
+        null, null, 2, null, null, "Минск", null, null,
+        "realt", Instant.now(), null, "https://realt.by/1", null
+    );
+    var page = new PageImpl<>(List.of(listing), pageable, 1);
+
+    when(listingRepository.fullTextSearch(
+        eq("квартира"), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()
+    )).thenReturn(page);
+    when(listingMapper.toSummaryResponse(listing)).thenReturn(summaryUsdNoByn);
+    when(currencyRateService.getUsdToByn()).thenReturn(Optional.of(BigDecimal.valueOf(3.0792)));
+
+    var criteria = new ListingSearchCriteria(null, null, null, null, null, null, null, null, null, "квартира", null);
+
+    // When
+    var result = listingService.search(criteria, pageable, null, null);
+
+    // Then — FTS path also enriches priceByn from the current rate
+    assertThat(result.getContent().get(0).priceByn()).isNotNull();
+    assertThat(result.getContent().get(0).priceByn()).isGreaterThan(BigDecimal.ZERO);
+  }
+
+  // -------------------------------------------------------------------------
   // display currency (issue #415)
   // -------------------------------------------------------------------------
 

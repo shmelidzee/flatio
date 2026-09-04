@@ -57,6 +57,7 @@ public class ListingServiceImpl implements ListingService {
   );
 
   private static final String CURRENCY_BYN = "BYN";
+  private static final String CURRENCY_USD = "USD";
   private static final int USD_DISPLAY_SCALE = 2;
 
   @Value("${flatio.search.fts-language:russian}")
@@ -92,7 +93,7 @@ public class ListingServiceImpl implements ListingService {
       return searchWithFts(criteria, pageable, usdToByn, userId, targetCurrency);
     }
     return listingRepository.findAll(buildSearchSpec(criteria, userId), pageable)
-        .map(l -> applyDisplayCurrency(enrichWithPriceUsd(listingMapper.toSummaryResponse(l), usdToByn), targetCurrency));
+        .map(l -> applyDisplayCurrency(enrichPrices(listingMapper.toSummaryResponse(l), usdToByn), targetCurrency));
   }
 
   private Page<ListingSummaryResponse> searchWithFts(ListingSearchCriteria criteria, Pageable pageable,
@@ -117,7 +118,18 @@ public class ListingServiceImpl implements ListingService {
         toNativePageable(pageable)
     );
     primeSourceAndCurrencyCache(page.getContent());
-    return page.map(l -> applyDisplayCurrency(enrichWithPriceUsd(listingMapper.toSummaryResponse(l), usdToByn), targetCurrency));
+    return page.map(l -> applyDisplayCurrency(enrichPrices(listingMapper.toSummaryResponse(l), usdToByn), targetCurrency));
+  }
+
+  /**
+   * Applies both cross-currency display enrichments to a summary response.
+   *
+   * @param response the summary response produced by the mapper, never null
+   * @param usdToByn current USD→BYN rate from NBRB, or null if the rate fetch failed
+   * @return the response with {@code priceUsd}/{@code priceByn} populated where missing, never null
+   */
+  private ListingSummaryResponse enrichPrices(ListingSummaryResponse response, BigDecimal usdToByn) {
+    return enrichWithPriceByn(enrichWithPriceUsd(response, usdToByn), usdToByn);
   }
 
   /**
@@ -221,6 +233,33 @@ public class ListingServiceImpl implements ListingService {
     return new ListingSummaryResponse(
         response.id(), response.title(), response.price(), response.currency(),
         priceUsd, response.priceByn(), response.rooms(), response.propertyType(),
+        response.areaTotalM2(), response.city(), response.district(), response.address(),
+        response.sourceId(), response.publishedAt(), response.photoUrl(), response.sourceUrl(),
+        response.isNegotiable()
+    );
+  }
+
+  /**
+   * Computes a BYN display price for USD-priced listings whose stored {@code priceByn} is null
+   * (issue #517) — e.g. a Realt.by listing ingested while the NBRB rate was temporarily
+   * unavailable (see {@code RealtHtmlParser#computePriceByn}), which otherwise permanently shows
+   * as USD-only even after the rate recovers. Mirrors {@link #enrichWithPriceUsd} for the
+   * opposite direction so every card can show a consistent {@code $X (Y BYN)} price regardless of
+   * when the listing was ingested. Read-time only — never touches the stored price/currency.
+   *
+   * @param response the summary response produced by the mapper, never null
+   * @param usdToByn current USD→BYN rate from NBRB, or null if the rate fetch failed
+   * @return the response with {@code priceByn} populated, or the original if enrichment is skipped
+   */
+  private ListingSummaryResponse enrichWithPriceByn(ListingSummaryResponse response, BigDecimal usdToByn) {
+    if (response.priceByn() != null || usdToByn == null || Boolean.TRUE.equals(response.isNegotiable())
+        || response.price() == null || !CURRENCY_USD.equals(response.currency())) {
+      return response;
+    }
+    BigDecimal priceByn = response.price().multiply(usdToByn).setScale(USD_DISPLAY_SCALE, RoundingMode.HALF_UP);
+    return new ListingSummaryResponse(
+        response.id(), response.title(), response.price(), response.currency(),
+        response.priceUsd(), priceByn, response.rooms(), response.propertyType(),
         response.areaTotalM2(), response.city(), response.district(), response.address(),
         response.sourceId(), response.publishedAt(), response.photoUrl(), response.sourceUrl(),
         response.isNegotiable()

@@ -11,7 +11,11 @@ import com.flatio.telegram.command.SearchCommandHandler;
 import com.flatio.telegram.command.StartCommandHandler;
 import com.flatio.telegram.command.SubscriptionsCommandHandler;
 import com.flatio.telegram.state.SearchFilterWizard;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import java.time.Duration;
 import java.util.Arrays;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -72,6 +76,23 @@ public class FlatioBot {
   /** Telegram error code returned when the user has blocked the bot. */
   private static final int ERROR_CODE_BLOCKED = 403;
 
+  private static final long UPDATE_CHAIN_TTL_MINUTES = 5;
+  private static final long MAX_UPDATE_CHAINS = 50_000;
+
+  // A per-user chain of CompletableFutures (issue #518): two updates from the same Telegram user
+  // submitted close together (e.g. a "SUB:DELETE:" callback immediately followed by a
+  // "/subscriptions" text command) would otherwise land on two different telegramUpdateExecutor
+  // threads with no ordering guarantee, so the read could run — and reply — before the delete's
+  // transaction committed, making the just-deleted item appear to "come back" in the list.
+  // Chaining each user's updates off their own previous CompletableFuture keeps that one user's
+  // updates strictly sequential while different users still run fully in parallel on the shared
+  // pool. Caffeine, not a plain map, so a user who stops messaging does not pin an entry forever.
+  private final Map<Long, CompletableFuture<Void>> updateChains = Caffeine.newBuilder()
+      .expireAfterAccess(Duration.ofMinutes(UPDATE_CHAIN_TTL_MINUTES))
+      .maximumSize(MAX_UPDATE_CHAINS)
+      .<Long, CompletableFuture<Void>>build()
+      .asMap();
+
   private final TelegramClient telegramClient;
   private final StartCommandHandler startCommandHandler;
   private final HelpCommandHandler helpCommandHandler;
@@ -90,15 +111,65 @@ public class FlatioBot {
   /**
    * Dispatches a single Telegram update to the executor for concurrent processing.
    *
-   * <p>Each update is handled in its own thread so a slow handler
-   * (e.g. search with multiple SendPhoto calls) does not block other updates.
+   * <p>Each update is handled on the shared pool so a slow handler (e.g. search with multiple
+   * SendPhoto calls) does not block other users' updates. Updates from the same Telegram user,
+   * however, are chained to run strictly in submission order (issue #518) — see
+   * {@link #updateChains}; updates the router cannot attribute to a user (no {@code from} on the
+   * message/callback) run immediately on the pool with no ordering applied.
    * Exceptions inside {@link #handleUpdate(Update)} are caught there and do not propagate.
    * Called by the transport-specific bean (long-polling or webhook) for every update received.
    *
    * @param update update received from Telegram, never null
    */
   public void handleUpdateAsync(Update update) {
-    telegramUpdateExecutor.execute(() -> handleUpdate(update));
+    Long telegramId = extractTelegramUserId(update);
+    if (telegramId == null) {
+      telegramUpdateExecutor.execute(() -> handleUpdate(update));
+      return;
+    }
+    updateChains.compute(telegramId, (id, previousTail) -> {
+      CompletableFuture<Void> previous = previousTail != null ? previousTail : CompletableFuture.completedFuture(null);
+      // handleAsync (not thenRunAsync) runs regardless of how the previous stage completed, and
+      // always completes this stage normally itself — thenRunAsync would instead have skipped
+      // this update and propagated the earlier failure forever, permanently stalling every later
+      // update from this user, if a previous handleUpdate ever let a Throwable escape its own
+      // try/catch (that catch only covers Exception, not Error).
+      return previous.handleAsync((ignoredResult, ignoredError) -> runUpdateSafely(update), telegramUpdateExecutor);
+    });
+  }
+
+  /**
+   * Runs {@link #handleUpdate(Update)}, guaranteeing normal completion of its
+   * {@link #updateChains} stage even if something unexpected escapes it, so one bad update never
+   * permanently stalls that user's later updates.
+   *
+   * @param update the update to process, never null
+   */
+  private Void runUpdateSafely(Update update) {
+    try {
+      handleUpdate(update);
+    } catch (Throwable t) {
+      log.error("Throwable escaped handleUpdate; continuing to process this user's later updates: updateId={}",
+          update.getUpdateId(), t);
+    }
+    return null;
+  }
+
+  /**
+   * Resolves the Telegram user identifier an update should be sequenced by, for
+   * {@link #updateChains}.
+   *
+   * @param update the incoming update, never null
+   * @return the sending user's Telegram ID, or null if the update carries none
+   */
+  private Long extractTelegramUserId(Update update) {
+    if (update.hasMessage() && update.getMessage().getFrom() != null) {
+      return update.getMessage().getFrom().getId();
+    }
+    if (update.hasCallbackQuery() && update.getCallbackQuery().getFrom() != null) {
+      return update.getCallbackQuery().getFrom().getId();
+    }
+    return null;
   }
 
   /**
@@ -220,6 +291,14 @@ public class FlatioBot {
       subscriptionsCallbackHandler.handleSubscriptionNameText(userId, chatId, text);
     } else if (blacklistCallbackHandler.isAwaitingKeyword(userId)) {
       blacklistCallbackHandler.handleKeywordText(userId, chatId, text);
+    } else if (filterCallbackHandler.isWizardActive(userId)) {
+      // Wizard is active but at a button-only step (issue #520) — every other pending-input
+      // state above is checked first since it takes priority over an in-progress search wizard.
+      try {
+        telegramClient.execute(filterCallbackHandler.handleInvalidFreeText(userId, chatId));
+      } catch (TelegramApiException e) {
+        logOrHandleBlocked(e, userId, "Failed to send invalid-input hint: chatId={}", chatId);
+      }
     }
   }
 
@@ -271,7 +350,7 @@ public class FlatioBot {
     } else if (ACTION_MENU.equals(data)) {
       try {
         String chatId = String.valueOf(callbackQuery.getMessage().getChatId());
-        telegramClient.execute(startCommandHandler.buildMenuMessage(chatId));
+        telegramClient.execute(startCommandHandler.buildMenuMessage(chatId, callbackQuery.getFrom().getFirstName()));
       } catch (TelegramApiException e) {
         logOrHandleBlocked(e, callbackQuery.getFrom().getId(),
             "Failed to send main menu: chatId={}", callbackQuery.getMessage().getChatId());
