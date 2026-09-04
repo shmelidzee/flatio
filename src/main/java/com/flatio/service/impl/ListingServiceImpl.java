@@ -30,7 +30,9 @@ import jakarta.persistence.criteria.Subquery;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -176,6 +178,27 @@ public class ListingServiceImpl implements ListingService {
         response.publishedAt(), response.createdAt(), response.priceHistory(), response.hasDuplicates(),
         displayPrice, target
     );
+  }
+
+  @Override
+  public Map<Long, String> findDisplayLabelsByIds(Collection<Long> ids) {
+    if (ids.isEmpty()) {
+      return Map.of();
+    }
+    return listingRepository.findAllById(ids).stream()
+        .map(listing -> Map.entry(listing.getId(), resolveDisplayLabel(listing)))
+        .filter(entry -> entry.getValue() != null)
+        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+  }
+
+  private String resolveDisplayLabel(Listing listing) {
+    if (listing.getTitle() != null && !listing.getTitle().isBlank()) {
+      return listing.getTitle();
+    }
+    if (listing.getAddress() != null && !listing.getAddress().isBlank()) {
+      return listing.getAddress();
+    }
+    return null;
   }
 
   private BigDecimal resolveDisplayPrice(BigDecimal price, String currency, boolean isNegotiable, String targetCurrency) {

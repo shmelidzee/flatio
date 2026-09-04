@@ -3,6 +3,8 @@ package com.flatio.service;
 import com.flatio.web.dto.ListingResponse;
 import com.flatio.web.dto.ListingSearchCriteria;
 import com.flatio.web.dto.ListingSummaryResponse;
+import java.util.Collection;
+import java.util.Map;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -47,4 +49,15 @@ public interface ListingService {
    * @throws com.flatio.common.exception.ListingNotFoundException if no listing with the given ID exists
    */
   ListingResponse findById(Long id, String targetCurrency);
+
+  /**
+   * Resolves a short display label (title, falling back to address) for each of the given
+   * listing IDs — for contexts (e.g. a blacklist list) that only hold a bare listing ID and need
+   * something readable instead. Batched into a single query to avoid one lookup per ID.
+   *
+   * @param ids listing IDs to resolve, never null
+   * @return map of found IDs to a label; IDs that do not exist, or whose listing has neither a
+   *     title nor an address, are simply absent from the map — never null
+   */
+  Map<Long, String> findDisplayLabelsByIds(Collection<Long> ids);
 }

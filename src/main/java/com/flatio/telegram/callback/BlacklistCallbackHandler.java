@@ -9,7 +9,9 @@ import com.flatio.common.util.TelegramHtmlEscaper;
 import com.flatio.common.util.TelegramPrivateChatGuard;
 import com.flatio.domain.blacklist.BlacklistEntryType;
 import com.flatio.service.BlacklistService;
+import com.flatio.service.ListingService;
 import com.flatio.service.UserService;
+import com.flatio.telegram.config.SourceDisplayProperties;
 import com.flatio.telegram.handler.SearchResultSender;
 import com.flatio.telegram.keyboard.MainMenuKeyboardFactory;
 import com.flatio.telegram.state.BlacklistKeywordPromptState;
@@ -20,6 +22,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -102,6 +105,8 @@ public class BlacklistCallbackHandler {
 
   private final UserService userService;
   private final BlacklistService blacklistService;
+  private final ListingService listingService;
+  private final SourceDisplayProperties sourceDisplayProperties;
   private final MainMenuKeyboardFactory keyboardFactory;
   private final BlacklistKeywordPromptState keywordPromptState;
   private final TelegramClient telegramClient;
@@ -402,14 +407,31 @@ public class BlacklistCallbackHandler {
   }
 
   private String buildListText(List<BlacklistEntryResponse> items, BlacklistEntryType type) {
+    Map<Long, String> listingLabels = resolveListingLabels(items);
     var textBuilder = new StringBuilder("🚫 Фильтр: ").append(type == null ? "Все" : typeLabel(type));
     for (int i = 0; i < items.size(); i++) {
       // Number matches the corresponding delete button in buildListKeyboard() (issue #513) —
       // both iterate the same items list in the same order, so index i is shared between them.
-      textBuilder.append("\n").append(i + 1).append(". ").append(formatItemLineSafely(items.get(i)));
+      textBuilder.append("\n").append(i + 1).append(". ").append(formatItemLineSafely(items.get(i), listingLabels));
     }
     textBuilder.append("\n\n").append(HINT_TEXT);
     return textBuilder.toString();
+  }
+
+  /**
+   * Batch-resolves display labels for every LISTING-type entry on the page in a single query
+   * (issue #525) — avoids one {@code listingService} lookup per row.
+   *
+   * @param items entries on this page, never null
+   * @return map of listing ID to label, only for entries that resolved to one; never null
+   */
+  private Map<Long, String> resolveListingLabels(List<BlacklistEntryResponse> items) {
+    var listingIds = items.stream()
+        .filter(item -> item.type() == BlacklistEntryType.LISTING)
+        .map(item -> parseListingIdOrNull(item.value()))
+        .filter(Objects::nonNull)
+        .toList();
+    return listingIds.isEmpty() ? Map.of() : listingService.findDisplayLabelsByIds(listingIds);
   }
 
   /**
@@ -441,12 +463,47 @@ public class BlacklistCallbackHandler {
    * @param item the entry to format, never null
    * @return the formatted line, never null
    */
-  private String formatItemLineSafely(BlacklistEntryResponse item) {
+  private String formatItemLineSafely(BlacklistEntryResponse item, Map<Long, String> listingLabels) {
     try {
-      return typeLabel(item.type()) + ": " + TelegramHtmlEscaper.escapeHtml(item.value());
+      return typeLabel(item.type()) + ": " + TelegramHtmlEscaper.escapeHtml(resolveDisplayValue(item, listingLabels));
     } catch (Exception e) {
       log.error("Unexpected error formatting blacklist item: entryId={}", item.id(), e);
       return FORMAT_ERROR_LINE;
+    }
+  }
+
+  /**
+   * Resolves the human-readable value shown per entry (issue #525) — a source code like
+   * {@code KUFAR_APARTMENT_RENT} becomes its configured display name ("Kufar"), and a listing ID
+   * becomes that listing's title/address; a stop-word is already human-readable as stored.
+   *
+   * @param item           the entry being formatted, never null
+   * @param listingLabels  batch-resolved labels for this page's LISTING entries, never null
+   * @return the value to display, never null
+   */
+  private String resolveDisplayValue(BlacklistEntryResponse item, Map<Long, String> listingLabels) {
+    return switch (item.type()) {
+      case SOURCE -> sourceDisplayProperties.findBySourceId(item.value())
+          .map(SourceDisplayProperties.Entry::getDisplayName)
+          .orElse(item.value());
+      case LISTING -> resolveListingDisplayValue(item.value(), listingLabels);
+      case KEYWORD -> item.value();
+    };
+  }
+
+  private String resolveListingDisplayValue(String rawId, Map<Long, String> listingLabels) {
+    Long id = parseListingIdOrNull(rawId);
+    if (id == null) {
+      return rawId;
+    }
+    return listingLabels.getOrDefault(id, "Объявление #" + id);
+  }
+
+  private Long parseListingIdOrNull(String value) {
+    try {
+      return Long.valueOf(value);
+    } catch (NumberFormatException e) {
+      return null;
     }
   }
 
