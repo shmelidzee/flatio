@@ -82,13 +82,14 @@ class ListingServiceImplIT {
 
   private ListingServiceImpl listingService;
   private ListingMapper listingMapper;
+  private CurrencyRateService currencyRateService;
 
   @BeforeEach
   void setUp() {
     listingMapper = mock(ListingMapper.class);
     when(listingMapper.toSummaryResponse(ArgumentMatchers.any()))
         .thenReturn(mock(ListingSummaryResponse.class));
-    var currencyRateService = mock(CurrencyRateService.class);
+    currencyRateService = mock(CurrencyRateService.class);
     when(currencyRateService.getUsdToByn()).thenReturn(Optional.empty());
     listingService = new ListingServiceImpl(
         listingRepository, priceHistoryRepository, sourceRepository, currencyRepository, listingMapper, currencyRateService);
@@ -96,14 +97,18 @@ class ListingServiceImplIT {
   }
 
   // -------------------------------------------------------------------------
-  // buildSearchSpec — price filter bypass for USD listings without BYN conversion (#264)
+  // buildSearchSpec — price filter bypass for USD listings without BYN conversion,
+  // no live NBRB rate available either (#264)
   // -------------------------------------------------------------------------
 
   @Test
-  void should_include_usd_listing_without_byn_conversion_when_price_filter_is_set() {
-    // Given — Realt listing priced in USD; NBRB rate was unavailable at ingestion so priceByn=null.
+  void should_include_usd_listing_without_byn_conversion_when_price_filter_is_set_and_no_rate_available() {
+    // Given — Realt listing priced in USD; NBRB rate was unavailable at ingestion so priceByn=null,
+    // and (per this class's default currencyRateService stub) no live rate is available either.
     // Previously, COALESCE(null, 250) = 250 was compared against BYN range [500..2000]
-    // and incorrectly excluded the listing.
+    // and incorrectly excluded the listing; the current behaviour is to include it rather than
+    // compare an unconverted USD amount against a BYN range (see #528 below for when a live rate
+    // *is* available — then the listing is correctly converted and compared instead).
     var source = sourceRepository.findByCode("REALT").orElseThrow();
     var usdCurrency = currencyRepository.findByCode("USD").orElseThrow();
     var country = countryRepository.findByCode("BY").orElseThrow();
@@ -131,6 +136,157 @@ class ListingServiceImplIT {
     var result = listingService.search(criteria, PageRequest.of(0, 10), null, null);
 
     // Then — USD listing without BYN conversion bypasses the BYN price filter
+    assertThat(result.getTotalElements()).isEqualTo(1);
+  }
+
+  // -------------------------------------------------------------------------
+  // buildSearchSpec — USD listings without a stored priceByn are correctly filtered
+  // once a live NBRB rate is available (#528)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_exclude_usd_listing_without_byn_conversion_when_outside_range_and_rate_available() {
+    // Given — same "priceByn=null at ingestion" scenario as #264, but a live rate is now
+    // available (e.g. next scheduled sync succeeded): $650 * 3.0792 ≈ 2 001.48 BYN, just outside
+    // the requested [1000..2000] BYN range — must no longer bypass the filter
+    when(currencyRateService.getUsdToByn()).thenReturn(Optional.of(BigDecimal.valueOf(3.0792)));
+    var source = sourceRepository.findByCode("REALT").orElseThrow();
+    var usdCurrency = currencyRepository.findByCode("USD").orElseThrow();
+    var country = countryRepository.findByCode("BY").orElseThrow();
+
+    var listing = new Listing();
+    listing.setExternalId("ext-usd-no-byn-528-outside");
+    listing.setSource(source);
+    listing.setTitle("USD listing — out of range once converted");
+    listing.setDealType(DealType.RENT);
+    listing.setPrice(BigDecimal.valueOf(650));
+    listing.setCurrency(usdCurrency);
+    listing.setPriceByn(null);
+    listing.setCountry(country);
+    listing.setStatus(ListingStatus.ACTIVE);
+    listing.setSourceUrl("https://realt.by/ext-usd-no-byn-528-outside");
+    listingRepository.saveAndFlush(listing);
+
+    var criteria = new ListingSearchCriteria(
+        null, null, null, null, null,
+        BigDecimal.valueOf(1_000), BigDecimal.valueOf(2_000),
+        null, null, null, null
+    );
+
+    // When
+    var result = listingService.search(criteria, PageRequest.of(0, 10), null, null);
+
+    // Then — no longer bypasses the filter; correctly excluded once converted
+    assertThat(result.getTotalElements()).isZero();
+  }
+
+  @Test
+  void should_include_usd_listing_without_byn_conversion_when_inside_range_and_rate_available() {
+    // Given — same scenario, but the converted price falls inside the range: $500 * 3.0792 ≈
+    // 1 539.60 BYN, inside [1000..2000]
+    when(currencyRateService.getUsdToByn()).thenReturn(Optional.of(BigDecimal.valueOf(3.0792)));
+    var source = sourceRepository.findByCode("REALT").orElseThrow();
+    var usdCurrency = currencyRepository.findByCode("USD").orElseThrow();
+    var country = countryRepository.findByCode("BY").orElseThrow();
+
+    var listing = new Listing();
+    listing.setExternalId("ext-usd-no-byn-528-inside");
+    listing.setSource(source);
+    listing.setTitle("USD listing — in range once converted");
+    listing.setDealType(DealType.RENT);
+    listing.setPrice(BigDecimal.valueOf(500));
+    listing.setCurrency(usdCurrency);
+    listing.setPriceByn(null);
+    listing.setCountry(country);
+    listing.setStatus(ListingStatus.ACTIVE);
+    listing.setSourceUrl("https://realt.by/ext-usd-no-byn-528-inside");
+    listingRepository.saveAndFlush(listing);
+
+    var criteria = new ListingSearchCriteria(
+        null, null, null, null, null,
+        BigDecimal.valueOf(1_000), BigDecimal.valueOf(2_000),
+        null, null, null, null
+    );
+
+    // When
+    var result = listingService.search(criteria, PageRequest.of(0, 10), null, null);
+
+    // Then — correctly included once converted and compared
+    assertThat(result.getTotalElements()).isEqualTo(1);
+  }
+
+  @Test
+  void should_use_stored_price_byn_instead_of_recomputing_when_rate_available() {
+    // Given — priceByn already stored (rate was available at ingestion) at 3_000, well outside
+    // the requested range; a live rate is also available now but must not override the stored
+    // conversion — the stored value is authoritative once present
+    when(currencyRateService.getUsdToByn()).thenReturn(Optional.of(BigDecimal.valueOf(3.0792)));
+    var source = sourceRepository.findByCode("REALT").orElseThrow();
+    var usdCurrency = currencyRepository.findByCode("USD").orElseThrow();
+    var country = countryRepository.findByCode("BY").orElseThrow();
+
+    var listing = new Listing();
+    listing.setExternalId("ext-usd-with-byn-528");
+    listing.setSource(source);
+    listing.setTitle("USD listing — stored priceByn out of range");
+    listing.setDealType(DealType.RENT);
+    listing.setPrice(BigDecimal.valueOf(500));
+    listing.setCurrency(usdCurrency);
+    listing.setPriceByn(BigDecimal.valueOf(3_000));
+    listing.setCountry(country);
+    listing.setStatus(ListingStatus.ACTIVE);
+    listing.setSourceUrl("https://realt.by/ext-usd-with-byn-528");
+    listingRepository.saveAndFlush(listing);
+
+    var criteria = new ListingSearchCriteria(
+        null, null, null, null, null,
+        BigDecimal.valueOf(1_000), BigDecimal.valueOf(2_000),
+        null, null, null, null
+    );
+
+    // When
+    var result = listingService.search(criteria, PageRequest.of(0, 10), null, null);
+
+    // Then — excluded based on the stored priceByn (3 000), not a recomputed 1 539.60
+    assertThat(result.getTotalElements()).isZero();
+  }
+
+  @Test
+  void should_include_non_usd_non_byn_listing_without_byn_conversion_when_rate_available() {
+    // Given — a hypothetical EUR-priced listing without a stored priceByn (no connector produces
+    // this today). A live USD rate is available, but this method only converts USD, so the raw
+    // EUR amount must not be silently compared as if it were already BYN — same graceful bypass
+    // as the "no rate at all" case, not a wrong exclusion/inclusion based on an unconverted amount
+    when(currencyRateService.getUsdToByn()).thenReturn(Optional.of(BigDecimal.valueOf(3.0792)));
+    var source = sourceRepository.findByCode("REALT").orElseThrow();
+    var eurCurrency = currencyRepository.findByCode("EUR").orElseThrow();
+    var country = countryRepository.findByCode("BY").orElseThrow();
+
+    var listing = new Listing();
+    listing.setExternalId("ext-eur-no-byn-528");
+    listing.setSource(source);
+    listing.setTitle("EUR listing — no BYN conversion, unsupported currency for on-the-fly conversion");
+    listing.setDealType(DealType.RENT);
+    listing.setPrice(BigDecimal.valueOf(250));
+    listing.setCurrency(eurCurrency);
+    listing.setPriceByn(null);
+    listing.setCountry(country);
+    listing.setStatus(ListingStatus.ACTIVE);
+    listing.setSourceUrl("https://realt.by/ext-eur-no-byn-528");
+    listingRepository.saveAndFlush(listing);
+
+    // Raw 250 would fall inside [1000..2000] only by coincidence of being compared unconverted;
+    // this asserts the listing is included via the bypass, not via a wrong raw-amount comparison
+    var criteria = new ListingSearchCriteria(
+        null, null, null, null, null,
+        BigDecimal.valueOf(1_000), BigDecimal.valueOf(2_000),
+        null, null, null, null
+    );
+
+    // When
+    var result = listingService.search(criteria, PageRequest.of(0, 10), null, null);
+
+    // Then — bypasses the filter (included) rather than being wrongly excluded by raw-amount comparison
     assertThat(result.getTotalElements()).isEqualTo(1);
   }
 

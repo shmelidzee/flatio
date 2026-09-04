@@ -84,6 +84,14 @@ public class BlacklistServiceImpl implements BlacklistService {
   }
 
   @Override
+  public BlacklistEntryResponse findByIdForUser(Long userId, Long id) {
+    User user = getUser(userId);
+    BlacklistEntry entry = blacklistEntryRepository.findByIdAndUser(id, user)
+        .orElseThrow(() -> new BlacklistEntryNotFoundException(id));
+    return blacklistEntryMapper.toResponse(entry);
+  }
+
+  @Override
   @Transactional
   public void delete(Long userId, Long id) {
     User user = getUser(userId);

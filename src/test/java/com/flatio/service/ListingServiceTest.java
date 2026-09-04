@@ -951,6 +951,63 @@ class ListingServiceTest {
   }
 
   // -------------------------------------------------------------------------
+  // findDisplayLabelsByIds — batched label resolution for /blacklist (issue #525)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_return_title_as_label_when_title_present() {
+    // Given
+    var listing = buildListing(1L);
+    listing.setTitle("2-комнатная, Немига 5");
+    when(listingRepository.findAllById(List.of(1L))).thenReturn(List.of(listing));
+
+    // When
+    var result = listingService.findDisplayLabelsByIds(List.of(1L));
+
+    // Then
+    assertThat(result).containsEntry(1L, "2-комнатная, Немига 5");
+  }
+
+  @Test
+  void should_fallback_to_address_when_title_blank() {
+    // Given
+    var listing = buildListing(1L);
+    listing.setTitle("   ");
+    listing.setAddress("ул. Немига, 5");
+    when(listingRepository.findAllById(List.of(1L))).thenReturn(List.of(listing));
+
+    // When
+    var result = listingService.findDisplayLabelsByIds(List.of(1L));
+
+    // Then
+    assertThat(result).containsEntry(1L, "ул. Немига, 5");
+  }
+
+  @Test
+  void should_omit_id_when_neither_title_nor_address_present() {
+    // Given
+    var listing = buildListing(1L);
+    listing.setTitle(null);
+    when(listingRepository.findAllById(List.of(1L))).thenReturn(List.of(listing));
+
+    // When
+    var result = listingService.findDisplayLabelsByIds(List.of(1L));
+
+    // Then — caller (BlacklistCallbackHandler) applies its own fallback text for a missing key
+    assertThat(result).doesNotContainKey(1L);
+  }
+
+  @Test
+  void should_return_empty_map_when_ids_empty() {
+    // When
+    var result = listingService.findDisplayLabelsByIds(List.of());
+
+    // Then
+    assertThat(result).isEmpty();
+    verify(listingRepository, never()).findAllById(any());
+  }
+
+  // -------------------------------------------------------------------------
   // display currency (issue #415)
   // -------------------------------------------------------------------------
 

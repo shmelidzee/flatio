@@ -287,6 +287,14 @@ public class FlatioBot {
       } catch (TelegramApiException e) {
         logOrHandleBlocked(e, userId, "Failed to send DONE step after keyword input: chatId={}", chatId);
       }
+    } else if (filterCallbackHandler.isAtPriceStep(userId)) {
+      // Custom price range typed as free text (issue #526) — complements, does not replace, the
+      // preset buttons at this step.
+      try {
+        telegramClient.execute(filterCallbackHandler.handlePriceRangeText(userId, chatId, text));
+      } catch (TelegramApiException e) {
+        logOrHandleBlocked(e, userId, "Failed to send next step after custom price range input: chatId={}", chatId);
+      }
     } else if (subscriptionsCallbackHandler.isAwaitingSubscriptionName(userId)) {
       subscriptionsCallbackHandler.handleSubscriptionNameText(userId, chatId, text);
     } else if (blacklistCallbackHandler.isAwaitingKeyword(userId)) {
@@ -433,6 +441,12 @@ public class FlatioBot {
       answerCallbackQuery(callbackQuery.getId(), subscriptionsCallbackHandler.handlePause(callbackQuery));
     } else if (data.startsWith(SubscriptionsCallbackHandler.RESUME_PREFIX)) {
       answerCallbackQuery(callbackQuery.getId(), subscriptionsCallbackHandler.handleResume(callbackQuery));
+    } else if (data.startsWith(SubscriptionsCallbackHandler.DELETE_CONFIRM_PREFIX)) {
+      answerCallbackQuery(callbackQuery.getId());
+      subscriptionsCallbackHandler.handleDeleteConfirmPrompt(callbackQuery);
+    } else if (SubscriptionsCallbackHandler.DELETE_CANCEL.equals(data)) {
+      answerCallbackQuery(callbackQuery.getId());
+      subscriptionsCallbackHandler.handleDeleteCancel(callbackQuery);
     } else if (data.startsWith(SubscriptionsCallbackHandler.DELETE_PREFIX)) {
       answerCallbackQuery(callbackQuery.getId(), subscriptionsCallbackHandler.handleDelete(callbackQuery));
     } else if (data.startsWith(SubscriptionsCallbackHandler.EDIT_PREFIX)) {
@@ -463,6 +477,12 @@ public class FlatioBot {
     } else if (data.startsWith(BlacklistCallbackHandler.FILTER_PREFIX)) {
       answerCallbackQuery(callbackQuery.getId());
       blacklistCallbackHandler.handleFilter(callbackQuery);
+    } else if (data.startsWith(BlacklistCallbackHandler.DELETE_CONFIRM_PREFIX)) {
+      answerCallbackQuery(callbackQuery.getId());
+      blacklistCallbackHandler.handleDeleteConfirmPrompt(callbackQuery);
+    } else if (BlacklistCallbackHandler.DELETE_CANCEL.equals(data)) {
+      answerCallbackQuery(callbackQuery.getId());
+      blacklistCallbackHandler.handleDeleteCancel(callbackQuery);
     } else if (data.startsWith(BlacklistCallbackHandler.DELETE_PREFIX)) {
       answerCallbackQuery(callbackQuery.getId(), blacklistCallbackHandler.handleDelete(callbackQuery));
     } else if (data.startsWith(BlacklistCallbackHandler.HIDE_LISTING_PREFIX)) {

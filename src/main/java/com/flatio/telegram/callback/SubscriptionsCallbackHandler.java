@@ -78,6 +78,11 @@ public class SubscriptionsCallbackHandler {
   public static final String RESUME_PREFIX = "SUB:RESUME:";
   /** Callback prefix for deleting a subscription. */
   public static final String DELETE_PREFIX = "SUB:DELETE:";
+  /** Callback prefix for prompting deletion confirmation (issue #524) — the list's "Удалить"
+   *  button now leads here instead of straight to {@link #DELETE_PREFIX}. */
+  public static final String DELETE_CONFIRM_PREFIX = "SUB:DELCONF:";
+  /** Callback data for cancelling a pending deletion confirmation (issue #524). */
+  public static final String DELETE_CANCEL = "SUB:DELCANCEL";
   /** Callback prefix for starting the edit-criteria wizard on a subscription. */
   public static final String EDIT_PREFIX = "SUB:EDIT:";
   /** Callback prefix for subscriptions-list pagination. */
@@ -331,7 +336,65 @@ public class SubscriptionsCallbackHandler {
   }
 
   /**
-   * Handles a {@code SUB:DELETE:<id>} callback.
+   * Handles a {@code SUB:DELCONF:<id>} callback (issue #524) — prompts for confirmation instead
+   * of deleting immediately, since deletion is irreversible via the bot.
+   *
+   * @param callbackQuery the incoming callback query, never null
+   */
+  public void handleDeleteConfirmPrompt(CallbackQuery callbackQuery) {
+    String chatId = String.valueOf(callbackQuery.getMessage().getChatId());
+    if (!TelegramPrivateChatGuard.isPrivateChat(callbackQuery)) {
+      sendPlainText(chatId, TelegramPrivateChatGuard.PRIVATE_CHAT_REQUIRED_TEXT);
+      return;
+    }
+    var userOpt = userService.findByTelegramId(callbackQuery.getFrom().getId());
+    if (userOpt.isEmpty()) {
+      sendPlainText(chatId, UNREGISTERED_TEXT);
+      return;
+    }
+    Long id = parseId(callbackQuery.getData(), DELETE_CONFIRM_PREFIX);
+    if (id == null) {
+      sendPlainText(chatId, NOT_FOUND_TOAST);
+      return;
+    }
+    try {
+      var subscription = subscriptionService.findByIdForUser(userOpt.get().getId(), id);
+      sendDeleteConfirmPrompt(chatId, subscription.name(), id);
+    } catch (SubscriptionNotFoundException e) {
+      sendPlainText(chatId, NOT_FOUND_TOAST);
+    }
+  }
+
+  /**
+   * Handles the {@code SUB:DELCANCEL} callback (issue #524) — returns to the list unchanged.
+   *
+   * @param callbackQuery the incoming callback query, never null
+   */
+  public void handleDeleteCancel(CallbackQuery callbackQuery) {
+    handle(callbackQuery);
+  }
+
+  private void sendDeleteConfirmPrompt(String chatId, String subscriptionName, Long id) {
+    var keyboard = InlineKeyboardMarkup.builder()
+        .keyboardRow(new InlineKeyboardRow(
+            navBtn("✅ Да, удалить", DELETE_PREFIX + id),
+            navBtn("Отмена", DELETE_CANCEL)))
+        .build();
+    try {
+      telegramClient.execute(SendMessage.builder()
+          .chatId(chatId)
+          .text("Удалить подписку «" + TelegramHtmlEscaper.escapeHtml(subscriptionName) + "»?")
+          .parseMode("HTML")
+          .replyMarkup(keyboard)
+          .build());
+    } catch (TelegramApiException e) {
+      log.warn("Failed to send subscription delete confirmation: chatId={}", chatId, e);
+    }
+  }
+
+  /**
+   * Handles a {@code SUB:DELETE:<id>} callback — the actual deletion, reached only after
+   * confirmation (issue #524; see {@link #handleDeleteConfirmPrompt}).
    *
    * @param callbackQuery the incoming callback query, never null
    * @return toast text to show the user via {@code AnswerCallbackQuery}, never null
@@ -563,7 +626,7 @@ public class SubscriptionsCallbackHandler {
         ? navBtn("⏸ Пауза", PAUSE_PREFIX + item.id())
         : navBtn("▶️ Возобновить", RESUME_PREFIX + item.id());
     var editButton = navBtn("✏️ Изменить", EDIT_PREFIX + item.id());
-    var deleteButton = navBtn("🗑 Удалить", DELETE_PREFIX + item.id());
+    var deleteButton = navBtn("🗑 Удалить", DELETE_CONFIRM_PREFIX + item.id());
     return new InlineKeyboardRow(toggleButton, editButton, deleteButton);
   }
 

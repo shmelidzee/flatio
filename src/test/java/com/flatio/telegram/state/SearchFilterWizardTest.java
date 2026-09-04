@@ -655,6 +655,85 @@ class SearchFilterWizardTest {
   }
 
   // -------------------------------------------------------------------------
+  // KEYWORD step — "keep" while editing a subscription (issue #523)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_keep_query_unchanged_when_keyword_step_receives_keep_value() {
+    // Given — editing a subscription that already has a keyword
+    var prefilled = new SearchFilterState();
+    prefilled.setQuery("Минск");
+    prefilled.setEditingSubscriptionId(7L);
+    wizard.startForEdit(1L, prefilled);
+    wizard.applySelection(1L, FilterStep.DEAL_TYPE, "ANY");
+    wizard.applySelection(1L, FilterStep.PROPERTY_TYPE, "ANY");
+    wizard.applySelection(1L, FilterStep.ROOMS, "ANY");
+    wizard.applySelection(1L, FilterStep.PRICE, "ANY");
+    wizard.applySelection(1L, FilterStep.OWNER_ONLY, "ANY");
+
+    // When — "Пропустить (оставить как есть)" sends KEEP, not ANY
+    var state = wizard.applySelection(1L, FilterStep.KEYWORD, "KEEP");
+
+    // Then — the original keyword survives, unlike ANY which would clear it
+    assertThat(state.getQuery()).isEqualTo("Минск");
+    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.DONE);
+  }
+
+  @Test
+  void should_clear_query_when_keyword_step_receives_any_value_even_while_editing() {
+    // Given — same editing scenario, but the user explicitly presses "🗑 Очистить" (ANY)
+    var prefilled = new SearchFilterState();
+    prefilled.setQuery("Минск");
+    prefilled.setEditingSubscriptionId(7L);
+    wizard.startForEdit(1L, prefilled);
+    wizard.applySelection(1L, FilterStep.DEAL_TYPE, "ANY");
+    wizard.applySelection(1L, FilterStep.PROPERTY_TYPE, "ANY");
+    wizard.applySelection(1L, FilterStep.ROOMS, "ANY");
+    wizard.applySelection(1L, FilterStep.PRICE, "ANY");
+    wizard.applySelection(1L, FilterStep.OWNER_ONLY, "ANY");
+
+    // When
+    var state = wizard.applySelection(1L, FilterStep.KEYWORD, "ANY");
+
+    // Then
+    assertThat(state.getQuery()).isNull();
+  }
+
+  // -------------------------------------------------------------------------
+  // applyCustomPriceRange — free-text price range at the PRICE step (issue #526)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_apply_custom_price_range_and_advance_to_owner_only() {
+    // Given
+    wizard.start(1L);
+    wizard.applySelection(1L, FilterStep.DEAL_TYPE, "RENT");
+    wizard.applySelection(1L, FilterStep.PROPERTY_TYPE, "ANY");
+    wizard.applySelection(1L, FilterStep.ROOMS, "ANY");
+
+    // When
+    var state = wizard.applyCustomPriceRange(1L, BigDecimal.valueOf(1_200), BigDecimal.valueOf(1_800));
+
+    // Then
+    assertThat(state.getPriceMin()).isEqualByComparingTo(BigDecimal.valueOf(1_200));
+    assertThat(state.getPriceMax()).isEqualByComparingTo(BigDecimal.valueOf(1_800));
+    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.OWNER_ONLY);
+  }
+
+  @Test
+  void should_start_fresh_state_when_applying_custom_price_range_without_prior_wizard_start() {
+    // Given — defensive: FilterCallbackHandler only calls this while isAtPriceStep() is true, but
+    // the method itself must not throw if state is somehow absent
+    // When
+    var state = wizard.applyCustomPriceRange(9L, BigDecimal.valueOf(500), BigDecimal.valueOf(900));
+
+    // Then
+    assertThat(state.getPriceMin()).isEqualByComparingTo(BigDecimal.valueOf(500));
+    assertThat(state.getPriceMax()).isEqualByComparingTo(BigDecimal.valueOf(900));
+    assertThat(state.getCurrentStep()).isEqualTo(FilterStep.OWNER_ONLY);
+  }
+
+  // -------------------------------------------------------------------------
   // Concurrency — serialized state mutation (#368)
   // -------------------------------------------------------------------------
 

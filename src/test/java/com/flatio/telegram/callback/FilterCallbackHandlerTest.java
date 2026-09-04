@@ -4,6 +4,7 @@ import com.flatio.telegram.keyboard.FilterKeyboardFactory;
 import com.flatio.telegram.state.FilterStep;
 import com.flatio.telegram.state.SearchFilterState;
 import com.flatio.telegram.state.SearchFilterWizard;
+import java.math.BigDecimal;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,6 +24,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -330,6 +332,137 @@ class FilterCallbackHandlerTest {
 
     // When
     var result = handler.handleInvalidFreeText(1L, "100");
+
+    // Then
+    verify(wizard).start(1L);
+    assertThat(result).isNotNull();
+  }
+
+  // -------------------------------------------------------------------------
+  // isAtPriceStep / handlePriceRangeText — custom price range as free text (#526)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_return_true_when_wizard_is_at_price_step() {
+    // Given
+    var state = new SearchFilterState();
+    state.setCurrentStep(FilterStep.PRICE);
+    when(wizard.getState(1L)).thenReturn(Optional.of(state));
+
+    // When / Then
+    assertThat(handler.isAtPriceStep(1L)).isTrue();
+  }
+
+  @Test
+  void should_return_false_from_is_at_price_step_when_wizard_at_different_step() {
+    // Given
+    var state = new SearchFilterState();
+    state.setCurrentStep(FilterStep.DEAL_TYPE);
+    when(wizard.getState(1L)).thenReturn(Optional.of(state));
+
+    // When / Then
+    assertThat(handler.isAtPriceStep(1L)).isFalse();
+  }
+
+  @Test
+  void should_apply_custom_price_range_when_text_matches_min_dash_max() {
+    // Given
+    var doneState = new SearchFilterState();
+    doneState.setCurrentStep(FilterStep.OWNER_ONLY);
+    when(wizard.applyCustomPriceRange(1L, BigDecimal.valueOf(1200), BigDecimal.valueOf(1800)))
+        .thenReturn(doneState);
+
+    // When
+    var result = handler.handlePriceRangeText(1L, "100", "1200-1800");
+
+    // Then
+    verify(wizard).applyCustomPriceRange(1L, BigDecimal.valueOf(1200), BigDecimal.valueOf(1800));
+    assertThat(result.getChatId()).isEqualTo("100");
+  }
+
+  @Test
+  void should_accept_whitespace_and_comma_decimal_separator_in_price_range_text() {
+    // Given
+    var doneState = new SearchFilterState();
+    doneState.setCurrentStep(FilterStep.OWNER_ONLY);
+    when(wizard.applyCustomPriceRange(1L, new BigDecimal("1200.50"), new BigDecimal("1800")))
+        .thenReturn(doneState);
+
+    // When
+    handler.handlePriceRangeText(1L, "100", " 1200,50  -  1800 ");
+
+    // Then
+    verify(wizard).applyCustomPriceRange(1L, new BigDecimal("1200.50"), new BigDecimal("1800"));
+  }
+
+  @Test
+  void should_reprompt_with_error_when_price_range_text_is_not_parseable() {
+    // Given
+    var state = new SearchFilterState();
+    state.setCurrentStep(FilterStep.PRICE);
+    when(wizard.getState(1L)).thenReturn(Optional.of(state));
+
+    // When
+    var result = handler.handlePriceRangeText(1L, "100", "не число");
+
+    // Then
+    verify(wizard, never()).applyCustomPriceRange(any(), any(), any());
+    assertThat(result.getText()).contains("Не удалось распознать диапазон");
+  }
+
+  @Test
+  void should_reprompt_with_error_when_price_range_min_is_greater_than_max() {
+    // Given
+    var state = new SearchFilterState();
+    state.setCurrentStep(FilterStep.PRICE);
+    when(wizard.getState(1L)).thenReturn(Optional.of(state));
+
+    // When
+    var result = handler.handlePriceRangeText(1L, "100", "1800-1200");
+
+    // Then
+    verify(wizard, never()).applyCustomPriceRange(any(), any(), any());
+    assertThat(result.getText()).contains("Не удалось распознать диапазон");
+  }
+
+  @Test
+  void should_reprompt_with_error_when_price_range_contains_zero_or_negative_values() {
+    // Given
+    var state = new SearchFilterState();
+    state.setCurrentStep(FilterStep.PRICE);
+    when(wizard.getState(1L)).thenReturn(Optional.of(state));
+
+    // When
+    var result = handler.handlePriceRangeText(1L, "100", "0-1800");
+
+    // Then
+    verify(wizard, never()).applyCustomPriceRange(any(), any(), any());
+    assertThat(result.getText()).contains("Не удалось распознать диапазон");
+  }
+
+  @Test
+  void should_reprompt_with_error_when_price_range_exceeds_reasonable_upper_bound() {
+    // Given
+    var state = new SearchFilterState();
+    state.setCurrentStep(FilterStep.PRICE);
+    when(wizard.getState(1L)).thenReturn(Optional.of(state));
+
+    // When
+    var result = handler.handlePriceRangeText(1L, "100", "1000-999999999");
+
+    // Then
+    verify(wizard, never()).applyCustomPriceRange(any(), any(), any());
+    assertThat(result.getText()).contains("Не удалось распознать диапазон");
+  }
+
+  @Test
+  void should_start_wizard_when_price_range_invalid_and_no_state_exists() {
+    // Given — defensive fallback, mirrors handleInvalidFreeText's own fallback
+    when(wizard.getState(1L)).thenReturn(Optional.empty());
+    when(wizard.start(1L)).thenReturn(freshState);
+
+    // When
+    var result = handler.handlePriceRangeText(1L, "100", "not valid");
 
     // Then
     verify(wizard).start(1L);

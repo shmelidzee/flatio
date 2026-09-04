@@ -34,6 +34,9 @@ public class SearchFilterWizard {
   /** Callback value meaning "no filter applied" for a given step. */
   public static final String VALUE_ANY = "ANY";
 
+  /** Callback value meaning "leave the KEYWORD step's current value untouched" (issue #523). */
+  public static final String VALUE_KEEP = "KEEP";
+
   private static final Set<String> ALLOWED_PROPERTY_TYPES = Set.of("APARTMENT", "HOUSE", "ROOM");
 
   private static final long STATE_TTL_MINUTES = 30;
@@ -141,7 +144,12 @@ public class SearchFilterWizard {
           state.setCurrentStep(FilterStep.KEYWORD);
         }
         case KEYWORD -> {
-          state.setQuery(VALUE_ANY.equals(value) ? null : value);
+          // KEEP (issue #523): "Пропустить" while editing a subscription that already has a
+          // keyword leaves it untouched — only VALUE_ANY ("Очистить"/plain skip elsewhere)
+          // clears it, same as every other step's "no value" semantics.
+          if (!VALUE_KEEP.equals(value)) {
+            state.setQuery(VALUE_ANY.equals(value) ? null : value);
+          }
           state.setCurrentStep(FilterStep.DONE);
         }
         default -> log.warn("Unexpected step in applySelection: step={}", step);
@@ -215,6 +223,27 @@ public class SearchFilterWizard {
       state.setQuery(text == null || text.isBlank() ? null : text.strip());
       state.setCurrentStep(FilterStep.DONE);
       log.debug("Keyword applied: telegramId={}, hasQuery={}", telegramId, state.getQuery() != null);
+      return state;
+    });
+  }
+
+  /**
+   * Applies a custom price range entered as free text at the PRICE step (issue #526), bypassing
+   * the fixed presets. The caller ({@link com.flatio.telegram.callback.FilterCallbackHandler})
+   * has already validated {@code priceMin}/{@code priceMax} (both positive, min ≤ max).
+   *
+   * @param telegramId Telegram user identifier, never null
+   * @param priceMin   validated minimum price, never null
+   * @param priceMax   validated maximum price, never null
+   * @return updated state positioned at OWNER_ONLY
+   */
+  public SearchFilterState applyCustomPriceRange(Long telegramId, BigDecimal priceMin, BigDecimal priceMax) {
+    return states.compute(telegramId, (id, existing) -> {
+      SearchFilterState state = existing != null ? existing : new SearchFilterState();
+      state.setPriceMin(priceMin);
+      state.setPriceMax(priceMax);
+      state.setCurrentStep(FilterStep.OWNER_ONLY);
+      log.debug("Custom price range applied: telegramId={}, priceMin={}, priceMax={}", telegramId, priceMin, priceMax);
       return state;
     });
   }
