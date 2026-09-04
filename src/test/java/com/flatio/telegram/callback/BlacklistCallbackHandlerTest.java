@@ -1,5 +1,6 @@
 package com.flatio.telegram.callback;
 
+import com.flatio.common.exception.BlacklistEntryNotFoundException;
 import com.flatio.common.exception.BlacklistKeywordLimitExceededException;
 import com.flatio.common.exception.ListingNotFoundException;
 import com.flatio.common.exception.SourceNotFoundException;
@@ -16,6 +17,7 @@ import com.flatio.web.dto.BlacklistEntryResponse;
 import com.flatio.web.dto.CreateBlacklistEntryRequest;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -562,6 +564,142 @@ class BlacklistCallbackHandlerTest {
     // Then
     assertThat(toast).isEqualTo("🗑 Запись удалена из чёрного списка");
     verify(blacklistService).delete(7L, 5L);
+  }
+
+  // -------------------------------------------------------------------------
+  // Deletion confirmation (issue #524)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_send_confirmation_prompt_with_keyword_value_when_delete_confirm_received() throws Exception {
+    // Given
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(buildUser(7L)));
+    var entry = buildBlacklistEntry(5L, BlacklistEntryType.KEYWORD, "новостройка");
+    when(blacklistService.findByIdForUser(7L, 5L)).thenReturn(entry);
+    var callback = buildCallback(1L, 100L, true, "BL:DELCONF:5");
+
+    // When
+    handler.handleDeleteConfirmPrompt(callback);
+
+    // Then — deletion has NOT happened yet, only the prompt was sent
+    verify(blacklistService, never()).delete(any(), any());
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient).execute(captor.capture());
+    var sent = captor.getValue();
+    assertThat(sent.getText()).contains("новостройка");
+    var buttons = ((InlineKeyboardMarkup) sent.getReplyMarkup()).getKeyboard().get(0);
+    assertThat(buttons.get(0).getCallbackData()).isEqualTo("BL:DELETE:5");
+    assertThat(buttons.get(1).getCallbackData()).isEqualTo("BL:DELCANCEL");
+  }
+
+  @Test
+  void should_send_confirmation_prompt_with_configured_source_name_when_type_is_source() throws Exception {
+    // Given — same display-name resolution as the list itself (issue #525)
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(buildUser(7L)));
+    var entry = buildBlacklistEntry(6L, BlacklistEntryType.SOURCE, "KUFAR_APARTMENT_RENT");
+    when(blacklistService.findByIdForUser(7L, 6L)).thenReturn(entry);
+    var sourceEntry = new SourceDisplayProperties.Entry();
+    sourceEntry.setPrefix("KUFAR");
+    sourceEntry.setDisplayName("Kufar");
+    when(sourceDisplayProperties.findBySourceId("KUFAR_APARTMENT_RENT")).thenReturn(Optional.of(sourceEntry));
+    var callback = buildCallback(1L, 100L, true, "BL:DELCONF:6");
+
+    // When
+    handler.handleDeleteConfirmPrompt(callback);
+
+    // Then
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient).execute(captor.capture());
+    assertThat(captor.getValue().getText()).contains("Kufar").doesNotContain("KUFAR_APARTMENT_RENT");
+  }
+
+  @Test
+  void should_send_not_found_message_when_confirming_delete_for_missing_entry() throws Exception {
+    // Given
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(buildUser(7L)));
+    when(blacklistService.findByIdForUser(7L, 5L)).thenThrow(new BlacklistEntryNotFoundException(5L));
+    var callback = buildCallback(1L, 100L, true, "BL:DELCONF:5");
+
+    // When
+    handler.handleDeleteConfirmPrompt(callback);
+
+    // Then
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient).execute(captor.capture());
+    assertThat(captor.getValue().getText()).isEqualTo("Запись не найдена.");
+  }
+
+  @Test
+  void should_rerender_list_without_deleting_when_delete_cancel_received() throws Exception {
+    // Given
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(buildUser(7L)));
+    when(blacklistService.findByUser(eq(7L), isNull(), any()))
+        .thenReturn(new PageImpl<>(List.of(buildBlacklistEntry(1L, BlacklistEntryType.KEYWORD, "аренда"))));
+    var callback = buildCallback(1L, 100L, true, "BL:DELCANCEL");
+
+    // When
+    handler.handleDeleteCancel(callback);
+
+    // Then — same as re-opening the list; nothing is deleted
+    verify(blacklistService, never()).delete(any(), any());
+    verify(telegramClient).execute(any(SendMessage.class));
+  }
+
+  // -------------------------------------------------------------------------
+  // Human-readable display values (issue #525)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_show_listing_title_when_type_is_listing_and_title_available() throws Exception {
+    // Given
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(buildUser(7L)));
+    var entry = buildBlacklistEntry(1L, BlacklistEntryType.LISTING, "1105");
+    when(blacklistService.findByUser(eq(7L), isNull(), any())).thenReturn(new PageImpl<>(List.of(entry)));
+    when(listingService.findDisplayLabelsByIds(List.of(1105L))).thenReturn(Map.of(1105L, "2-комнатная, Немига 5"));
+    var callback = buildCallback(1L, 100L, true, BlacklistCallbackHandler.ACTION_BLACKLIST);
+
+    // When
+    handler.handle(callback);
+
+    // Then
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient).execute(captor.capture());
+    assertThat(captor.getValue().getText()).contains("2-комнатная, Немига 5").doesNotContain("1105");
+  }
+
+  @Test
+  void should_fallback_to_listing_id_label_when_listing_has_no_resolved_label() throws Exception {
+    // Given — listing not found, or found but with neither title nor address
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(buildUser(7L)));
+    var entry = buildBlacklistEntry(1L, BlacklistEntryType.LISTING, "1105");
+    when(blacklistService.findByUser(eq(7L), isNull(), any())).thenReturn(new PageImpl<>(List.of(entry)));
+    when(listingService.findDisplayLabelsByIds(List.of(1105L))).thenReturn(Map.of());
+    var callback = buildCallback(1L, 100L, true, BlacklistCallbackHandler.ACTION_BLACKLIST);
+
+    // When
+    handler.handle(callback);
+
+    // Then
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient).execute(captor.capture());
+    assertThat(captor.getValue().getText()).contains("Объявление #1105");
+  }
+
+  @Test
+  void should_fallback_to_raw_source_code_when_source_not_configured() throws Exception {
+    // Given — no SourceDisplayProperties entry configured for this prefix
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(buildUser(7L)));
+    var entry = buildBlacklistEntry(1L, BlacklistEntryType.SOURCE, "unknown_source");
+    when(blacklistService.findByUser(eq(7L), isNull(), any())).thenReturn(new PageImpl<>(List.of(entry)));
+    var callback = buildCallback(1L, 100L, true, BlacklistCallbackHandler.ACTION_BLACKLIST);
+
+    // When
+    handler.handle(callback);
+
+    // Then — sourceDisplayProperties mock returns empty by default; falls back to the raw code
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient).execute(captor.capture());
+    assertThat(captor.getValue().getText()).contains("unknown_source");
   }
 
   @Test

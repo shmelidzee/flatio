@@ -368,6 +368,78 @@ class SubscriptionsCallbackHandlerTest {
     verify(subscriptionService).delete(7L, 5L);
   }
 
+  // -------------------------------------------------------------------------
+  // Deletion confirmation (issue #524)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_send_confirmation_prompt_with_subscription_name_when_delete_confirm_received() throws Exception {
+    // Given
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(buildUser(7L)));
+    var subscription = buildSubscriptionResponse(5L, "2-комнатные в центре", true, DeliveryMode.REALTIME);
+    when(subscriptionService.findByIdForUser(7L, 5L)).thenReturn(subscription);
+    var callback = buildCallback(1L, 100L, true, "SUB:DELCONF:5");
+
+    // When
+    handler.handleDeleteConfirmPrompt(callback);
+
+    // Then — deletion has NOT happened yet, only the prompt was sent
+    verify(subscriptionService, never()).delete(any(), any());
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient).execute(captor.capture());
+    var sent = captor.getValue();
+    assertThat(sent.getText()).contains("2-комнатные в центре");
+    var buttons = ((InlineKeyboardMarkup) sent.getReplyMarkup()).getKeyboard().get(0);
+    assertThat(buttons.get(0).getCallbackData()).isEqualTo("SUB:DELETE:5");
+    assertThat(buttons.get(1).getCallbackData()).isEqualTo("SUB:DELCANCEL");
+  }
+
+  @Test
+  void should_send_not_found_message_when_confirming_delete_for_missing_subscription() throws Exception {
+    // Given
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(buildUser(7L)));
+    when(subscriptionService.findByIdForUser(7L, 5L)).thenThrow(new SubscriptionNotFoundException(5L));
+    var callback = buildCallback(1L, 100L, true, "SUB:DELCONF:5");
+
+    // When
+    handler.handleDeleteConfirmPrompt(callback);
+
+    // Then
+    var captor = ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient).execute(captor.capture());
+    assertThat(captor.getValue().getText()).isEqualTo("Подписка не найдена.");
+  }
+
+  @Test
+  void should_send_private_chat_required_message_when_prompting_delete_confirmation_outside_private_chat()
+      throws Exception {
+    // Given
+    var callback = buildCallback(1L, 100L, false, "SUB:DELCONF:5");
+
+    // When
+    handler.handleDeleteConfirmPrompt(callback);
+
+    // Then
+    verify(subscriptionService, never()).findByIdForUser(any(), any());
+    verify(telegramClient).execute(any(SendMessage.class));
+  }
+
+  @Test
+  void should_rerender_list_without_deleting_when_delete_cancel_received() {
+    // Given
+    var user = buildUser(7L);
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
+    when(subscriptionService.findByUser(eq(7L), any())).thenReturn(new PageImpl<>(List.of()));
+    var callback = buildCallback(1L, 100L, true, "SUB:DELCANCEL");
+
+    // When
+    handler.handleDeleteCancel(callback);
+
+    // Then — same as re-opening the list; nothing is deleted
+    verify(subscriptionService, never()).delete(any(), any());
+    verify(subscriptionService).findByUser(eq(7L), any());
+  }
+
   @Test
   void should_return_private_chat_required_toast_when_pause_from_non_private_chat() {
     // Given
