@@ -228,6 +228,27 @@ public class SearchFilterWizard {
   }
 
   /**
+   * Applies a custom price range entered as free text at the PRICE step (issue #526), bypassing
+   * the fixed presets. The caller ({@link com.flatio.telegram.callback.FilterCallbackHandler})
+   * has already validated {@code priceMin}/{@code priceMax} (both positive, min ≤ max).
+   *
+   * @param telegramId Telegram user identifier, never null
+   * @param priceMin   validated minimum price, never null
+   * @param priceMax   validated maximum price, never null
+   * @return updated state positioned at OWNER_ONLY
+   */
+  public SearchFilterState applyCustomPriceRange(Long telegramId, BigDecimal priceMin, BigDecimal priceMax) {
+    return states.compute(telegramId, (id, existing) -> {
+      SearchFilterState state = existing != null ? existing : new SearchFilterState();
+      state.setPriceMin(priceMin);
+      state.setPriceMax(priceMax);
+      state.setCurrentStep(FilterStep.OWNER_ONLY);
+      log.debug("Custom price range applied: telegramId={}, priceMin={}, priceMax={}", telegramId, priceMin, priceMax);
+      return state;
+    });
+  }
+
+  /**
    * Removes the wizard state for the given user, discarding all collected parameters.
    *
    * @param telegramId Telegram user identifier, never null

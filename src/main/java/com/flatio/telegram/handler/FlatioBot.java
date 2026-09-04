@@ -287,6 +287,14 @@ public class FlatioBot {
       } catch (TelegramApiException e) {
         logOrHandleBlocked(e, userId, "Failed to send DONE step after keyword input: chatId={}", chatId);
       }
+    } else if (filterCallbackHandler.isAtPriceStep(userId)) {
+      // Custom price range typed as free text (issue #526) — complements, does not replace, the
+      // preset buttons at this step.
+      try {
+        telegramClient.execute(filterCallbackHandler.handlePriceRangeText(userId, chatId, text));
+      } catch (TelegramApiException e) {
+        logOrHandleBlocked(e, userId, "Failed to send next step after custom price range input: chatId={}", chatId);
+      }
     } else if (subscriptionsCallbackHandler.isAwaitingSubscriptionName(userId)) {
       subscriptionsCallbackHandler.handleSubscriptionNameText(userId, chatId, text);
     } else if (blacklistCallbackHandler.isAwaitingKeyword(userId)) {

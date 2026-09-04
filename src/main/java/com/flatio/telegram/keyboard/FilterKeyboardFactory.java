@@ -54,9 +54,10 @@ public class FilterKeyboardFactory {
       case DEAL_TYPE -> "🏠 Выберите тип сделки:";
       case PROPERTY_TYPE -> "🏢 Тип недвижимости:";
       case ROOMS -> "🛏 Количество комнат:";
-      case PRICE -> state.getDealType() == DealType.SELL
+      case PRICE -> (state.getDealType() == DealType.SELL
           ? "💰 Диапазон цены (BYN):"
-          : "💰 Диапазон цены (BYN/мес):";
+          : "💰 Диапазон цены (BYN/мес):")
+          + "\nМожно выбрать вариант ниже или ввести свой диапазон текстом, например «1200-1800».";
       case OWNER_ONLY -> "👤 Тип продавца:";
       case KEYWORD -> buildKeywordStepText(state);
       case DONE -> buildSummaryText(state);

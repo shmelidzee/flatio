@@ -4,6 +4,9 @@ import com.flatio.telegram.keyboard.FilterKeyboardFactory;
 import com.flatio.telegram.state.FilterStep;
 import com.flatio.telegram.state.SearchFilterState;
 import com.flatio.telegram.state.SearchFilterWizard;
+import java.math.BigDecimal;
+import java.util.Optional;
+import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -29,8 +32,18 @@ public class FilterCallbackHandler {
 
   private static final String INVALID_INPUT_HINT = "Пожалуйста, воспользуйтесь кнопками ниже.";
 
+  /** Matches "{min}-{max}", allowing decimal separators and surrounding whitespace (issue #526). */
+  private static final Pattern PRICE_RANGE_PATTERN =
+      Pattern.compile("^\\s*(\\d+(?:[.,]\\d+)?)\\s*-\\s*(\\d+(?:[.,]\\d+)?)\\s*$");
+  private static final BigDecimal MAX_REASONABLE_PRICE = BigDecimal.valueOf(100_000_000);
+  private static final String INVALID_PRICE_RANGE_TEXT =
+      "Не удалось распознать диапазон. Введите два положительных числа через дефис, например "
+      + "«1200-1800» (минимум не больше максимума), или воспользуйтесь кнопками выше.";
+
   private final SearchFilterWizard wizard;
   private final FilterKeyboardFactory keyboardFactory;
+
+  private record PriceRange(BigDecimal min, BigDecimal max) {}
 
   /**
    * Processes a filter callback and returns the updated wizard message.
@@ -162,6 +175,85 @@ public class FilterCallbackHandler {
     return SendMessage.builder()
         .chatId(chatId)
         .text(keyboardFactory.getStepText(state))
+        .parseMode("HTML")
+        .replyMarkup(keyboardFactory.buildForStep(state))
+        .build();
+  }
+
+  /**
+   * Checks whether the user's wizard is currently at the PRICE step, where free text is
+   * interpreted as a custom range (issue #526).
+   *
+   * @param telegramId Telegram user identifier, never null
+   * @return true if the wizard is at the PRICE step
+   */
+  public boolean isAtPriceStep(Long telegramId) {
+    return wizard.getState(telegramId)
+        .map(s -> s.getCurrentStep() == FilterStep.PRICE)
+        .orElse(false);
+  }
+
+  /**
+   * Applies free-text custom price range input and returns the next step (issue #526).
+   *
+   * <p>Called when the user types a message while the wizard is at the PRICE step, e.g.
+   * {@code "1200-1800"}. Complements the preset buttons rather than replacing them. Invalid input
+   * re-prompts at the same step instead of advancing, mirroring
+   * {@link com.flatio.telegram.callback.BlacklistCallbackHandler}'s keyword re-prompt pattern.
+   *
+   * @param telegramId Telegram user identifier, never null
+   * @param chatId     target chat identifier, never null
+   * @param text       user-provided text, expected as {@code "{min}-{max}"}
+   * @return SendMessage for the next step on success, or a re-prompt with an error on invalid input
+   */
+  public SendMessage handlePriceRangeText(Long telegramId, String chatId, String text) {
+    var parsed = parsePriceRange(text);
+    if (parsed.isEmpty()) {
+      log.debug("Invalid custom price range input: telegramId={}, text={}", telegramId, text);
+      return buildInvalidPriceRangeMessage(telegramId, chatId);
+    }
+    var range = parsed.get();
+    var state = wizard.applyCustomPriceRange(telegramId, range.min(), range.max());
+    return SendMessage.builder()
+        .chatId(chatId)
+        .text(keyboardFactory.getStepText(state))
+        .parseMode("HTML")
+        .replyMarkup(keyboardFactory.buildForStep(state))
+        .build();
+  }
+
+  private Optional<PriceRange> parsePriceRange(String text) {
+    if (text == null) {
+      return Optional.empty();
+    }
+    var matcher = PRICE_RANGE_PATTERN.matcher(text.strip());
+    if (!matcher.matches()) {
+      return Optional.empty();
+    }
+    try {
+      BigDecimal min = new BigDecimal(matcher.group(1).replace(',', '.'));
+      BigDecimal max = new BigDecimal(matcher.group(2).replace(',', '.'));
+      if (isValidRange(min, max)) {
+        return Optional.of(new PriceRange(min, max));
+      }
+      return Optional.empty();
+    } catch (NumberFormatException e) {
+      return Optional.empty();
+    }
+  }
+
+  private boolean isValidRange(BigDecimal min, BigDecimal max) {
+    return min.signum() > 0 && max.signum() > 0
+        && min.compareTo(max) <= 0
+        && min.compareTo(MAX_REASONABLE_PRICE) <= 0
+        && max.compareTo(MAX_REASONABLE_PRICE) <= 0;
+  }
+
+  private SendMessage buildInvalidPriceRangeMessage(Long telegramId, String chatId) {
+    var state = wizard.getState(telegramId).orElseGet(() -> wizard.start(telegramId));
+    return SendMessage.builder()
+        .chatId(chatId)
+        .text(INVALID_PRICE_RANGE_TEXT)
         .parseMode("HTML")
         .replyMarkup(keyboardFactory.buildForStep(state))
         .build();

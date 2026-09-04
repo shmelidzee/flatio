@@ -102,8 +102,8 @@ class FilterKeyboardFactoryTest {
     // When
     String text = factory.getStepText(state);
 
-    // Then
-    assertThat(text).isEqualTo("💰 Диапазон цены (BYN):");
+    // Then — issue #526: also mentions the custom-range free-text option
+    assertThat(text).startsWith("💰 Диапазон цены (BYN):");
   }
 
   @Test
@@ -116,8 +116,8 @@ class FilterKeyboardFactoryTest {
     // When
     String text = factory.getStepText(state);
 
-    // Then
-    assertThat(text).isEqualTo("💰 Диапазон цены (BYN/мес):");
+    // Then — issue #526: also mentions the custom-range free-text option
+    assertThat(text).startsWith("💰 Диапазон цены (BYN/мес):");
   }
 
   // -------------------------------------------------------------------------
