@@ -27,6 +27,8 @@ public class FilterCallbackHandler {
   /** Callback data value that triggers the start of the filter wizard. */
   public static final String ACTION_SEARCH = "action:search";
 
+  private static final String INVALID_INPUT_HINT = "Пожалуйста, воспользуйтесь кнопками ниже.";
+
   private final SearchFilterWizard wizard;
   private final FilterKeyboardFactory keyboardFactory;
 
@@ -107,6 +109,39 @@ public class FilterCallbackHandler {
     return wizard.getState(telegramId)
         .map(s -> s.getCurrentStep() == FilterStep.KEYWORD)
         .orElse(false);
+  }
+
+  /**
+   * Checks whether the user has an active wizard session, regardless of step (issue #520).
+   *
+   * <p>Used to detect free text sent while the wizard is at a button-only step (e.g. "Тип
+   * сделки") — every other step accepts input exclusively through inline keyboard callbacks, so
+   * unrecognized text at those steps previously received no reply at all.
+   *
+   * @param telegramId Telegram user identifier, never null
+   * @return true if the wizard has been started and not yet reset for this user
+   */
+  public boolean isWizardActive(Long telegramId) {
+    return wizard.getState(telegramId).isPresent();
+  }
+
+  /**
+   * Builds a reply for free text sent while the wizard is active but not at the KEYWORD step
+   * (issue #520): a short hint plus the current step re-rendered, so the user is not left
+   * wondering whether the bot received their message.
+   *
+   * @param telegramId Telegram user identifier, never null
+   * @param chatId     target chat identifier, never null
+   * @return SendMessage with the hint and the current wizard step, never null
+   */
+  public SendMessage handleInvalidFreeText(Long telegramId, String chatId) {
+    var state = wizard.getState(telegramId).orElseGet(() -> wizard.start(telegramId));
+    return SendMessage.builder()
+        .chatId(chatId)
+        .text(INVALID_INPUT_HINT + "\n\n" + keyboardFactory.getStepText(state))
+        .parseMode("HTML")
+        .replyMarkup(keyboardFactory.buildForStep(state))
+        .build();
   }
 
   /**

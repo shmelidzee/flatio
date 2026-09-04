@@ -220,6 +220,14 @@ public class FlatioBot {
       subscriptionsCallbackHandler.handleSubscriptionNameText(userId, chatId, text);
     } else if (blacklistCallbackHandler.isAwaitingKeyword(userId)) {
       blacklistCallbackHandler.handleKeywordText(userId, chatId, text);
+    } else if (filterCallbackHandler.isWizardActive(userId)) {
+      // Wizard is active but at a button-only step (issue #520) — every other pending-input
+      // state above is checked first since it takes priority over an in-progress search wizard.
+      try {
+        telegramClient.execute(filterCallbackHandler.handleInvalidFreeText(userId, chatId));
+      } catch (TelegramApiException e) {
+        logOrHandleBlocked(e, userId, "Failed to send invalid-input hint: chatId={}", chatId);
+      }
     }
   }
 
