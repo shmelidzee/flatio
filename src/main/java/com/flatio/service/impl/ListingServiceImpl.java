@@ -94,7 +94,7 @@ public class ListingServiceImpl implements ListingService {
     if (criteria.query() != null && !criteria.query().isBlank()) {
       return searchWithFts(criteria, pageable, usdToByn, userId, targetCurrency);
     }
-    return listingRepository.findAll(buildSearchSpec(criteria, userId), pageable)
+    return listingRepository.findAll(buildSearchSpec(criteria, userId, usdToByn), pageable)
         .map(l -> applyDisplayCurrency(enrichPrices(listingMapper.toSummaryResponse(l), usdToByn), targetCurrency));
   }
 
@@ -328,40 +328,59 @@ public class ListingServiceImpl implements ListingService {
   /**
    * Builds price range predicates for the Specification-based search.
    *
-   * <p>Uses {@code COALESCE(priceByn, price)} as the effective price when the stored BYN
-   * conversion is available. When a listing has no BYN price and its currency is not BYN
-   * (e.g., a USD-priced Realt listing where the NBRB rate was unavailable at ingestion time),
-   * comparing the raw USD value against a BYN filter would produce wrong results, so such
-   * listings are excluded from the price filter altogether.
+   * <p>Effective price is {@code COALESCE(priceByn, <derived>)}. For a USD-priced listing whose
+   * stored {@code priceByn} is null (issue #528 — e.g. a Realt listing ingested while the NBRB
+   * rate was unavailable) and a live rate is available now ({@code usdToByn != null}),
+   * {@code <derived>} is {@code price * usdToByn} — computed on the fly, exactly like
+   * {@code ListingServiceImpl#enrichWithPriceByn} does for display, so the listing is compared
+   * against its real converted price instead of silently passing the filter.
+   *
+   * <p>Only when {@code usdToByn} is itself null — no NBRB rate has ever been recorded, a rare
+   * fresh-install case, since {@link CurrencyRateService#getRate} otherwise falls back to the
+   * last known rate — does a listing with no stored {@code priceByn} and a non-BYN currency fall
+   * back to the old behaviour: pass the filter unconditionally rather than being wrongly excluded
+   * or compared on the raw non-BYN amount.
    *
    * @param cb       JPA criteria builder
    * @param root     root of the query over {@link Listing}
    * @param criteria search criteria with optional price bounds
+   * @param usdToByn current USD→BYN rate from NBRB, or null if no rate has ever been recorded
    * @return list of price predicates, empty when both bounds are null
    */
   private List<Predicate> buildPricePredicates(CriteriaBuilder cb, Root<Listing> root,
-      ListingSearchCriteria criteria) {
+      ListingSearchCriteria criteria, BigDecimal usdToByn) {
     if (criteria.priceMin() == null && criteria.priceMax() == null) {
       return List.of();
     }
-    Expression<BigDecimal> effectivePrice = cb.coalesce(root.get("priceByn"), root.get("price"));
-    Predicate noBynConversion = cb.and(
-        cb.isNull(root.get("priceByn")),
-        cb.notEqual(root.get("currency").<String>get("code"), CURRENCY_BYN)
-    );
+    Expression<BigDecimal> effectivePrice;
+    Predicate noRateAvailable;
+    if (usdToByn != null) {
+      Expression<BigDecimal> derivedFromUsdRate = cb.prod(root.get("price"), usdToByn);
+      Expression<BigDecimal> nonBynFallback = cb.<BigDecimal>selectCase()
+          .when(cb.equal(root.get("currency").<String>get("code"), CURRENCY_USD), derivedFromUsdRate)
+          .otherwise(root.get("price"));
+      effectivePrice = cb.coalesce(root.get("priceByn"), nonBynFallback);
+      noRateAvailable = cb.disjunction();
+    } else {
+      effectivePrice = cb.coalesce(root.get("priceByn"), root.get("price"));
+      noRateAvailable = cb.and(
+          cb.isNull(root.get("priceByn")),
+          cb.notEqual(root.get("currency").<String>get("code"), CURRENCY_BYN)
+      );
+    }
     List<Predicate> result = new ArrayList<>();
     // Negotiable listings have no meaningful price — exclude them when any price filter is active.
     result.add(cb.notEqual(root.get("isNegotiable"), Boolean.TRUE));
     if (criteria.priceMin() != null) {
-      result.add(cb.or(noBynConversion, cb.greaterThanOrEqualTo(effectivePrice, criteria.priceMin())));
+      result.add(cb.or(noRateAvailable, cb.greaterThanOrEqualTo(effectivePrice, criteria.priceMin())));
     }
     if (criteria.priceMax() != null) {
-      result.add(cb.or(noBynConversion, cb.lessThanOrEqualTo(effectivePrice, criteria.priceMax())));
+      result.add(cb.or(noRateAvailable, cb.lessThanOrEqualTo(effectivePrice, criteria.priceMax())));
     }
     return result;
   }
 
-  private Specification<Listing> buildSearchSpec(ListingSearchCriteria criteria, Long userId) {
+  private Specification<Listing> buildSearchSpec(ListingSearchCriteria criteria, Long userId, BigDecimal usdToByn) {
     return (root, query, cb) -> {
       List<Predicate> predicates = new ArrayList<>();
 
@@ -384,7 +403,7 @@ public class ListingServiceImpl implements ListingService {
       if (criteria.rooms() != null) {
         predicates.add(cb.equal(root.get("rooms"), criteria.rooms()));
       }
-      predicates.addAll(buildPricePredicates(cb, root, criteria));
+      predicates.addAll(buildPricePredicates(cb, root, criteria, usdToByn));
       if (criteria.city() != null && !criteria.city().isBlank()) {
         predicates.add(cb.like(cb.lower(root.get("city")),
             LikePatternUtils.containsPattern(criteria.city().toLowerCase()), LikePatternUtils.ESCAPE_CHAR));
