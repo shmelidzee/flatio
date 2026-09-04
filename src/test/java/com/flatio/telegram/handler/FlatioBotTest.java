@@ -605,6 +605,28 @@ class FlatioBotTest {
     releaseFirst.countDown();
   }
 
+  @Test
+  void should_keep_processing_later_updates_from_same_user_when_a_throwable_escapes_handle_update() throws InterruptedException {
+    // Given — handleUpdate()'s own try/catch only covers Exception, not Error; simulate an Error
+    // escaping the first update and assert the chain does not get permanently stuck for this user
+    var telegramClient = mock(TelegramClient.class);
+    var helpCommandHandler = mock(HelpCommandHandler.class);
+    var bot = buildBotWithHelpHandler(telegramClient, helpCommandHandler, executor);
+
+    var firstUpdate = buildTextUpdate(1, 555L, "/help");
+    var secondUpdate = buildTextUpdate(2, 555L, "/help");
+
+    when(helpCommandHandler.handle(firstUpdate)).thenThrow(new AssertionError("simulated escaped throwable"));
+    when(helpCommandHandler.handle(secondUpdate)).thenReturn(mock(SendMessage.class));
+
+    // When
+    bot.handleUpdateAsync(firstUpdate);
+    bot.handleUpdateAsync(secondUpdate);
+
+    // Then — the second update from the same user still runs to completion afterwards
+    verify(helpCommandHandler, timeout(ASYNC_TIMEOUT_MS)).handle(secondUpdate);
+  }
+
   private static TelegramApiRequestException buildBlockedException() {
     var response = ApiResponse.builder()
         .ok(false)

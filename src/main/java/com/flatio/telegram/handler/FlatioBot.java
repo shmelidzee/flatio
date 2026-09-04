@@ -129,8 +129,30 @@ public class FlatioBot {
     }
     updateChains.compute(telegramId, (id, previousTail) -> {
       CompletableFuture<Void> previous = previousTail != null ? previousTail : CompletableFuture.completedFuture(null);
-      return previous.thenRunAsync(() -> handleUpdate(update), telegramUpdateExecutor);
+      // handleAsync (not thenRunAsync) runs regardless of how the previous stage completed, and
+      // always completes this stage normally itself — thenRunAsync would instead have skipped
+      // this update and propagated the earlier failure forever, permanently stalling every later
+      // update from this user, if a previous handleUpdate ever let a Throwable escape its own
+      // try/catch (that catch only covers Exception, not Error).
+      return previous.handleAsync((ignoredResult, ignoredError) -> runUpdateSafely(update), telegramUpdateExecutor);
     });
+  }
+
+  /**
+   * Runs {@link #handleUpdate(Update)}, guaranteeing normal completion of its
+   * {@link #updateChains} stage even if something unexpected escapes it, so one bad update never
+   * permanently stalls that user's later updates.
+   *
+   * @param update the update to process, never null
+   */
+  private Void runUpdateSafely(Update update) {
+    try {
+      handleUpdate(update);
+    } catch (Throwable t) {
+      log.error("Throwable escaped handleUpdate; continuing to process this user's later updates: updateId={}",
+          update.getUpdateId(), t);
+    }
+    return null;
   }
 
   /**
