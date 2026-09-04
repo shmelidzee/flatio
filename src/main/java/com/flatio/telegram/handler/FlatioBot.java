@@ -271,7 +271,7 @@ public class FlatioBot {
     } else if (ACTION_MENU.equals(data)) {
       try {
         String chatId = String.valueOf(callbackQuery.getMessage().getChatId());
-        telegramClient.execute(startCommandHandler.buildMenuMessage(chatId));
+        telegramClient.execute(startCommandHandler.buildMenuMessage(chatId, callbackQuery.getFrom().getFirstName()));
       } catch (TelegramApiException e) {
         logOrHandleBlocked(e, callbackQuery.getFrom().getId(),
             "Failed to send main menu: chatId={}", callbackQuery.getMessage().getChatId());

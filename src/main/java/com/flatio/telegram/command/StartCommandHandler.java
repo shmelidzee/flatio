@@ -122,13 +122,17 @@ public class StartCommandHandler {
   }
 
   /**
-   * Builds the main menu message for a callback context where no user name is available.
+   * Builds the main menu message for a callback context, greeting the user by name exactly as
+   * {@code /start} does (issue #522) — the callback query's {@code from} carries the same
+   * first name Telegram gives a message's {@code from}, so there is no reason for this entry
+   * point to fall back to an anonymous greeting.
    *
-   * @param chatId target chat identifier, never null
+   * @param chatId    target chat identifier, never null
+   * @param firstName the user's Telegram first name, or null/blank for an anonymous greeting
    * @return SendMessage with main menu keyboard, never null
    */
-  public SendMessage buildMenuMessage(String chatId) {
-    return buildWelcomeMessage(chatId, null);
+  public SendMessage buildMenuMessage(String chatId, String firstName) {
+    return buildWelcomeMessage(chatId, firstName);
   }
 
   private SendMessage buildWelcomeMessage(String chatId, String firstName) {
