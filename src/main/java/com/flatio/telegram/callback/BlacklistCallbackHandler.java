@@ -67,6 +67,11 @@ public class BlacklistCallbackHandler {
   public static final String FILTER_PREFIX = "BL:FILTER:";
   /** Callback prefix for deleting a blacklist entry. */
   public static final String DELETE_PREFIX = "BL:DELETE:";
+  /** Callback prefix for prompting deletion confirmation (issue #524) — the list's numbered
+   *  "Удалить" buttons now lead here instead of straight to {@link #DELETE_PREFIX}. */
+  public static final String DELETE_CONFIRM_PREFIX = "BL:DELCONF:";
+  /** Callback data for cancelling a pending deletion confirmation (issue #524). */
+  public static final String DELETE_CANCEL = "BL:DELCANCEL";
   /** Callback prefix for hiding a listing from a search result card. */
   public static final String HIDE_LISTING_PREFIX = "BL:HIDE_LISTING:";
   /** Callback prefix for hiding a source from a search result card. */
@@ -251,7 +256,66 @@ public class BlacklistCallbackHandler {
   }
 
   /**
-   * Handles a {@code BL:DELETE:<id>} callback.
+   * Handles a {@code BL:DELCONF:<id>} callback (issue #524) — prompts for confirmation instead
+   * of deleting immediately, since deletion is irreversible via the bot.
+   *
+   * @param callbackQuery the incoming callback query, never null
+   */
+  public void handleDeleteConfirmPrompt(CallbackQuery callbackQuery) {
+    String chatId = String.valueOf(callbackQuery.getMessage().getChatId());
+    if (!TelegramPrivateChatGuard.isPrivateChat(callbackQuery)) {
+      sendPlainText(chatId, TelegramPrivateChatGuard.PRIVATE_CHAT_REQUIRED_TEXT);
+      return;
+    }
+    var userOpt = userService.findByTelegramId(callbackQuery.getFrom().getId());
+    if (userOpt.isEmpty()) {
+      sendPlainText(chatId, UNREGISTERED_TEXT);
+      return;
+    }
+    Long id = parseId(callbackQuery.getData(), DELETE_CONFIRM_PREFIX);
+    if (id == null) {
+      sendPlainText(chatId, NOT_FOUND_TOAST);
+      return;
+    }
+    try {
+      var entry = blacklistService.findByIdForUser(userOpt.get().getId(), id);
+      String displayValue = resolveDisplayValue(entry, resolveListingLabels(List.of(entry)));
+      sendDeleteConfirmPrompt(chatId, typeLabel(entry.type()), displayValue, id);
+    } catch (BlacklistEntryNotFoundException e) {
+      sendPlainText(chatId, NOT_FOUND_TOAST);
+    }
+  }
+
+  /**
+   * Handles the {@code BL:DELCANCEL} callback (issue #524) — returns to the list unchanged.
+   *
+   * @param callbackQuery the incoming callback query, never null
+   */
+  public void handleDeleteCancel(CallbackQuery callbackQuery) {
+    handle(callbackQuery);
+  }
+
+  private void sendDeleteConfirmPrompt(String chatId, String typeLabel, String displayValue, Long id) {
+    var keyboard = InlineKeyboardMarkup.builder()
+        .keyboardRow(new InlineKeyboardRow(
+            navBtn("✅ Да, удалить", DELETE_PREFIX + id),
+            navBtn("Отмена", DELETE_CANCEL)))
+        .build();
+    try {
+      telegramClient.execute(SendMessage.builder()
+          .chatId(chatId)
+          .text("Удалить запись «" + typeLabel + ": " + TelegramHtmlEscaper.escapeHtml(displayValue) + "»?")
+          .parseMode("HTML")
+          .replyMarkup(keyboard)
+          .build());
+    } catch (TelegramApiException e) {
+      log.warn("Failed to send blacklist delete confirmation: chatId={}", chatId, e);
+    }
+  }
+
+  /**
+   * Handles a {@code BL:DELETE:<id>} callback — the actual deletion, reached only after
+   * confirmation (issue #524; see {@link #handleDeleteConfirmPrompt}).
    *
    * @param callbackQuery the incoming callback query, never null
    * @return toast text to show the user via {@code AnswerCallbackQuery}, never null
@@ -445,7 +509,7 @@ public class BlacklistCallbackHandler {
     var keyboardBuilder = InlineKeyboardMarkup.builder();
     for (int i = 0; i < items.size(); i++) {
       String label = "🗑 Удалить (" + (i + 1) + ")";
-      keyboardBuilder.keyboardRow(new InlineKeyboardRow(navBtn(label, DELETE_PREFIX + items.get(i).id())));
+      keyboardBuilder.keyboardRow(new InlineKeyboardRow(navBtn(label, DELETE_CONFIRM_PREFIX + items.get(i).id())));
     }
     keyboardBuilder.keyboardRow(filterRow(type));
     if (totalPages > 1) {

@@ -42,6 +42,17 @@ public interface BlacklistService {
   Page<BlacklistEntryResponse> findByUser(Long userId, BlacklistEntryType type, Pageable pageable);
 
   /**
+   * Returns a single blacklist entry owned by the given user.
+   *
+   * @param userId the owning user's ID
+   * @param id     the blacklist entry ID
+   * @return the entry, never null
+   * @throws com.flatio.common.exception.BlacklistEntryNotFoundException if not found or not
+   *     owned by the user
+   */
+  BlacklistEntryResponse findByIdForUser(Long userId, Long id);
+
+  /**
    * Removes an entry from the given user's blacklist.
    *
    * @param userId the owning user's ID

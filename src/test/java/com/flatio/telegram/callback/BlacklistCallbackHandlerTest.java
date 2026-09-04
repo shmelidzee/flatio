@@ -6,7 +6,9 @@ import com.flatio.common.exception.SourceNotFoundException;
 import com.flatio.domain.blacklist.BlacklistEntryType;
 import com.flatio.domain.user.User;
 import com.flatio.service.BlacklistService;
+import com.flatio.service.ListingService;
 import com.flatio.service.UserService;
+import com.flatio.telegram.config.SourceDisplayProperties;
 import com.flatio.telegram.handler.SearchResultSender;
 import com.flatio.telegram.keyboard.MainMenuKeyboardFactory;
 import com.flatio.telegram.state.BlacklistKeywordPromptState;
@@ -56,6 +58,12 @@ class BlacklistCallbackHandlerTest {
   private BlacklistService blacklistService;
 
   @Mock
+  private ListingService listingService;
+
+  @Mock
+  private SourceDisplayProperties sourceDisplayProperties;
+
+  @Mock
   private MainMenuKeyboardFactory keyboardFactory;
 
   @Mock
@@ -84,7 +92,8 @@ class BlacklistCallbackHandlerTest {
     verify(telegramClient, times(1)).execute(captor.capture());
     var message = captor.getValue();
     assertThat(message.getText()).contains("Фильтр: Все").contains("Стоп-слово").contains("новостройка");
-    assertThat(extractCallbackData(message)).contains("BL:DELETE:3");
+    // issue #524: the list's delete button now leads to a confirmation prompt, not straight to deletion
+    assertThat(extractCallbackData(message)).contains("BL:DELCONF:3");
   }
 
   @Test
@@ -262,7 +271,7 @@ class BlacklistCallbackHandlerTest {
     // Then
     var captor = ArgumentCaptor.forClass(SendMessage.class);
     verify(telegramClient, times(1)).execute(captor.capture());
-    assertThat(extractCallbackData(captor.getValue())).contains("BL:DELETE:1", "BL:DELETE:2");
+    assertThat(extractCallbackData(captor.getValue())).contains("BL:DELCONF:1", "BL:DELCONF:2");
   }
 
   @Test
@@ -285,9 +294,9 @@ class BlacklistCallbackHandlerTest {
     var keyboard = captor.getValue().getReplyMarkup();
     var rows = ((org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup) keyboard).getKeyboard();
     assertThat(rows.get(0).get(0).getText()).isEqualTo("🗑 Удалить (1)");
-    assertThat(rows.get(0).get(0).getCallbackData()).isEqualTo("BL:DELETE:1");
+    assertThat(rows.get(0).get(0).getCallbackData()).isEqualTo("BL:DELCONF:1");
     assertThat(rows.get(1).get(0).getText()).isEqualTo("🗑 Удалить (2)");
-    assertThat(rows.get(1).get(0).getCallbackData()).isEqualTo("BL:DELETE:2");
+    assertThat(rows.get(1).get(0).getCallbackData()).isEqualTo("BL:DELCONF:2");
   }
 
   @Test
