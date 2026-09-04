@@ -342,11 +342,13 @@ public class ListingServiceImpl implements ListingService {
    * {@code ListingServiceImpl#enrichWithPriceByn} does for display, so the listing is compared
    * against its real converted price instead of silently passing the filter.
    *
-   * <p>Only when {@code usdToByn} is itself null — no NBRB rate has ever been recorded, a rare
-   * fresh-install case, since {@link CurrencyRateService#getRate} otherwise falls back to the
-   * last known rate — does a listing with no stored {@code priceByn} and a non-BYN currency fall
-   * back to the old behaviour: pass the filter unconditionally rather than being wrongly excluded
-   * or compared on the raw non-BYN amount.
+   * <p>A listing still bypasses the filter unconditionally (the pre-#528 behaviour) when its
+   * price genuinely cannot be compared: either {@code usdToByn} is itself null (no NBRB rate has
+   * ever been recorded, a rare fresh-install case, since {@link CurrencyRateService#getRate}
+   * otherwise falls back to the last known rate), or the listing has no stored {@code priceByn}
+   * and a currency this method has no conversion for (only USD is converted above; no connector
+   * produces another non-BYN currency today, but this keeps a future one from being silently
+   * compared as if its raw amount were already BYN).
    *
    * @param cb       JPA criteria builder
    * @param root     root of the query over {@link Listing}
@@ -367,7 +369,15 @@ public class ListingServiceImpl implements ListingService {
           .when(cb.equal(root.get("currency").<String>get("code"), CURRENCY_USD), derivedFromUsdRate)
           .otherwise(root.get("price"));
       effectivePrice = cb.coalesce(root.get("priceByn"), nonBynFallback);
-      noRateAvailable = cb.disjunction();
+      // Bypass only for a currency this branch cannot convert — neither BYN (compared via its own
+      // raw price above) nor USD (converted above via usdToByn). No connector produces such a
+      // listing today, but comparing e.g. a hypothetical EUR amount as if it were already BYN
+      // would silently be wrong, so it gets the same graceful bypass as "no rate at all" instead.
+      noRateAvailable = cb.and(
+          cb.isNull(root.get("priceByn")),
+          cb.notEqual(root.get("currency").<String>get("code"), CURRENCY_BYN),
+          cb.notEqual(root.get("currency").<String>get("code"), CURRENCY_USD)
+      );
     } else {
       effectivePrice = cb.coalesce(root.get("priceByn"), root.get("price"));
       noRateAvailable = cb.and(

@@ -252,6 +252,45 @@ class ListingServiceImplIT {
   }
 
   @Test
+  void should_include_non_usd_non_byn_listing_without_byn_conversion_when_rate_available() {
+    // Given — a hypothetical EUR-priced listing without a stored priceByn (no connector produces
+    // this today). A live USD rate is available, but this method only converts USD, so the raw
+    // EUR amount must not be silently compared as if it were already BYN — same graceful bypass
+    // as the "no rate at all" case, not a wrong exclusion/inclusion based on an unconverted amount
+    when(currencyRateService.getUsdToByn()).thenReturn(Optional.of(BigDecimal.valueOf(3.0792)));
+    var source = sourceRepository.findByCode("REALT").orElseThrow();
+    var eurCurrency = currencyRepository.findByCode("EUR").orElseThrow();
+    var country = countryRepository.findByCode("BY").orElseThrow();
+
+    var listing = new Listing();
+    listing.setExternalId("ext-eur-no-byn-528");
+    listing.setSource(source);
+    listing.setTitle("EUR listing — no BYN conversion, unsupported currency for on-the-fly conversion");
+    listing.setDealType(DealType.RENT);
+    listing.setPrice(BigDecimal.valueOf(250));
+    listing.setCurrency(eurCurrency);
+    listing.setPriceByn(null);
+    listing.setCountry(country);
+    listing.setStatus(ListingStatus.ACTIVE);
+    listing.setSourceUrl("https://realt.by/ext-eur-no-byn-528");
+    listingRepository.saveAndFlush(listing);
+
+    // Raw 250 would fall inside [1000..2000] only by coincidence of being compared unconverted;
+    // this asserts the listing is included via the bypass, not via a wrong raw-amount comparison
+    var criteria = new ListingSearchCriteria(
+        null, null, null, null, null,
+        BigDecimal.valueOf(1_000), BigDecimal.valueOf(2_000),
+        null, null, null, null
+    );
+
+    // When
+    var result = listingService.search(criteria, PageRequest.of(0, 10), null, null);
+
+    // Then — bypasses the filter (included) rather than being wrongly excluded by raw-amount comparison
+    assertThat(result.getTotalElements()).isEqualTo(1);
+  }
+
+  @Test
   void should_exclude_byn_listing_below_price_min_when_price_filter_is_set() {
     // Given — Onliner listing priced in BYN below the requested minimum
     var source = sourceRepository.findByCode("ONLINER").orElseThrow();
