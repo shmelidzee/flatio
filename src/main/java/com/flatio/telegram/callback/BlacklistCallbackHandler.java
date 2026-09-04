@@ -241,7 +241,7 @@ public class BlacklistCallbackHandler {
     try {
       blacklistService.create(userId, new CreateBlacklistEntryRequest(BlacklistEntryType.KEYWORD, keyword));
       keywordPromptState.clear(telegramId);
-      sendPlainText(chatId, "🚫 Стоп-слово «" + TelegramHtmlEscaper.escapeHtml(keyword) + "» добавлено.");
+      sendKeywordAddedConfirmation(chatId, "🚫 Стоп-слово «" + TelegramHtmlEscaper.escapeHtml(keyword) + "» добавлено.");
     } catch (BlacklistKeywordLimitExceededException e) {
       keywordPromptState.clear(telegramId);
       sendPlainText(chatId, LIMIT_EXCEEDED_TEXT);
@@ -604,6 +604,31 @@ public class BlacklistCallbackHandler {
           .build());
     } catch (TelegramApiException e) {
       log.warn("Failed to send blacklist message: chatId={}", chatId, e);
+    }
+  }
+
+  /**
+   * Sends the "stop-word added" confirmation with navigation buttons (issue #527) — every other
+   * confirmation in this bot (subscription created/updated, blacklist entry deleted) offers a
+   * next step; this one previously left the user to remember a command on their own.
+   *
+   * @param chatId target chat identifier, never null
+   * @param text   confirmation text, never null
+   */
+  private void sendKeywordAddedConfirmation(String chatId, String text) {
+    var keyboard = InlineKeyboardMarkup.builder()
+        .keyboardRow(new InlineKeyboardRow(navBtn("🚫 Чёрный список", ACTION_BLACKLIST)))
+        .keyboardRow(new InlineKeyboardRow(navBtn("🏠 Главное меню", SearchResultSender.ACTION_MENU)))
+        .build();
+    try {
+      telegramClient.execute(SendMessage.builder()
+          .chatId(chatId)
+          .text(text)
+          .parseMode("HTML")
+          .replyMarkup(keyboard)
+          .build());
+    } catch (TelegramApiException e) {
+      log.warn("Failed to send stop-word confirmation: chatId={}", chatId, e);
     }
   }
 
