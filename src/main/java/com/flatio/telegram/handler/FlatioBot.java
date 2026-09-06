@@ -486,9 +486,9 @@ public class FlatioBot {
     } else if (data.startsWith(BlacklistCallbackHandler.DELETE_PREFIX)) {
       answerCallbackQuery(callbackQuery.getId(), blacklistCallbackHandler.handleDelete(callbackQuery));
     } else if (data.startsWith(BlacklistCallbackHandler.HIDE_LISTING_PREFIX)) {
-      answerCallbackQuery(callbackQuery.getId(), blacklistCallbackHandler.handleHideListing(callbackQuery));
+      answerWithFallbackMessage(callbackQuery, blacklistCallbackHandler.handleHideListing(callbackQuery));
     } else if (data.startsWith(BlacklistCallbackHandler.HIDE_SOURCE_PREFIX)) {
-      answerCallbackQuery(callbackQuery.getId(), blacklistCallbackHandler.handleHideSource(callbackQuery));
+      answerWithFallbackMessage(callbackQuery, blacklistCallbackHandler.handleHideSource(callbackQuery));
     } else {
       answerCallbackQuery(callbackQuery.getId());
     }
@@ -550,16 +550,41 @@ public class FlatioBot {
    *
    * @param callbackQueryId the callback query to answer, never null
    * @param toastText       text to show as a toast, or null to answer without one
+   * @return true if the callback query was answered successfully
    */
-  private void answerCallbackQuery(String callbackQueryId, String toastText) {
+  private boolean answerCallbackQuery(String callbackQueryId, String toastText) {
     try {
       var builder = AnswerCallbackQuery.builder().callbackQueryId(callbackQueryId);
       if (toastText != null) {
         builder.text(toastText);
       }
       telegramClient.execute(builder.build());
+      return true;
     } catch (TelegramApiException e) {
       log.warn("Failed to answer callback query: id={}", callbackQueryId, e);
+      return false;
+    }
+  }
+
+  /**
+   * Answers a callback query with a toast, falling back to a plain chat message when the toast
+   * itself fails to reach the user (issue #519) — by this point the underlying action (hiding a
+   * listing/source) has already completed, so a delivery failure here must not leave the user
+   * with no confirmation that anything happened.
+   *
+   * @param callbackQuery the callback query being answered, never null
+   * @param toastText     confirmation text, never null
+   */
+  private void answerWithFallbackMessage(CallbackQuery callbackQuery, String toastText) {
+    if (answerCallbackQuery(callbackQuery.getId(), toastText)) {
+      return;
+    }
+    Long telegramId = callbackQuery.getFrom().getId();
+    String chatId = String.valueOf(callbackQuery.getMessage().getChatId());
+    try {
+      telegramClient.execute(SendMessage.builder().chatId(chatId).text(toastText).build());
+    } catch (TelegramApiException e) {
+      logOrHandleBlocked(e, telegramId, "Failed to send hide-action fallback confirmation: chatId={}", chatId);
     }
   }
 }

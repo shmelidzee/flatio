@@ -9,6 +9,7 @@ import com.flatio.service.UserService;
 import com.flatio.telegram.formatter.ListingFormatter;
 import com.flatio.telegram.handler.PhotoProxyClient;
 import com.flatio.telegram.handler.SearchResultSender;
+import com.flatio.telegram.handler.TelegramPhotoCache;
 import com.flatio.telegram.keyboard.MainMenuKeyboardFactory;
 import com.flatio.web.dto.CreateFavoriteRequest;
 import com.flatio.web.dto.FavoriteResponse;
@@ -17,6 +18,7 @@ import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -30,6 +32,8 @@ import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.InputFile;
+import org.telegram.telegrambots.meta.api.objects.message.Message;
+import org.telegram.telegrambots.meta.api.objects.photo.PhotoSize;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardRow;
@@ -98,6 +102,7 @@ public class FavoritesCallbackHandler {
   private final MainMenuKeyboardFactory keyboardFactory;
   private final ListingFormatter listingFormatter;
   private final PhotoProxyClient photoProxyClient;
+  private final TelegramPhotoCache photoCache;
   private final TelegramClient telegramClient;
 
   private record PageState(int page, int totalPages) {}
@@ -305,23 +310,31 @@ public class FavoritesCallbackHandler {
       sendPlaceholderPhoto(chatId, caption, keyboard);
       return;
     }
-    if (photoProxyClient.isKufarCdnUrl(photoUrl)) {
-      sendDirectUrlPhoto(chatId, photoUrl, caption, keyboard, item.listing().id());
+    String cachedFileId = photoCache.get(photoUrl);
+    if (cachedFileId != null) {
+      sendCachedPhoto(chatId, cachedFileId, photoUrl, caption, keyboard, item.listing().id());
       return;
     }
+    if (photoProxyClient.isKufarCdnUrl(photoUrl)) {
+      sendDirectUrlPhoto(chatId, photoUrl, caption, keyboard, item.listing().id(), false);
+      return;
+    }
+    // PhotoProxyClient#download already retries once internally (issue #521) before returning
+    // empty, so a failure here has already exhausted the retry.
     var photoBytes = photoProxyClient.download(photoUrl, item.listing().id());
     if (photoBytes.isEmpty()) {
       sendPlaceholderPhoto(chatId, caption, keyboard);
       return;
     }
     try {
-      telegramClient.execute(SendPhoto.builder()
+      Message sent = telegramClient.execute(SendPhoto.builder()
           .chatId(chatId)
           .photo(new InputFile(new ByteArrayInputStream(photoBytes.get()), extractPhotoFilename(photoUrl)))
           .caption(caption)
           .parseMode("HTML")
           .replyMarkup(keyboard)
           .build());
+      cachePhotoFileId(photoUrl, sent);
     } catch (TelegramApiException e) {
       log.warn("Failed to send favorite photo, falling back to placeholder: favoriteId={}, listingId={}",
           item.id(), item.listing().id(), e);
@@ -330,31 +343,87 @@ public class FavoritesCallbackHandler {
   }
 
   /**
+   * Sends a listing photo by its cached Telegram file_id (issue #521), bypassing source download
+   * entirely. Falls back to the placeholder — and evicts the now-invalid cache entry — on the
+   * rare case Telegram rejects a previously-valid file_id.
+   *
+   * @param chatId    target chat identifier, never null
+   * @param fileId    cached Telegram file_id, never null
+   * @param photoUrl  the source photo URL this file_id was cached under, never null
+   * @param caption   pre-built HTML caption, never null
+   * @param keyboard  pre-built inline keyboard, never null
+   * @param listingId used only for logging
+   */
+  private void sendCachedPhoto(String chatId, String fileId, String photoUrl, String caption,
+      InlineKeyboardMarkup keyboard, Long listingId) {
+    try {
+      telegramClient.execute(SendPhoto.builder()
+          .chatId(chatId)
+          .photo(new InputFile(fileId))
+          .caption(caption)
+          .parseMode("HTML")
+          .replyMarkup(keyboard)
+          .build());
+    } catch (TelegramApiException e) {
+      log.warn("Cached favorite photo send failed, evicting and falling back to placeholder: listingId={}, url={}",
+          listingId, photoUrl, e);
+      photoCache.evict(photoUrl);
+      sendPlaceholderPhoto(chatId, caption, keyboard);
+    }
+  }
+
+  /**
+   * Extracts and caches the Telegram file_id of the largest size from a successfully sent photo
+   * message (issue #521), so later renders of the same photo URL can reuse it instead of
+   * re-fetching from source.
+   *
+   * @param photoUrl the source photo URL this message was sent for, never null
+   * @param sent     the message returned by a successful {@code sendPhoto} call, never null
+   */
+  private void cachePhotoFileId(String photoUrl, Message sent) {
+    if (sent == null || sent.getPhoto() == null || sent.getPhoto().isEmpty()) {
+      return;
+    }
+    sent.getPhoto().stream()
+        .max(Comparator.comparing(PhotoSize::getWidth, Comparator.nullsFirst(Comparator.naturalOrder())))
+        .map(PhotoSize::getFileId)
+        .ifPresent(fileId -> photoCache.put(photoUrl, fileId));
+  }
+
+  /**
    * Sends a Kufar photo to Telegram as a direct URL, bypassing {@link PhotoProxyClient} entirely
    * (issue #515) — see {@link SearchResultSender}'s equivalent method for the full rationale
    * (issues #497, #511), including why skipping {@code ImageUrlValidator} here is safe (Telegram
    * fetches the URL, not us, and the host is constrained to the exact configured Kufar CDN host).
-   * Falls back to the placeholder, not to {@link PhotoProxyClient}, if Telegram itself rejects
-   * the direct URL.
+   * On failure, retries once (issue #521 — the anti-bot/geo gate is intermittent) before falling
+   * back to the placeholder. A successful send caches its file_id ({@link #cachePhotoFileId}).
    *
    * @param chatId    target chat identifier, never null
    * @param photoUrl  the Kufar CDN photo URL, never null
    * @param caption   pre-built HTML caption, never null
    * @param keyboard  pre-built inline keyboard, never null
    * @param listingId used only for logging
+   * @param isRetry   true when this call is the single retry attempt after an earlier failure
    */
   private void sendDirectUrlPhoto(String chatId, String photoUrl, String caption,
-      InlineKeyboardMarkup keyboard, Long listingId) {
+      InlineKeyboardMarkup keyboard, Long listingId, boolean isRetry) {
     try {
-      telegramClient.execute(SendPhoto.builder()
+      Message sent = telegramClient.execute(SendPhoto.builder()
           .chatId(chatId)
           .photo(new InputFile(photoUrl))
           .caption(caption)
           .parseMode("HTML")
           .replyMarkup(keyboard)
           .build());
+      cachePhotoFileId(photoUrl, sent);
     } catch (TelegramApiException e) {
-      log.warn("Direct-URL Kufar photo send failed, falling back to placeholder: listingId={}, url={}",
+      if (!isRetry) {
+        log.debug("Direct-URL Kufar photo send failed, retrying once (issue #521): listingId={}, url={}",
+            listingId, photoUrl);
+        sendDirectUrlPhoto(chatId, photoUrl, caption, keyboard, listingId, true);
+        return;
+      }
+      log.warn("Direct-URL Kufar photo send failed after retry, falling back to placeholder: listingId={}, url={}",
           listingId, photoUrl, e);
       sendPlaceholderPhoto(chatId, caption, keyboard);
     }

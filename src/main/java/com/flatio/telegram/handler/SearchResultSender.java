@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Comparator;
 import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
@@ -49,6 +50,8 @@ import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.InputFile;
+import org.telegram.telegrambots.meta.api.objects.message.Message;
+import org.telegram.telegrambots.meta.api.objects.photo.PhotoSize;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardRow;
@@ -73,6 +76,12 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
  * that retry also fails does the card fall back to the placeholder. If the placeholder itself also
  * fails to send, the card falls back to a plain text message so the user always receives the
  * listing details.
+ *
+ * <p>Once a photo URL is successfully delivered, its Telegram {@code file_id} is cached in
+ * {@link TelegramPhotoCache} (issue #521) and reused on later renders of the same listing instead
+ * of re-fetching from source — the same listing was otherwise seen with a real photo or the
+ * placeholder purely depending on whether that render's independent re-fetch happened to succeed.
+ * The direct-URL Kufar path also retries once before falling back to the placeholder.
  */
 @Component
 @Slf4j
@@ -144,6 +153,7 @@ public class SearchResultSender {
   private final UserSavedSearchService userSavedSearchService;
   private final PhotoProxyClient photoProxyClient;
   private final UserService userService;
+  private final TelegramPhotoCache photoCache;
 
   // Caffeine, not a plain ConcurrentHashMap, so an abandoned session is actually evicted instead
   // of occupying memory for the lifetime of the JVM (issue #382). expireAfterAccess mirrors the
@@ -281,30 +291,102 @@ public class SearchResultSender {
       return;
     }
 
-    if (photoProxyClient.isKufarCdnUrl(photoUrl)) {
-      sendDirectUrlPhoto(chatId, photoUrl, caption, keyboard, listing.id());
+    String cachedFileId = photoCache.get(photoUrl);
+    if (cachedFileId != null) {
+      sendCachedPhoto(chatId, cachedFileId, photoUrl, caption, keyboard, listing.id());
       return;
     }
 
+    if (photoProxyClient.isKufarCdnUrl(photoUrl)) {
+      sendDirectUrlPhoto(chatId, photoUrl, caption, keyboard, listing.id(), false);
+      return;
+    }
+
+    sendDownloadedPhoto(chatId, photoUrl, caption, keyboard, listing.id());
+  }
+
+  /**
+   * Downloads and sends a listing photo that is neither cached nor from the Kufar CDN
+   * (issue #521 — {@link PhotoProxyClient#download} already retries once internally before
+   * this falls back to the placeholder).
+   *
+   * @param chatId    target chat identifier, never null
+   * @param photoUrl  the photo URL to download, never null
+   * @param caption   pre-built HTML caption, never null
+   * @param keyboard  pre-built inline keyboard, never null
+   * @param listingId used for logging and photo-card bookkeeping
+   */
+  private void sendDownloadedPhoto(String chatId, String photoUrl, String caption,
+      InlineKeyboardMarkup keyboard, Long listingId) {
     Instant start = Instant.now();
-    Optional<byte[]> photoBytes = photoProxyClient.download(photoUrl, listing.id());
+    Optional<byte[]> photoBytes = photoProxyClient.download(photoUrl, listingId);
     if (photoBytes.isEmpty()) {
-      log.warn("Photo download failed, falling back to placeholder: listingId={}, url={}",
-          listing.id(), photoUrl);
-      sendPlaceholderPhoto(chatId, caption, keyboard, listing.id());
+      log.warn("Photo download failed, falling back to placeholder: listingId={}, url={}", listingId, photoUrl);
+      sendPlaceholderPhoto(chatId, caption, keyboard, listingId);
       return;
     }
 
     byte[] bytes = photoBytes.get();
-    var card = new PhotoCard(chatId, listing.id(), bytes, extractPhotoFilename(photoUrl),
-        caption, keyboard, photoUrl);
+    var card = new PhotoCard(chatId, listingId, bytes, extractPhotoFilename(photoUrl), caption, keyboard, photoUrl);
     if (bytes.length > maxSendPhotoBytes) {
       handleOversizedPhoto(card);
     } else {
       sendPhotoBytes(card);
     }
     log.debug("Card sent: listingId={}, size={}bytes, elapsed={}ms",
-        listing.id(), bytes.length, Duration.between(start, Instant.now()).toMillis());
+        listingId, bytes.length, Duration.between(start, Instant.now()).toMillis());
+  }
+
+  /**
+   * Sends a listing photo by its cached Telegram file_id (issue #521), bypassing source download
+   * entirely. Falls back to the placeholder — and evicts the now-invalid cache entry — on the rare
+   * case Telegram rejects a previously-valid file_id (e.g. it aged out of Telegram's own storage).
+   *
+   * @param chatId    target chat identifier, never null
+   * @param fileId    cached Telegram file_id, never null
+   * @param photoUrl  the source photo URL this file_id was cached under, never null
+   * @param caption   pre-built HTML caption, never null
+   * @param keyboard  pre-built inline keyboard, never null
+   * @param listingId used only for logging
+   */
+  private void sendCachedPhoto(String chatId, String fileId, String photoUrl, String caption,
+      InlineKeyboardMarkup keyboard, Long listingId) {
+    try {
+      telegramClient.execute(SendPhoto.builder()
+          .chatId(chatId)
+          .photo(new InputFile(fileId))
+          .caption(caption)
+          .parseMode("HTML")
+          .replyMarkup(keyboard)
+          .build());
+    } catch (TelegramApiException e) {
+      if (isBlockedByUser(e)) {
+        handleBlockedByUser(chatId);
+        return;
+      }
+      log.warn("Cached photo send failed, evicting and falling back to placeholder: listingId={}, url={}",
+          listingId, photoUrl, e);
+      photoCache.evict(photoUrl);
+      sendPlaceholderPhoto(chatId, caption, keyboard, listingId);
+    }
+  }
+
+  /**
+   * Extracts and caches the Telegram file_id of the largest size from a successfully sent photo
+   * message (issue #521), so later renders of the same photo URL can reuse it instead of
+   * re-fetching from source.
+   *
+   * @param photoUrl the source photo URL this message was sent for, never null
+   * @param sent     the message returned by a successful {@code sendPhoto} call, never null
+   */
+  private void cachePhotoFileId(String photoUrl, Message sent) {
+    if (sent == null || sent.getPhoto() == null || sent.getPhoto().isEmpty()) {
+      return;
+    }
+    sent.getPhoto().stream()
+        .max(Comparator.comparing(PhotoSize::getWidth, Comparator.nullsFirst(Comparator.naturalOrder())))
+        .map(PhotoSize::getFileId)
+        .ifPresent(fileId -> photoCache.put(photoUrl, fileId));
   }
 
   private void handleOversizedPhoto(PhotoCard card) {
@@ -450,13 +532,14 @@ public class SearchResultSender {
 
   private void sendPhotoBytes(PhotoCard card, boolean isRetryAfterNormalize) {
     try {
-      telegramClient.execute(SendPhoto.builder()
+      Message sent = telegramClient.execute(SendPhoto.builder()
           .chatId(card.chatId())
           .photo(new InputFile(new ByteArrayInputStream(card.bytes()), card.filename()))
           .caption(card.caption())
           .parseMode("HTML")
           .replyMarkup(card.keyboard())
           .build());
+      cachePhotoFileId(card.photoUrl(), sent);
     } catch (TelegramApiException e) {
       handleSendPhotoFailure(card, e, isRetryAfterNormalize);
     }
@@ -631,8 +714,10 @@ public class SearchResultSender {
    * Sends a Kufar photo to Telegram as a direct URL, bypassing {@link PhotoProxyClient} entirely
    * (issue #515) — server-side download for this CDN was abandoned after a browser-like
    * {@code User-Agent}/{@code Referer} (issue #497) failed to resolve its anti-bot/geo gate in
-   * production (issue #511). Falls back to the placeholder, not to {@link PhotoProxyClient},
-   * if Telegram itself rejects the direct URL — retrying via download would hit the same gate.
+   * production (issue #511). On failure, retries once (issue #521 — the gate is intermittent, not
+   * absolute, so the same URL can succeed a moment later) before falling back to the placeholder.
+   * A successful send caches its file_id ({@link #cachePhotoFileId}) so later renders of this
+   * listing reuse it instead of asking Telegram to fetch the URL again.
    *
    * <p><b>SSRF note:</b> this path does not run {@code ImageUrlValidator} — that guard exists to
    * stop {@link PhotoProxyClient} from making an outbound request to an attacker-controlled
@@ -645,23 +730,31 @@ public class SearchResultSender {
    * @param caption   pre-built HTML caption, never null
    * @param keyboard  pre-built inline keyboard, never null
    * @param listingId used only for logging
+   * @param isRetry   true when this call is the single retry attempt after an earlier failure
    */
   private void sendDirectUrlPhoto(String chatId, String photoUrl, String caption,
-      InlineKeyboardMarkup keyboard, Long listingId) {
+      InlineKeyboardMarkup keyboard, Long listingId, boolean isRetry) {
     try {
-      telegramClient.execute(SendPhoto.builder()
+      Message sent = telegramClient.execute(SendPhoto.builder()
           .chatId(chatId)
           .photo(new InputFile(photoUrl))
           .caption(caption)
           .parseMode("HTML")
           .replyMarkup(keyboard)
           .build());
+      cachePhotoFileId(photoUrl, sent);
     } catch (TelegramApiException e) {
       if (isBlockedByUser(e)) {
         handleBlockedByUser(chatId);
         return;
       }
-      log.warn("Direct-URL Kufar photo send failed, falling back to placeholder: listingId={}, url={}",
+      if (!isRetry) {
+        log.debug("Direct-URL Kufar photo send failed, retrying once (issue #521): listingId={}, url={}",
+            listingId, photoUrl);
+        sendDirectUrlPhoto(chatId, photoUrl, caption, keyboard, listingId, true);
+        return;
+      }
+      log.warn("Direct-URL Kufar photo send failed after retry, falling back to placeholder: listingId={}, url={}",
           listingId, photoUrl, e);
       sendPlaceholderPhoto(chatId, caption, keyboard, listingId);
     }
