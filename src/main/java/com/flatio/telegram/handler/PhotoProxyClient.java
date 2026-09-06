@@ -68,9 +68,11 @@ public class PhotoProxyClient {
   /**
    * Downloads photo bytes from the given URL within the configured timeout.
    *
-   * <p>Returns empty when the URL fails the {@link ImageUrlValidator} SSRF safety check, on
-   * HTTP 4xx/5xx responses, connection timeout, read timeout, or any other I/O error. The caller
-   * is expected to fall back to a text card on empty result.
+   * <p>Returns empty when the URL fails the {@link ImageUrlValidator} SSRF safety check, or when
+   * both the initial attempt and a single retry (issue #521 — a transient timeout or connection
+   * error should not immediately degrade to the placeholder) fail with an HTTP 4xx/5xx response,
+   * connection timeout, read timeout, or any other I/O error. The caller is expected to fall back
+   * to a text card on empty result.
    *
    * @param url       the photo URL to download, must be a valid HTTP/HTTPS URL
    * @param listingId listing identifier used in log messages for traceability
@@ -81,6 +83,15 @@ public class PhotoProxyClient {
       log.warn("Refusing to download photo that failed SSRF validation: listingId={}, url={}", listingId, url);
       return Optional.empty();
     }
+    Optional<byte[]> result = attemptDownload(url, listingId);
+    if (result.isPresent()) {
+      return result;
+    }
+    log.debug("Photo download failed, retrying once (issue #521): listingId={}, url={}", listingId, url);
+    return attemptDownload(url, listingId);
+  }
+
+  private Optional<byte[]> attemptDownload(String url, Long listingId) {
     try {
       byte[] bytes = restClient.get()
           .uri(url)

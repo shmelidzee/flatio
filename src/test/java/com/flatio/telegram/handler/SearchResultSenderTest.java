@@ -86,6 +86,9 @@ class SearchResultSenderTest {
   @Mock
   private UserService userService;
 
+  @Mock
+  private TelegramPhotoCache photoCache;
+
   @InjectMocks
   private SearchResultSender searchResultSender;
 
@@ -115,6 +118,8 @@ class SearchResultSenderTest {
     // Default: caller not registered — most tests don't care about the exact userId passed to
     // search() (issue #514) since they match it with any()
     lenient().when(userService.findByTelegramId(anyLong())).thenReturn(Optional.empty());
+    // Default: no cached file_id yet — most tests exercise the download/direct-URL path (issue #521)
+    lenient().when(photoCache.get(anyString())).thenReturn(null);
   }
 
   // -------------------------------------------------------------------------
@@ -1270,8 +1275,8 @@ class SearchResultSenderTest {
   }
 
   @Test
-  void should_fall_back_to_placeholder_when_kufar_direct_url_send_fails() throws TelegramApiException {
-    // Given
+  void should_retry_once_before_placeholder_when_kufar_direct_url_send_fails() throws TelegramApiException {
+    // Given — issue #521: a single failure retries once with the same URL before giving up
     String kufarUrl = "https://rms.kufar.by/v1/gallery/adim1/y.jpg";
     when(photoProxyClient.isKufarCdnUrl(kufarUrl)).thenReturn(true);
     var listing = buildListing(81L, kufarUrl, "https://kufar.by/81");
@@ -1282,16 +1287,73 @@ class SearchResultSenderTest {
     lenient().when(telegramClient.execute(any(EditMessageText.class))).thenReturn(mock());
     when(telegramClient.execute(any(SendPhoto.class)))
         .thenThrow(new TelegramApiException("Direct URL rejected"))
-        .thenReturn(null);
+        .thenThrow(new TelegramApiException("Direct URL rejected again"))
+        .thenReturn(mock(Message.class));
 
     // When
     searchResultSender.handle(buildCallback(1L, 100L, 10));
 
-    // Then — falls back to the placeholder, not to PhotoProxyClient.download()
+    // Then — retried once with the same Kufar URL, then fell back to the placeholder
     ArgumentCaptor<SendPhoto> photoCaptor = ArgumentCaptor.forClass(SendPhoto.class);
-    verify(telegramClient, times(2)).execute(photoCaptor.capture());
-    assertThat(photoCaptor.getAllValues().get(1).getPhoto().getAttachName()).isEqualTo(TEST_NO_PHOTO_URL);
+    verify(telegramClient, times(3)).execute(photoCaptor.capture());
+    assertThat(photoCaptor.getAllValues().get(1).getPhoto().getAttachName()).isEqualTo(kufarUrl);
+    assertThat(photoCaptor.getAllValues().get(2).getPhoto().getAttachName()).isEqualTo(TEST_NO_PHOTO_URL);
     verify(photoProxyClient, never()).download(anyString(), eq(81L));
+  }
+
+  @Test
+  void should_cache_file_id_when_kufar_direct_url_retry_succeeds() throws TelegramApiException {
+    // Given — issue #521: the retry after a first failure succeeds and its file_id is cached
+    String kufarUrl = "https://rms.kufar.by/v1/gallery/adim1/z.jpg";
+    when(photoProxyClient.isKufarCdnUrl(kufarUrl)).thenReturn(true);
+    var listing = buildListing(82L, kufarUrl, "https://kufar.by/82");
+    when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
+    when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing));
+    when(listingFormatter.buildCaption(listing)).thenReturn("caption");
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
+    lenient().when(telegramClient.execute(any(EditMessageText.class))).thenReturn(mock());
+    var sentMessage = buildSentMessageWithPhoto("file-abc");
+    when(telegramClient.execute(any(SendPhoto.class)))
+        .thenThrow(new TelegramApiException("Direct URL rejected"))
+        .thenReturn(sentMessage);
+
+    // When
+    searchResultSender.handle(buildCallback(1L, 100L, 10));
+
+    // Then
+    verify(photoCache).put(kufarUrl, "file-abc");
+  }
+
+  @Test
+  void should_use_cached_file_id_instead_of_refetching_source() throws TelegramApiException {
+    // Given — issue #521: a listing whose photo was already cached is sent by file_id, without
+    // touching PhotoProxyClient or Telegram's direct-URL fetch at all
+    String photoUrl = "https://cdn.realt.by/photos/90/main.jpg";
+    when(photoCache.get(photoUrl)).thenReturn("cached-file-id");
+    var listing = buildListing(90L, photoUrl, "https://realt.by/90");
+    when(wizard.getState(1L)).thenReturn(Optional.of(defaultState));
+    when(listingService.search(any(), any(), any(), any())).thenReturn(pageOf(listing));
+    when(listingFormatter.buildCaption(listing)).thenReturn("caption");
+    when(listingFormatter.buildSearchCardKeyboard(anyString(), any(), any())).thenReturn(mock(InlineKeyboardMarkup.class));
+
+    // When
+    searchResultSender.handle(buildCallback(1L, 100L, 10));
+
+    // Then
+    ArgumentCaptor<SendPhoto> photoCaptor = ArgumentCaptor.forClass(SendPhoto.class);
+    verify(telegramClient).execute(photoCaptor.capture());
+    assertThat(photoCaptor.getValue().getPhoto().getAttachName()).isEqualTo("cached-file-id");
+    verify(photoProxyClient, never()).download(anyString(), anyLong());
+    verify(photoProxyClient, never()).isKufarCdnUrl(anyString());
+  }
+
+  private static Message buildSentMessageWithPhoto(String fileId) {
+    var photoSize = org.telegram.telegrambots.meta.api.objects.photo.PhotoSize.builder()
+        .fileId(fileId)
+        .width(800)
+        .height(600)
+        .build();
+    return Message.builder().photo(List.of(photoSize)).build();
   }
 
   // -------------------------------------------------------------------------

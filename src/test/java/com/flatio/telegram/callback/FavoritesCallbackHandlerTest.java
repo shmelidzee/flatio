@@ -9,6 +9,7 @@ import com.flatio.service.UserService;
 import com.flatio.telegram.formatter.ListingFormatter;
 import com.flatio.telegram.handler.PhotoProxyClient;
 import com.flatio.telegram.handler.SearchResultSender;
+import com.flatio.telegram.handler.TelegramPhotoCache;
 import com.flatio.telegram.keyboard.MainMenuKeyboardFactory;
 import com.flatio.web.dto.CreateFavoriteRequest;
 import com.flatio.web.dto.FavoriteResponse;
@@ -77,6 +78,9 @@ class FavoritesCallbackHandlerTest {
   @Mock
   private TelegramClient telegramClient;
 
+  @Mock
+  private TelegramPhotoCache photoCache;
+
   @InjectMocks
   private FavoritesCallbackHandler handler;
 
@@ -89,6 +93,8 @@ class FavoritesCallbackHandlerTest {
         .keyboardRow(new InlineKeyboardRow(InlineKeyboardButton.builder()
             .text("Открыть объявление →").url(invocation.getArgument(0)).build()))
         .build());
+    // Default: no cached file_id yet — most tests exercise the download/direct-URL path (issue #521)
+    lenient().when(photoCache.get(anyString())).thenReturn(null);
   }
 
   @Test
@@ -183,8 +189,8 @@ class FavoritesCallbackHandlerTest {
   }
 
   @Test
-  void should_fall_back_to_placeholder_when_kufar_direct_url_send_fails() throws Exception {
-    // Given
+  void should_retry_once_before_placeholder_when_kufar_direct_url_send_fails() throws Exception {
+    // Given — issue #521: a single failure retries once with the same URL before giving up
     String kufarUrl = "https://rms.kufar.by/v1/gallery/adim1/y.jpg";
     var user = buildUser(7L);
     when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
@@ -193,17 +199,42 @@ class FavoritesCallbackHandlerTest {
     when(photoProxyClient.isKufarCdnUrl(kufarUrl)).thenReturn(true);
     when(telegramClient.execute(any(SendPhoto.class)))
         .thenThrow(new org.telegram.telegrambots.meta.exceptions.TelegramApiException("Direct URL rejected"))
-        .thenReturn(null);
+        .thenThrow(new org.telegram.telegrambots.meta.exceptions.TelegramApiException("Direct URL rejected again"))
+        .thenReturn(mock(Message.class));
     var callback = buildCallback(1L, 100L, true, FavoritesCallbackHandler.ACTION_FAVORITES);
 
     // When
     handler.handle(callback);
 
-    // Then — falls back to the placeholder, not to PhotoProxyClient.download()
+    // Then — retried once with the same Kufar URL, then fell back to the placeholder
     var photoCaptor = ArgumentCaptor.forClass(SendPhoto.class);
-    verify(telegramClient, times(2)).execute(photoCaptor.capture());
-    assertThat(photoCaptor.getAllValues().get(1).getPhoto().getAttachName()).isEqualTo(TEST_NO_PHOTO_URL);
+    verify(telegramClient, times(3)).execute(photoCaptor.capture());
+    assertThat(photoCaptor.getAllValues().get(1).getPhoto().getAttachName()).isEqualTo(kufarUrl);
+    assertThat(photoCaptor.getAllValues().get(2).getPhoto().getAttachName()).isEqualTo(TEST_NO_PHOTO_URL);
     verify(photoProxyClient, never()).download(anyString(), anyLong());
+  }
+
+  @Test
+  void should_use_cached_file_id_instead_of_refetching_source() throws Exception {
+    // Given — issue #521: a listing whose photo was already cached is sent by file_id, without
+    // touching PhotoProxyClient at all
+    String photoUrl = "https://cdn.realt.by/photos/3/main.jpg";
+    var user = buildUser(7L);
+    when(userService.findByTelegramId(1L)).thenReturn(Optional.of(user));
+    var favorite = buildFavoriteResponse(3L, 3L, "Квартира в центре", BigDecimal.valueOf(50_000), "USD", photoUrl);
+    when(favoriteService.findByUser(eq(7L), any())).thenReturn(new PageImpl<>(List.of(favorite)));
+    when(photoCache.get(photoUrl)).thenReturn("cached-file-id");
+    var callback = buildCallback(1L, 100L, true, FavoritesCallbackHandler.ACTION_FAVORITES);
+
+    // When
+    handler.handle(callback);
+
+    // Then
+    var photoCaptor = ArgumentCaptor.forClass(SendPhoto.class);
+    verify(telegramClient).execute(photoCaptor.capture());
+    assertThat(photoCaptor.getValue().getPhoto().getAttachName()).isEqualTo("cached-file-id");
+    verify(photoProxyClient, never()).download(anyString(), anyLong());
+    verify(photoProxyClient, never()).isKufarCdnUrl(anyString());
   }
 
   @Test
