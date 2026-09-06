@@ -401,6 +401,83 @@ class FlatioBotTest {
   }
 
   // -------------------------------------------------------------------------
+  // Hide-listing/hide-source confirmation reliability (issue #519)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void should_answer_callback_with_toast_when_bl_hide_listing_callback_received() throws TelegramApiException {
+    // Given
+    var telegramClient = mock(TelegramClient.class);
+    var blacklistCallbackHandler = mock(BlacklistCallbackHandler.class);
+    when(blacklistCallbackHandler.handleHideListing(any())).thenReturn("🚫 Объявление скрыто");
+    var bot = buildBotWithBlacklistHandler(telegramClient, blacklistCallbackHandler, executor);
+    var update = buildCallbackUpdate(1, 100L, "BL:HIDE_LISTING:42");
+
+    // When
+    bot.handleUpdate(update);
+
+    // Then
+    verify(blacklistCallbackHandler).handleHideListing(update.getCallbackQuery());
+    verify(telegramClient).execute(argThat((AnswerCallbackQuery a) -> "🚫 Объявление скрыто".equals(a.getText())));
+  }
+
+  @Test
+  void should_send_fallback_message_when_hide_listing_toast_delivery_fails() throws TelegramApiException {
+    // Given — issue #519: the hide already succeeded by the time the toast is answered, so a
+    // delivery failure at that point must not leave the user with zero confirmation
+    var telegramClient = mock(TelegramClient.class);
+    var blacklistCallbackHandler = mock(BlacklistCallbackHandler.class);
+    when(blacklistCallbackHandler.handleHideListing(any())).thenReturn("🚫 Объявление скрыто");
+    when(telegramClient.execute(any(AnswerCallbackQuery.class))).thenThrow(new TelegramApiException("timed out"));
+    var bot = buildBotWithBlacklistHandler(telegramClient, blacklistCallbackHandler, executor);
+    var update = buildCallbackUpdate(1, 100L, "BL:HIDE_LISTING:42");
+
+    // When
+    bot.handleUpdate(update);
+
+    // Then — falls back to a plain chat message with the same confirmation text
+    var messageCaptor = org.mockito.ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient).execute(messageCaptor.capture());
+    assertThat(messageCaptor.getValue().getText()).isEqualTo("🚫 Объявление скрыто");
+  }
+
+  @Test
+  void should_answer_callback_with_toast_when_bl_hide_source_callback_received() throws TelegramApiException {
+    // Given
+    var telegramClient = mock(TelegramClient.class);
+    var blacklistCallbackHandler = mock(BlacklistCallbackHandler.class);
+    when(blacklistCallbackHandler.handleHideSource(any())).thenReturn("🚫 Источник скрыт");
+    var bot = buildBotWithBlacklistHandler(telegramClient, blacklistCallbackHandler, executor);
+    var update = buildCallbackUpdate(1, 100L, "BL:HIDE_SOURCE:KUFAR_APARTMENT_RENT");
+
+    // When
+    bot.handleUpdate(update);
+
+    // Then
+    verify(blacklistCallbackHandler).handleHideSource(update.getCallbackQuery());
+    verify(telegramClient).execute(argThat((AnswerCallbackQuery a) -> "🚫 Источник скрыт".equals(a.getText())));
+  }
+
+  @Test
+  void should_send_fallback_message_when_hide_source_toast_delivery_fails() throws TelegramApiException {
+    // Given — issue #519
+    var telegramClient = mock(TelegramClient.class);
+    var blacklistCallbackHandler = mock(BlacklistCallbackHandler.class);
+    when(blacklistCallbackHandler.handleHideSource(any())).thenReturn("🚫 Источник скрыт");
+    when(telegramClient.execute(any(AnswerCallbackQuery.class))).thenThrow(new TelegramApiException("timed out"));
+    var bot = buildBotWithBlacklistHandler(telegramClient, blacklistCallbackHandler, executor);
+    var update = buildCallbackUpdate(1, 100L, "BL:HIDE_SOURCE:KUFAR_APARTMENT_RENT");
+
+    // When
+    bot.handleUpdate(update);
+
+    // Then — falls back to a plain chat message with the same confirmation text
+    var messageCaptor = org.mockito.ArgumentCaptor.forClass(SendMessage.class);
+    verify(telegramClient).execute(messageCaptor.capture());
+    assertThat(messageCaptor.getValue().getText()).isEqualTo("🚫 Источник скрыт");
+  }
+
+  // -------------------------------------------------------------------------
   // Free-text routing for subscription-name / stop-word prompts (issues #458, #459)
   // -------------------------------------------------------------------------
 
